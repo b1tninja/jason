@@ -122,8 +122,8 @@ def test_a_suggestion_carries_the_provision_whole_before_jasons_labeled_reading_
     assert row["inForce"]["ok"] is False and row["effective"] == "" and row["decision"] is None
     assert row["proposedAs"] is None and row["boardSets"] == ["over_cents"]
     assert row["history"][0]["act"] == "suggest" and row["history"][0]["by"] == "jason"
-    assert {"kind": "approval kind", "key": None} == {k: row["touches"][0][k] for k in ("kind", "key")}
-    assert "carries this category" in row["touches"][0]["note"]               # no registered kind names "payment" yet
+    assert {"kind": "approval kind", "key": "payhoa-mailroom-send"} == {k: row["touches"][0][k] for k in ("kind", "key")}
+    assert row["touches"][0]["builtin"] == "two persons"                      # the one registered kind that carries "payment"
     assert body["counts"]["suggested"] == 3 and "3 suggested" in body["heading"] and "1 question" in body["heading"]
 
 

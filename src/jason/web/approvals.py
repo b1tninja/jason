@@ -167,7 +167,8 @@ def kind_facts(kind: Any) -> dict[str, Any]:
     return {"key": kind.key, "title": kind.title, "cli": kind.cli, "system": kind.system, "risk": kind.risk.name,
             "riskWords": kind.risk.value, "approver": kind.approver.value,
             "twoPerson": kind.approver is Approver.TWO_PERSON, "reversible": kind.reversible,
-            "maxAgeHours": kind.max_age_hours, "cost": kind.cost, "clock": kind.clock, "rule": kind.rule}
+            "maxAgeHours": kind.max_age_hours, "cost": kind.cost, "clock": kind.clock, "rule": kind.rule,
+            "terminalOnly": kind.terminal_only}
 
 
 def kinds(_args: Args | None = None) -> dict[str, Any]:
@@ -754,6 +755,9 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
             from jason.approvals.model import to_dict
 
             a = store.load(ident)
+            kind = registry.get(a.kind)
+            if kind.terminal_only:                      # a person at a terminal applies it (a mailing cannot be recalled)
+                return jsonify(error=kind.terminal_note, terminalOnly=True, command=kind.cli), 403
             if echoed != a.fingerprint:
                 return jsonify(error=f"the fingerprint reviewed is not {a.id}'s: nothing written. Reload it, review "
                                      "it again, and confirm what it shows", fingerprint=a.fingerprint,

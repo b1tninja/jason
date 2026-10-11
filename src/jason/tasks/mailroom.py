@@ -12,17 +12,26 @@ jason never mails on its own initiative: a letter goes out only when a person as
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 MAIL_DIR = "mailroom"
 SEND_LOG = "sent.jsonl"
+PREVIEW_DIR = "previews"
+# A saved preview older than this is stale: PayHOA's recipients, an owner's address, or the letter itself may have
+# moved since a person read it (docs/console/screens/mailroom.md, "States"). The approvals kind holds the same limit.
+PREVIEW_MAX_AGE_HOURS = 24
+FINGERPRINT_SHOWN = 12                    # hex characters of a fingerprint a person reads and types
+MIN_EXPECT = 8                            # the fewest a ``--expect`` may give
+PREVIEW_NOT_A_PROMISE = ("a preview is not a promise: this send asks PayHOA for the recipients again. Add --expect "
+                         "FINGERPRINT (shown with the preview) to refuse a send that differs from the one you read")
 # Seconds to wait before each read of the new batch after a send.
 READ_BACK = (1.0, 2.0, 4.0, 8.0)
 
@@ -57,6 +66,39 @@ def check_options(mail_class: str, *, tracking: str = "", with_invoices: bool = 
     if with_invoices and double_sided:
         raise ValueError("an invoice cannot be sent double-sided (PayHOA)")
     return value
+
+
+@dataclass(frozen=True)
+class Options:
+    """What a letter is sent with: PayHOA's own values (``mail_class`` is "standard" or "first class", ``color`` "bw" or
+    "color"). These are part of a letter's fingerprint."""
+
+    send_to: str = "mailing"
+    with_invoices: bool = False
+    double_sided: bool = False
+    mail_class: str = "standard"
+    tracking: str = ""
+    color: str = "bw"
+
+    @classmethod
+    def build(cls, mail_class: str, *, send_to: str = "mailing", with_invoices: bool = False, double_sided: bool = False,
+              tracking: str = "", color: str = "bw") -> "Options":
+        """The options asked, after PayHOA's own rules (``check_options``); a ``ValueError`` says which one refuses."""
+        value = check_options(mail_class, tracking=tracking, with_invoices=with_invoices, double_sided=double_sided)
+        return cls(send_to, with_invoices, double_sided, value, tracking, color)
+
+    @property
+    def first_class(self) -> bool:
+        return self.mail_class != "standard"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"sendTo": self.send_to, "withInvoices": self.with_invoices, "doubleSided": self.double_sided,
+                "mailClass": self.mail_class, "tracking": self.tracking, "color": self.color}
+
+    @classmethod
+    def from_dict(cls, row: dict[str, Any]) -> "Options":
+        return cls(str(row.get("sendTo") or "mailing"), bool(row.get("withInvoices")), bool(row.get("doubleSided")),
+                   str(row.get("mailClass") or "standard"), str(row.get("tracking") or ""), str(row.get("color") or "bw"))
 
 
 def _address_key(text: str) -> str:
@@ -256,6 +298,251 @@ def letter_history(client: Any, org_id: int, activity_id: int) -> list[dict[str,
     return sorted(client.mail_events(org_id, activity_id), key=lambda e: str(e.get("createdAt") or ""))
 
 
+# -- the preview record and the fingerprint ------------------------------------------------------------------------------
+#
+# A preview is not a promise: ``send`` asks PayHOA for the recipients again. The preview record is what a person read,
+# kept; its fingerprint is a hash over the letter (its sha256), the options, the units, the owners PayHOA names, the
+# recipients' addresses and names (inside the hash only), and the total. A later send, or an approval, is checked
+# against it. The record holds no name and no address: those stay in PayHOA.
+
+class FingerprintMismatch(ValueError):
+    """The letter about to go is not the one that was previewed. Nothing was mailed."""
+
+
+def _digest(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                                     default=str).encode("utf-8")).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with Path(path).open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def shown(fingerprint: str) -> str:
+    """The part of a fingerprint a person reads and types."""
+    return fingerprint[:FINGERPRINT_SHOWN]
+
+
+def recipients_digest(recipients: list[dict[str, Any]]) -> str:
+    """One hash over each recipient row: owner, units, name, address, and PayHOA's two flags. A name or an address that
+    changes changes it; neither is kept anywhere."""
+    rows = [[int(r.get("ownerId") or 0), sorted(int(u) for u in r.get("unitIds") or ()),
+             _address_key(str(r.get("name") or "")), _address_key(str(r.get("address") or "")),
+             bool(r.get("isIncluded", True)), bool(r.get("isDuplicate"))] for r in recipients]
+    return _digest(sorted(rows, key=json.dumps))
+
+
+def resolution(row: dict[str, Any], send_to: str, unit_keys: dict[int, str]) -> str:
+    """How a recipient's address was resolved, in a word and never the address: none, the unit's, the owner's mailing
+    address, or a mailing address that is the unit's (PayHOA mails at the unit when an owner has none)."""
+    address = str(row.get("address") or "")
+    if not address.strip():
+        return "no address"
+    if send_to == "unit":
+        return "unit address"
+    first = _address_key(address.splitlines()[0])
+    own = {unit_keys.get(int(u)) for u in row.get("unitIds") or ()}
+    return "mailing = unit address" if first and first in own else "mailing address"
+
+
+def fingerprint(*, pdf_sha: str, options: Options, unit_ids: list[int], owner_ids: list[int], recipients: str,
+                total_cents: int) -> str:
+    """The sha256 over the letter's sha256, the options, the sorted unit ids and included owner ids, the recipients'
+    digest, and the total in cents."""
+    return _digest({"pdf": pdf_sha, "options": options.as_dict(), "units": sorted(int(u) for u in unit_ids),
+                    "owners": sorted(int(o) for o in owner_ids), "recipients": recipients, "totalCents": int(total_cents)})
+
+
+def describe(pdf: Path, pages: int, options: Options, units: list[dict[str, Any]], recipients: list[dict[str, Any]],
+             *, pdf_sha: str | None = None) -> dict[str, Any]:
+    """What a letter is, as a preview record keeps it (no name, no address) and its fingerprint. Reads the file for its
+    sha256 unless ``pdf_sha`` is given; a missing file has sha256 "" (the letter is gone)."""
+    pdf = Path(pdf)
+    sha = pdf_sha if pdf_sha is not None else (sha256_file(pdf) if pdf.is_file() else "")
+    included = [r for r in recipients if r.get("isIncluded", True)]
+    owner_ids = sorted({int(r["ownerId"]) for r in included if r.get("ownerId")})
+    run = printed(pages, double_sided=options.double_sided, first_class=options.first_class,
+                  color=options.color != "bw", tracking=options.tracking)
+    total = run.cents * len(included)
+    unit_keys = {int(u["id"]): _address_key(str(u.get("address") or "")) for u in units}
+    unit_ids = [int(u["id"]) for u in units]
+    digest = recipients_digest(recipients)
+    return {
+        "pdf": {"name": pdf.name, "path": str(pdf), "sha256": sha, "pages": pages},
+        "options": options.as_dict(),
+        "units": [{"id": int(u["id"]), "title": str(u.get("address") or "")} for u in units],
+        "recipients": [{"ownerId": int(r.get("ownerId") or 0), "unitTitles": str(r.get("unitTitles") or ""),
+                        "resolved": resolution(r, options.send_to, unit_keys),
+                        "isIncluded": bool(r.get("isIncluded", True)), "isDuplicate": bool(r.get("isDuplicate"))}
+                       for r in recipients],
+        "printed": {"pages": run.pages, "sheets": run.sheets, "blankBack": run.blank_back, "heavy": run.heavy,
+                    "centsEach": run.cents},
+        "lettersExpected": len(included), "totalCents": total, "recipientsDigest": digest,
+        "fingerprint": fingerprint(pdf_sha=sha, options=options, unit_ids=unit_ids, owner_ids=owner_ids,
+                                   recipients=digest, total_cents=total),
+    }
+
+
+def new_preview(facts: dict[str, Any], *, proof: str = "", named: list[str] | None = None,
+                missing: list[str] | None = None, by: str = "", notice: str = "", pid: str = "",
+                now: datetime | None = None) -> dict[str, Any]:
+    """The preview record: ``describe``'s facts with who read it, when, what was typed, and the notice it serves."""
+    now = now or datetime.now(timezone.utc)
+    return {"id": pid, "read": now.isoformat(timespec="seconds"), "by": by, **facts, "named": list(named or ()),
+            "missing": list(missing or ()), "notice": notice, "proof": proof}
+
+
+def keep_preview(data_dir: Path, prepared: Prepared, options: Options, *, named: list[str] | None = None, by: str = "",
+                 notice: str = "") -> tuple[dict[str, Any], dict[str, Any], Path | None]:
+    """What ``jason mailroom --pdf`` reads, kept: the letter's facts (``describe``), the preview record built from them,
+    and the path it was saved to (beside PayHOA's proof; None when there is no proof to sit beside)."""
+    facts = describe(Path(prepared.pdf), prepared.pages, options, prepared.units, prepared.recipients)
+    record = new_preview(facts, named=named, missing=prepared.missing, by=by, notice=notice)
+    saved = save_preview(data_dir, record, prepared.preview) if prepared.preview else None
+    return facts, record, saved
+
+
+def previews_dir(data_dir: Path) -> Path:
+    return Path(data_dir) / MAIL_DIR / PREVIEW_DIR
+
+
+def save_preview(data_dir: Path, record: dict[str, Any], proof: str | Path) -> Path:
+    """Save ``record`` beside PayHOA's proof PDF (``previews/STAMP-STEM.json``); its id is that name."""
+    path = Path(proof).with_suffix(".json")
+    record["id"], record["proof"] = path.stem, Path(proof).name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=1), encoding="utf-8")
+    return path
+
+
+def saved_previews(data_dir: Path) -> list[dict[str, Any]]:
+    """Every saved preview, newest first."""
+    rows = []
+    for p in sorted(previews_dir(data_dir).glob("*.json"), reverse=True):
+        try:
+            row = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(row, dict) and row.get("fingerprint"):
+            row.setdefault("id", p.stem)
+            rows.append(row)
+    return rows
+
+
+def load_preview(data_dir: Path, ref: str) -> dict[str, Any]:
+    """A saved preview by its id, a unique prefix of the id, or the first characters (four or more) of its fingerprint.
+    ``KeyError`` when none matches; ``ValueError`` when several do."""
+    ref = (ref or "").strip().removesuffix(".json")
+    rows = saved_previews(data_dir)
+    exact = [r for r in rows if r["id"] == ref]
+    found = exact or [r for r in rows if r["id"].startswith(ref) or (len(ref) >= 4 and r["fingerprint"].startswith(ref.lower()))]
+    if not found:
+        raise KeyError(f"no saved preview {ref} (jason mailroom --pdf FILE --units UNITS saves one)")
+    if len(found) > 1:
+        raise ValueError(f"{ref} names {len(found)} saved previews: " + ", ".join(r["id"] for r in found[:5]))
+    return found[0]
+
+
+def _ids(rows: list[dict[str, Any]], key: str, *, included: bool = False) -> set[int]:
+    return {int(r[key]) for r in rows if r.get(key) and (not included or r.get("isIncluded", True))}
+
+
+def _money(cents: int) -> str:
+    return f"${int(cents) / 100:,.2f}"
+
+
+def changes(saved: dict[str, Any], now: dict[str, Any]) -> list[str]:
+    """What differs between a saved preview and the letter as it would go now, each in words (ids and counts, never a
+    name or an address). Empty when the fingerprints match."""
+    if saved.get("fingerprint") == now.get("fingerprint"):
+        return []
+    out: list[str] = []
+    then, here = saved.get("pdf") or {}, now.get("pdf") or {}
+    if not here.get("sha256"):
+        out.append("the PDF is gone from " + str(here.get("path") or then.get("path") or "its folder"))
+    elif then.get("sha256") != here.get("sha256"):
+        out.append(f"the PDF changed (sha256 {str(then.get('sha256'))[:8]} -> {str(here.get('sha256'))[:8]})")
+    for key, label in (("sendTo", "send to"), ("withInvoices", "invoices"), ("doubleSided", "double-sided"),
+                       ("mailClass", "mail class"), ("tracking", "tracking"), ("color", "color")):
+        a, b = (saved.get("options") or {}).get(key), (now.get("options") or {}).get(key)
+        if a != b:
+            out.append(f"{label} changed ({a or 'none'} -> {b or 'none'})")
+    a, b = _ids(saved.get("units") or [], "id"), _ids(now.get("units") or [], "id")
+    if a != b:
+        out.append(f"the units changed ({len(b - a)} added, {len(a - b)} no longer found: "
+                   + ", ".join(str(i) for i in sorted(a ^ b)[:10]) + ")")
+    a, b = _ids(saved.get("recipients") or [], "ownerId", included=True), _ids(now.get("recipients") or [], "ownerId", included=True)
+    if a != b:
+        out.append(f"PayHOA now names different owners ({len(b - a)} added, {len(a - b)} removed: owner ids "
+                   + ", ".join(str(i) for i in sorted(a ^ b)[:10]) + ")")
+    elif saved.get("recipientsDigest") != now.get("recipientsDigest"):
+        out.append("an address, a name, or a flag PayHOA holds for a recipient changed (the same owners)")
+    if saved.get("totalCents") != now.get("totalCents"):
+        out.append(f"the cost changed ({_money(saved.get('totalCents') or 0)} -> {_money(now.get('totalCents') or 0)}, "
+                   f"{saved.get('lettersExpected')} -> {now.get('lettersExpected')} letters)")
+    return out or ["the fingerprint differs"]
+
+
+def age_hours(record: dict[str, Any], now: datetime | None = None) -> float | None:
+    try:
+        read = datetime.fromisoformat(str(record.get("read")))
+    except ValueError:
+        return None
+    return ((now or datetime.now(timezone.utc)) - read).total_seconds() / 3600
+
+
+def stale_reasons(saved: dict[str, Any], now_facts: dict[str, Any], *, now: datetime | None = None,
+                  check_age: bool = True) -> list[str]:
+    """Why a saved preview is no longer the letter that would go: what changed (``changes``) and its age. Empty means
+    current. A preview is a read of PayHOA at a time; it is not a promise."""
+    out = changes(saved, now_facts)
+    hours = age_hours(saved, now) if check_age else None
+    if hours is None and check_age:
+        out.append("its read time is not recorded")
+    elif hours is not None and hours > PREVIEW_MAX_AGE_HOURS:
+        out.append(f"read {hours:.0f} hours ago, more than the {PREVIEW_MAX_AGE_HOURS}-hour limit")
+    return out
+
+
+def live_facts(client: Any, org_id: int, data_dir: Path, record: dict[str, Any]) -> tuple[dict[str, Any], Prepared]:
+    """The saved preview's letter as it would go now: its file read again, its units found again in the units table, and
+    PayHOA asked whom it reaches. Reads only (no proof is drawn, nothing is mailed)."""
+    options = Options.from_dict(record.get("options") or {})
+    pdf = Path((record.get("pdf") or {}).get("path") or "")
+    units, missing = resolve_units(data_dir, [str(u["id"]) for u in record.get("units") or ()], org_id=org_id)
+    recipients = client.mail_recipients(org_id, [u.id for u in units], send_to=options.send_to,
+                                        sending_invoice=options.with_invoices) if units else []
+    pages = page_count(pdf) if pdf.is_file() else int((record.get("pdf") or {}).get("pages") or 0)
+    unit_rows = [asdict(u) for u in units]
+    facts = describe(pdf, pages, options, unit_rows, recipients)
+    proof = previews_dir(data_dir) / str(record.get("proof") or "") if record.get("proof") else None
+    return facts, Prepared(str(pdf), pages, options.send_to, unit_rows, recipients, str(proof or ""), missing)
+
+
+def find_by_fingerprint(data_dir: Path, typed: str) -> dict[str, Any] | None:
+    typed = typed.strip().lower()
+    return next((r for r in saved_previews(data_dir) if r["fingerprint"].startswith(typed)), None)
+
+
+def verify_expect(data_dir: Path, facts: dict[str, Any], expect: str) -> None:
+    """Refuse (``FingerprintMismatch``) unless the letter as it would go has the fingerprint the person typed (its first
+    eight or more hex characters). The refusal names what changed when a saved preview carries the typed fingerprint."""
+    typed = (expect or "").strip().lower()
+    if len(typed) < MIN_EXPECT or any(c not in "0123456789abcdef" for c in typed):
+        raise ValueError(f"--expect is the first {MIN_EXPECT} or more hex characters of the preview's fingerprint")
+    if facts["fingerprint"].startswith(typed):
+        return
+    saved = find_by_fingerprint(data_dir, typed)
+    what = ("; ".join(changes(saved, facts)) if saved else
+            f"no saved preview carries {typed}, so what changed cannot be named; read the preview again")
+    raise FingerprintMismatch(f"this letter is not the one previewed (expected {typed[:FINGERPRINT_SHOWN]}, it would "
+                              f"go as {shown(facts['fingerprint'])}): {what}")
+
+
 def prepare(client: Any, org_id: int, data_dir: Path, pdf: Path, wanted: list[str], *, send_to: str = "mailing",
             with_invoices: bool = False) -> Prepared:
     """Resolve the units, ask PayHOA whom each letter reaches, and save PayHOA's preview of the printed letter."""
@@ -268,6 +555,10 @@ def prepare(client: Any, org_id: int, data_dir: Path, pdf: Path, wanted: list[st
     recipients = client.mail_recipients(org_id, [u.id for u in units], send_to=send_to, sending_invoice=with_invoices)
     out = Path(data_dir) / MAIL_DIR / "previews"
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    n = 1
+    while (out / f"{stamp}-{pdf.stem}.pdf").exists() or (out / f"{stamp}-{pdf.stem}.json").exists():
+        n += 1                                        # two reads in one second are two previews, never one overwritten
+        stamp = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{n}"
     first = next((r for r in recipients if r.get("isIncluded", True)), {})
     preview = client.mail_preview(org_id, pdf, out / f"{stamp}-{pdf.stem}.pdf", unit_ids=[units[0].id],
                                   owner_id=int(first.get("ownerId") or 0), invoice=with_invoices)
@@ -276,32 +567,51 @@ def prepare(client: Any, org_id: int, data_dir: Path, pdf: Path, wanted: list[st
 
 def send(client: Any, org_id: int, data_dir: Path, prepared: Prepared, *, double_sided: bool = False,
          with_invoices: bool = False, color: str = "bw", mail_class: str = "standard", tracking: str = "",
-         by: str = "") -> dict[str, Any]:
+         by: str = "", expect: str = "", approval: str = "", preview_id: str = "") -> dict[str, Any]:
     """Mail the prepared letter. This prints and mails real letters and charges the association; the CLI calls it only
-    with a person's ``--yes``. The new batch is read back and the sending logged in ``data/mailroom/sent.jsonl``."""
+    with a person's ``--yes``. The new batch is read back and the sending logged in ``data/mailroom/sent.jsonl``, with
+    the letter's fingerprint. With ``expect`` (a preview's fingerprint) the letter as it would go now is checked first,
+    and a different one is refused (``FingerprintMismatch``) with nothing mailed. A read-back that fails does not lose
+    the log line: the letters are mailed, so the line says the batch was not read."""
     if not prepared.owner_ids:
         raise ValueError("PayHOA named no recipient for these units")
     mail_class = check_options(mail_class, tracking=tracking, with_invoices=with_invoices, double_sided=double_sided)
+    facts = describe(Path(prepared.pdf), prepared.pages,
+                     Options(prepared.send_to, with_invoices, double_sided, mail_class, tracking, color),
+                     prepared.units, prepared.recipients)
+    if expect:
+        verify_expect(data_dir, facts, expect)
     before = {b.get("id") for b in client.mail_pdf_batches(org_id)}
     client.send_mail_pdf(org_id, Path(prepared.pdf), unit_ids=prepared.unit_ids, owner_ids=prepared.owner_ids,
                          num_pages=prepared.pages, send_to=prepared.send_to, mail_class=mail_class, color=color,
                          double_sided=double_sided, include_invoices=with_invoices, tracking=tracking)
     new: list[dict[str, Any]] = []
-    for wait in READ_BACK:                            # PayHOA makes the batch a moment after the send returns
-        time.sleep(wait)
-        new = [b for b in client.mail_pdf_batches(org_id) if b.get("id") not in before]
-        if new:
-            break
-    letters = [{"id": x.get("id"), "communication": x.get("commActivityId"), "costCents": x.get("totalCost"),
-                "status": x.get("status")} for b in new for x in client.mail_batch(org_id, int(b["id"]))]
+    letters: list[dict[str, Any]] = []
+    read_error = ""
+    try:
+        for wait in READ_BACK:                        # PayHOA makes the batch a moment after the send returns
+            time.sleep(wait)
+            new = [b for b in client.mail_pdf_batches(org_id) if b.get("id") not in before]
+            if new:
+                break
+        letters = [{"id": x.get("id"), "communication": x.get("commActivityId"), "costCents": x.get("totalCost"),
+                    "status": x.get("status")} for b in new for x in client.mail_batch(org_id, int(b["id"]))]
+    except Exception as exc:  # noqa: BLE001 - the letters are mailed; the log still gets its line
+        read_error = f"{type(exc).__name__}: {exc}"
     run = printed(prepared.pages, double_sided=double_sided, first_class=mail_class != "standard", color=color != "bw",
                   tracking=tracking)
     record = {"sent": datetime.now(timezone.utc).isoformat(timespec="seconds"), "pdf": prepared.pdf, "pages": prepared.pages,
               "sendTo": prepared.send_to, "units": prepared.unit_ids, "ownerIds": prepared.owner_ids,
               "doubleSided": double_sided, "withInvoices": with_invoices, "color": color, "mailClass": mail_class,
-              "tracking": tracking, "by": by,
+              "tracking": tracking, "by": by, "fingerprint": facts["fingerprint"],
               "guideCents": run.cents, "batches": [_batch(b, "pdf") for b in new], "letters": letters,
               "preview": prepared.preview}
+    if preview_id:
+        record["previewId"] = preview_id
+    if approval:
+        record["approval"] = approval
+    if read_error:
+        record["readBackError"] = read_error
     log = Path(data_dir) / MAIL_DIR / SEND_LOG
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as fh:
@@ -325,5 +635,10 @@ def keep_notice(data_dir: Path, key: str, prepared: Prepared, record: dict[str, 
                             recipients=plan, batch=batches, by=by, source=str(prepared.pdf))
 
 
-__all__ = ["ADDRESS_PAGES", "MAIL_CLASSES", "STANDARD_NOTE", "default_mail_class", "TRACKING", "check_options", "Charged", "Printed", "Unit", "Prepared", "charged_letters", "keep_notice",
-           "letter_history", "price_check", "resolve_units", "status", "prepare", "send", "page_count", "printed"]
+__all__ = ["ADDRESS_PAGES", "FINGERPRINT_SHOWN", "FingerprintMismatch", "MAIL_CLASSES", "MIN_EXPECT", "Options",
+           "PREVIEW_MAX_AGE_HOURS", "PREVIEW_NOT_A_PROMISE", "STANDARD_NOTE", "default_mail_class", "TRACKING",
+           "check_options", "Charged", "Printed", "Unit", "Prepared", "age_hours", "changes", "charged_letters",
+           "describe", "find_by_fingerprint", "fingerprint", "keep_notice", "keep_preview", "letter_history", "live_facts",
+           "load_preview", "new_preview", "previews_dir", "price_check", "recipients_digest", "resolution",
+           "resolve_units", "save_preview", "saved_previews", "sha256_file", "shown", "stale_reasons", "status",
+           "prepare", "send", "page_count", "printed", "verify_expect"]

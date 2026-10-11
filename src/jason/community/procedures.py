@@ -212,11 +212,23 @@ PROCEDURES: tuple[Procedure, ...] = (
                  command="jason mailroom --pdf FILE --units UNITS --mail-class first-class",
                  check="the preview names the class, tracking, color, and sides",
                  lessons=("mailroom-class-for-individual-notice",)),
-            Step("Preview the recipients and the cost.", command="jason mailroom --pdf FILE --units UNITS",
-                 check="each recipient and the price per letter"),
+            Step("Preview the recipients and the cost. This saves the preview record (no names or addresses) and prints "
+                 "its fingerprint.", command="jason mailroom --pdf FILE --units UNITS",
+                 check="each recipient and the price per letter; the fingerprint, to hold the send to what you read",
+                 lessons=("letters-cannot-be-recalled",)),
             Step("Test every link and QR code in the letter as its reader would.", person=True,
                  lessons=("test-as-an-owner", "form-link-needs-unit")),
-            Step("Mail it, only on a person's word.", command="jason mailroom --pdf FILE --units UNITS --send --yes",
+            Step("Once the board adopts approval for sends: plan the saved preview, and let two distinct people sign its "
+                 "fingerprint (the second the treasurer, where the board's payment-signers control asks).",
+                 command="jason approvals plan payhoa-mailroom-send --scope '{\"preview\": \"ID\"}'",
+                 check="the plan's recipients, class, cost, and fingerprint are the preview's; the plan goes stale "
+                       "after 24 hours",
+                 refs=("docs/console/screens/mailroom.md (The send plan)",), person=True,
+                 lessons=("letters-cannot-be-recalled",)),
+            Step("Mail it, only on a person's word, at a terminal. With --expect (or --approval) a letter that differs "
+                 "from the one previewed is refused and nothing is mailed.",
+                 command="jason mailroom --pdf FILE --units UNITS --send --yes --expect FINGERPRINT, or jason mailroom "
+                         "--send --yes --approval ID --expect FINGERPRINT",
                  check="the batch's letters read back as processing", lessons=("letters-cannot-be-recalled",)),
             Step("If something is wrong, cancel at once: the window is minutes.",
                  command="jason mailroom --cancel LETTER_ID --yes"),

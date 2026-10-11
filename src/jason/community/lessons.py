@@ -72,7 +72,13 @@ LESSONS: tuple[Lesson, ...] = (
            "Lob's cancel window closes within minutes of a send; PayHOA still shows the letters as processing.",
            "Send the emails first, test the link as an owner the next day, then mail.",
            Status.OPEN, docs=(RUNBOOK,),
-           notes=("To build: the mail batch refuses until the email batch went out a day earlier and a person "
+           guards=("tasks.mailroom: the preview record and fingerprint (jason mailroom --expect, --preview ID)",
+                   "approvals kind payhoa-mailroom-send: two people sign the fingerprint; mailed only by "
+                   "jason mailroom --send --yes --approval ID"),
+           notes=("Guard so far: a send can be held to the letter, recipients, and cost that were previewed and read by "
+                  "two people. It does not yet hold a send for the owner-side link test or the email batch a day "
+                  "earlier, so the lesson stays open.",
+                  "To build: the mail batch refuses until the email batch went out a day earlier and a person "
                   "recorded the owner-side test (--link-tested-by NAME).",)),
     Lesson("test-as-an-owner", OCT_2026, (Area.FORMS, Area.EMAIL, Area.MAILROOM),
            "The API round trip passed while every owner's link failed.",

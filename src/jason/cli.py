@@ -930,6 +930,16 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
                       f"{', tracking ' + x['trackingNumber'] if x.get('trackingNumber') else ''}"
                       f"{', cancelled ' + x['cancelledAt'] if x.get('cancelledAt') else ''}; to {x.get('sentToAddress', '').splitlines()[0] if x.get('sentToAddress') else '?'}")
             return 0
+        if args.approval:                             # a two-person plan: checked, or with --send --yes mailed here only
+            from jason.commands.mailroom_plan import apply_approval
+
+            return apply_approval(args, client, org_id, data_dir)
+        if args.preview:                              # a saved preview read again; with --send --yes, sent exactly
+            from jason.commands.mailroom_plan import show_preview
+
+            shown_code = show_preview(args, client, org_id, data_dir)
+            if shown_code is not None:
+                return shown_code
         if args.pdf:
             wanted = [w for w in args.units.split(",") if w.strip()]
             if not wanted:
@@ -943,27 +953,36 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
                 print(exc, file=sys.stderr)
                 return 2
             color = "color" if args.color else "bw"
+            from jason.tasks import mailroom as _mr
+
+            say = (lambda *a, **k: None) if args.json else print        # --json prints the one document at the end
             prepared = prepare(client, org_id, data_dir, _Path(args.pdf), wanted, send_to=args.send_to, with_invoices=args.with_invoices)
             included = [r for r in prepared.recipients if r.get("isIncluded", True)]
-            print(f"{_Path(prepared.pdf).name}: {prepared.pages} pages to {len(included)} recipients at their "
-                  f"{'mailing' if prepared.send_to == 'mailing' else 'unit'} address; preview saved to {prepared.preview}")
+            facts, preview, saved = _mr.keep_preview(
+                data_dir, prepared, _mr.Options(prepared.send_to, args.with_invoices, args.double_sided, mail_class,
+                                                args.tracking, color),
+                named=wanted, by=args.by or "", notice=args.notice or "")
+            say(f"{_Path(prepared.pdf).name}: {prepared.pages} pages to {len(included)} recipients at their "
+                f"{'mailing' if prepared.send_to == 'mailing' else 'unit'} address; preview saved to {prepared.preview}")
             run = printed(prepared.pages, double_sided=args.double_sided, first_class=mail_class != "standard", color=args.color,
                           tracking=args.tracking)
-            print(f"  prints as {run.pages} pages on {run.sheets} sheets ({'double' if args.double_sided else 'single'}-sided), "
-                  f"PayHOA's address page first (billed; not in its preview); ${run.cents / 100:.2f} a letter by the "
-                  f"pricing guide, ${run.cents * len(included) / 100:.2f} for {len(included)}"
-                  + ("; the last sheet's back is blank (free: billing is by page)" if run.blank_back else ""))
+            say(f"  prints as {run.pages} pages on {run.sheets} sheets ({'double' if args.double_sided else 'single'}-sided), "
+                f"PayHOA's address page first (billed; not in its preview); ${run.cents / 100:.2f} a letter by the "
+                f"pricing guide, ${run.cents * len(included) / 100:.2f} for {len(included)}"
+                + ("; the last sheet's back is blank (free: billing is by page)" if run.blank_back else ""))
             if run.heavy:
-                print(f"  {run.pages} billed pages: $2.25 more postage a letter; a page fewer would save it")
-            print(f"  {mail_class}{', ' + args.tracking if args.tracking else ''}{', color' if args.color else ', black and white'}"
-                  f"{', two-sided' if args.double_sided else ', one-sided'}")
+                say(f"  {run.pages} billed pages: $2.25 more postage a letter; a page fewer would save it")
+            say(f"  {mail_class}{', ' + args.tracking if args.tracking else ''}{', color' if args.color else ', black and white'}"
+                f"{', two-sided' if args.double_sided else ', one-sided'}")
             if mail_class == "standard":
-                print(f"  note: {STANDARD_NOTE}")
+                say(f"  note: {STANDARD_NOTE}")
             for name in prepared.missing:
-                print(f"  no PayHOA unit matched '{name}'")
+                say(f"  no PayHOA unit matched '{name}'")
             for r in prepared.recipients:
                 flags = ("" if r.get("isIncluded", True) else " (left out)") + (" (duplicate)" if r.get("isDuplicate") else "")
-                print(f"  {r.get('unitTitles')}: {r.get('address', '').replace(chr(10), ', ')}{flags}")
+                say(f"  {r.get('unitTitles')}: {r.get('address', '').replace(chr(10), ', ')}{flags}")
+            say(f"  fingerprint {_mr.shown(preview['fingerprint'])}" + (f" (saved preview {preview['id']}; "
+                f"jason mailroom --preview {preview['id']})" if saved else ""))
             if args.notice:
                 from jason.tasks.notice_text import NoticeKeyError, check_key
 
@@ -972,21 +991,37 @@ def cmd_mailroom(args: argparse.Namespace) -> int:
                 except NoticeKeyError as exc:
                     print(exc, file=sys.stderr)
                     return 2
+            if args.expect:                           # the letter must be the one previewed, or nothing is mailed
+                try:
+                    _mr.verify_expect(data_dir, facts, args.expect)
+                except ValueError as exc:
+                    print(f"refused, nothing mailed: {exc}", file=sys.stderr)
+                    return 2
             if not (args.send and args.yes):
-                print("not mailed: read the preview, then rerun with --send --yes to print and mail it (postage is charged)"
+                if args.json:
+                    print(json.dumps({"preview": preview, "saved": str(saved or ""), "mailed": None}, indent=2, default=str))
+                    return 0
+                print("not mailed: read the preview, then rerun with --send --yes to print and mail it (postage is charged); "
+                      f"--expect {_mr.shown(preview['fingerprint'])} refuses a send that differs from this preview"
                       + (f"; the letter is then kept in {data_dir / 'notices' / args.notice}" if args.notice else ""))
                 return 0
+            if not args.expect:
+                say(f"  note: {_mr.PREVIEW_NOT_A_PROMISE}")
             record = send(client, org_id, data_dir, prepared, double_sided=args.double_sided, with_invoices=args.with_invoices,
-                          color=color, mail_class=asked, tracking=args.tracking, by=args.by or "")
+                          color=color, mail_class=asked, tracking=args.tracking, by=args.by or "", expect=args.expect,
+                          preview_id=preview["id"])
             cost = sum(b["costCents"] for b in record["batches"])
-            print(f"mailed: batch {', '.join(str(b['id']) for b in record['batches']) or '(not listed yet)'}"
-                  f"{f', ${cost / 100:.2f}' if cost else ''}; logged in {data_dir / 'mailroom' / 'sent.jsonl'}")
+            say(f"mailed: batch {', '.join(str(b['id']) for b in record['batches']) or '(not listed yet)'}"
+                f"{f', ${cost / 100:.2f}' if cost else ''}; logged in {data_dir / 'mailroom' / 'sent.jsonl'}")
+            entry = None
             if args.notice:
                 from jason.tasks.mailroom import keep_notice
 
                 entry = keep_notice(data_dir, args.notice, prepared, record, by=args.by or "")
-                print(f"kept the letter as mailed in {data_dir / 'notices' / args.notice} "
-                      f"(sha256 {entry['files'][0]['sha256'][:16]}); jason cite jason://notice/{args.notice}")
+                say(f"kept the letter as mailed in {data_dir / 'notices' / args.notice} "
+                    f"(sha256 {entry['files'][0]['sha256'][:16]}); jason cite jason://notice/{args.notice}")
+            if args.json:
+                print(json.dumps({"preview": preview, "saved": str(saved or ""), "mailed": record, "notice": entry}, indent=2, default=str))
             return 0
         result = status(client, org_id, data_dir)
     if args.json:
@@ -4015,6 +4050,15 @@ def build_parser() -> argparse.ArgumentParser:
                           help="With --pdf --send: the notice's ledger key (it starts with the requirement's key); the "
                                "letter as mailed and its recipients' ids are kept in data/notices/KEY/")
     mailroom.add_argument("--by", metavar="NAME", help="With --notice: who mailed it")
+    mailroom.add_argument("--preview", metavar="ID", default="",
+                          help="A saved preview (its id, or the start of its fingerprint): show it and whether it is stale; "
+                               "with --send --yes, send exactly that preview")
+    mailroom.add_argument("--expect", metavar="FINGERPRINT", default="",
+                          help="With --pdf: refuse (exit 2, nothing mailed) unless the letter as it would go has this "
+                               "fingerprint (the preview prints it; 8 or more hex characters)")
+    mailroom.add_argument("--approval", metavar="ID", default="",
+                          help="A payhoa-mailroom-send approval: check it; with --send --yes, mail it (only a plan "
+                               "signed by two distinct people whose fingerprint still matches)")
     mailroom.add_argument("--yes", action="store_true", help="Confirm --send or --cancel")
     mailroom.add_argument("--json", action="store_true", help="Print JSON")
     mailroom.set_defaults(func=cmd_mailroom)

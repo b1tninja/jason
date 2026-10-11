@@ -51,6 +51,14 @@ class ActionKind:
     # what the kind moves, for the controls scoped to all: "payment" (it pays or commits the association's money) or
     # "reserve" (it moves reserve funds). Empty for a kind that moves no money (docs/controls.md, section 7).
     categories: tuple[str, ...] = ()
+    # A kind whose write only a person at a terminal makes: the engine's apply refuses it unless the caller is that
+    # command (``Live.terminal``), so ``jason approvals apply`` and jason-web never run it. ``cli`` names the command.
+    terminal_only: bool = False
+
+    @property
+    def terminal_note(self) -> str:
+        return (f"{self.key} is applied by a person at a terminal: {self.cli}; neither jason-web nor "
+                "`jason approvals apply` runs it")
 
     @property
     def has_cost(self) -> bool:
@@ -114,6 +122,24 @@ KINDS: tuple[ActionKind, ...] = (
         rule="gmail_drafts.CASES",
         max_age_hours=6,                       # the plan rests on the stores the email is composed from
         aliases=("google.gmail-drafts",),
+    ),
+    ActionKind(
+        key="payhoa-mailroom-send",
+        title="Mailroom: print and mail a letter to owners (USPS through Lob), charged to the association",
+        cli="jason mailroom --send --yes --expect FINGERPRINT --approval ID",
+        # R3 and two-person: letters cannot be recalled (the cancel window is minutes) and the postage is charged.
+        # Applied only by that command, at a terminal: the applier never mails from the engine's other paths.
+        system="payhoa", resource=Resource.PAYHOA, risk=Risk.R3, approver=Approver.TWO_PERSON,
+        reversible="no: a letter is printed and mailed; PayHOA's cancel works only while it is still processing, a "
+                   "window of minutes (jason mailroom --cancel LETTER_ID --yes)",
+        planner="jason.approvals.kinds.mailroom_send:plan",
+        applier="jason.approvals.kinds.mailroom_send:apply",
+        cost="postage and printing by PayHOA's pricing guide (payhoa.pricing), for the letters PayHOA names",
+        rule="CIV 4040(a)(2)",
+        max_age_hours=24,                      # the preview's own limit (tasks.mailroom.PREVIEW_MAX_AGE_HOURS)
+        aliases=("payhoa.mailroom.send",),
+        categories=("payment",),               # it commits the association's money: payment-signers controls bind
+        terminal_only=True,
     ),
 )
 

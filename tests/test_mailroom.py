@@ -172,3 +172,247 @@ def test_a_standard_send_carries_the_note_about_the_statutes_methods():
     from jason.tasks.mailroom import STANDARD_NOTE
 
     assert "CIV 4040(a)(2)" in STANDARD_NOTE and "--mail-class first-class" in STANDARD_NOTE
+
+
+# -- the preview record, the fingerprint, and --expect ---------------------------------------------------------------------
+
+from contextlib import contextmanager  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from mailroom_support import ORG, FakeMailClient, kept, make_data, make_letter, options  # noqa: E402
+
+UNITS = "123 Example Rd,125 Example Rd"
+
+
+@pytest.fixture
+def quick(monkeypatch):
+    import jason.tasks.mailroom as mailroom
+
+    monkeypatch.setattr(mailroom, "READ_BACK", (0.0,))
+
+
+def cli_run(monkeypatch, capsys, world, *argv):
+    """Run ``jason mailroom ...`` against the fake client: (exit code, stdout, stderr)."""
+    from jason import cli
+
+    @contextmanager
+    def agent(args):
+        yield SimpleNamespace(settings=SimpleNamespace(ownership_db=world.data / "ownership.db"),
+                              payhoa=lambda: world.client, org_id=ORG)
+
+    monkeypatch.setattr(cli, "_agent", agent)
+    args = cli.build_parser().parse_args(["mailroom", *argv])
+    code = args.func(args)
+    out = capsys.readouterr()
+    return code, out.out, out.err
+
+
+def new_world(tmp_path: Path):
+    return SimpleNamespace(data=make_data(tmp_path), client=FakeMailClient(), pdf=make_letter(tmp_path))
+
+
+def test_the_preview_record_keeps_ids_and_words_and_no_name_or_address(tmp_path: Path):
+    world = kept(tmp_path, notice="mailing-notice-2099-10", double_sided=True)
+    text = world.path.read_text(encoding="utf-8")
+    for private in ("A. Owner", "B. Owner", "Example City", "95000"):
+        assert private not in text
+    record = json.loads(text)
+    assert world.path.parent == world.data / "mailroom" / "previews" and world.path.stem == record["id"]
+    assert {"id", "read", "by", "pdf", "options", "named", "missing", "units", "recipients", "printed", "lettersExpected",
+            "totalCents", "fingerprint", "notice"} <= set(record)
+    assert set(record["pdf"]) == {"name", "path", "sha256", "pages"} and record["pdf"]["pages"] == 2
+    assert set(record["recipients"][0]) == {"ownerId", "unitTitles", "resolved", "isIncluded", "isDuplicate"}
+    assert [r["resolved"] for r in record["recipients"]] == ["mailing = unit address"] * 2
+    assert record["units"] == [{"id": 101, "title": "123 Example Rd"}, {"id": 102, "title": "125 Example Rd"}]
+    assert record["lettersExpected"] == 2 and record["by"] == "A. Manager" and record["notice"] == "mailing-notice-2099-10"
+    assert record["printed"]["pages"] == 3 and record["printed"]["sheets"] == 2     # the address page first, two-sided
+    assert record["totalCents"] == 2 * record["printed"]["centsEach"] == 2 * 165  # first class: 125 + 2 x 20
+    assert record["options"]["mailClass"] == "first class" and len(record["fingerprint"]) == 64
+
+
+def test_a_resolution_word_says_where_the_address_came_from_and_is_never_the_address(tmp_path: Path):
+    client = FakeMailClient()
+    client.rows[102]["address"] = "9 Other Rd\nExample City, CA 95000"                  # an owner's own mailing address
+    client.rows[101]["address"] = ""
+    world = kept(tmp_path, client)
+    assert [r["resolved"] for r in world.record["recipients"]] == ["no address", "mailing address"]
+    assert "9 Other" not in world.path.read_text(encoding="utf-8")
+
+
+def test_the_fingerprint_is_stable_and_changes_with_each_input(tmp_path: Path):
+    base = kept(tmp_path).record["fingerprint"]
+    assert kept(tmp_path, FakeMailClient()).record["fingerprint"] == base          # same inputs, a new read, the same hash
+
+    def fp(client=None, **kw):
+        return kept(tmp_path, client, **kw).record["fingerprint"]
+
+    moved, renamed, relocated, left_out, duplicate = (FakeMailClient() for _ in range(5))
+    moved.rows[101]["ownerId"] = 2001
+    renamed.rows[101]["name"] = "C. Owner"
+    relocated.rows[101]["address"] = "9 Other Rd\nExample City, CA 95000"
+    left_out.rows[101]["isIncluded"] = False
+    duplicate.rows[101]["isDuplicate"] = True
+    differs = {
+        "double-sided": fp(double_sided=True), "standard class": fp(mail_class="standard"),
+        "certified": fp(tracking="certified"), "color": fp(color="color"), "unit address": fp(send_to="unit"),
+        "invoices": fp(with_invoices=True), "one unit": fp(wanted=("123 Example Rd",)), "pages": fp(pages=3),
+        "owner id": fp(moved), "owner name": fp(renamed), "address": fp(relocated), "left out": fp(left_out),
+        "duplicate": fp(duplicate),
+    }
+    assert all(v != base for v in differs.values()), [k for k, v in differs.items() if v == base]
+    assert len(set(differs.values())) == len(differs)                      # and no two changes give the same one
+
+
+def test_a_changed_file_changes_the_fingerprint(tmp_path: Path):
+    import jason.tasks.mailroom as mailroom
+
+    world = kept(tmp_path)
+    world.pdf.write_bytes(world.pdf.read_bytes() + b"\n% edited")
+    facts = mailroom.describe(world.pdf, world.prepared.pages, options(), world.prepared.units, world.prepared.recipients)
+    assert facts["pdf"]["sha256"] != world.record["pdf"]["sha256"] and facts["fingerprint"] != world.record["fingerprint"]
+    assert mailroom.changes(world.record, facts)[0].startswith("the PDF changed")
+
+
+def test_staleness_names_the_pdf_the_units_the_owners_the_cost_and_the_age(tmp_path: Path):
+    import jason.tasks.mailroom as mailroom
+
+    world = kept(tmp_path)
+
+    def live():
+        return mailroom.live_facts(world.client, ORG, world.data, world.record)[0]
+
+    assert mailroom.stale_reasons(world.record, live()) == []
+    old = datetime.now(timezone.utc) + timedelta(hours=mailroom.PREVIEW_MAX_AGE_HOURS + 1)
+    assert "24-hour limit" in mailroom.stale_reasons(world.record, live(), now=old)[0]
+    assert mailroom.stale_reasons(world.record, live(), now=old, check_age=False) == []
+    world.client.rows[101]["ownerId"] = 2001
+    reasons = mailroom.stale_reasons(world.record, live())
+    assert any("different owners (1 added, 1 removed" in r and "1101" in r and "2001" in r for r in reasons)
+    world.client.rows[102]["address"] = "9 Other Rd\nExample City, CA 95000"
+    world.pdf.write_bytes(world.pdf.read_bytes() + b"\n% edited")
+    reasons = mailroom.stale_reasons(world.record, live())
+    assert any(r.startswith("the PDF changed") for r in reasons) and not any("9 Other" in r for r in reasons)
+    world.pdf.unlink()
+    assert "gone" in mailroom.changes(world.record, live())[0]
+
+
+def test_a_preview_is_found_by_id_prefix_or_fingerprint(tmp_path: Path):
+    import jason.tasks.mailroom as mailroom
+
+    world = kept(tmp_path)
+    for ref in (world.record["id"], world.record["id"][:8], world.record["fingerprint"][:6]):
+        assert mailroom.load_preview(world.data, ref)["id"] == world.record["id"]
+    with pytest.raises(KeyError, match="no saved preview"):
+        mailroom.load_preview(world.data, "nothing")
+
+
+def test_jason_mailroom_pdf_saves_the_record_and_json_prints_it(tmp_path: Path, monkeypatch, capsys):
+    world = new_world(tmp_path)
+    code, out, err = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--json", "--by", "A. Manager")
+    shown = json.loads(out)
+    assert code == 0 and shown["mailed"] is None and world.client.sent == []
+    saved = Path(shown["saved"])
+    assert json.loads(saved.read_text(encoding="utf-8"))["fingerprint"] == shown["preview"]["fingerprint"]
+    assert "A. Owner" not in out and "Example City" not in out and shown["preview"]["by"] == "A. Manager"
+    code, out, _ = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS)
+    assert f"fingerprint {shown['preview']['fingerprint'][:12]}" in out and "--expect" in out and "not mailed" in out
+
+
+def test_a_send_with_expect_refuses_a_changed_letter_and_mails_nothing(tmp_path: Path, monkeypatch, capsys, quick):
+    world = new_world(tmp_path)
+    _, out, _ = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--json")
+    fp = json.loads(out)["preview"]["fingerprint"]
+    send_args = ("--pdf", str(world.pdf), "--units", UNITS, "--send", "--yes", "--expect", fp[:12])
+    world.client.rows[101]["ownerId"] = 2001                                  # the owners PayHOA names changed
+    code, out, err = cli_run(monkeypatch, capsys, world, *send_args)
+    assert code == 2 and world.client.sent == [] and "nothing mailed" in err and "different owners" in err
+    assert "mailed:" not in out and not (world.data / "mailroom" / "sent.jsonl").exists()
+    world.client.rows[101]["ownerId"] = 1101
+    world.pdf.write_bytes(world.pdf.read_bytes() + b"\n% edited")             # the file changed after the preview
+    code, out, err = cli_run(monkeypatch, capsys, world, *send_args)
+    assert code == 2 and world.client.sent == [] and "the PDF changed" in err
+    # no saved preview carries a made-up fingerprint: refused, and it says it cannot name what changed
+    code, _, err = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--send", "--yes",
+                           "--expect", "ab" * 6)
+    assert code == 2 and world.client.sent == [] and "cannot be named" in err
+    code, _, err = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--send", "--yes",
+                           "--expect", "abc")
+    assert code == 2 and world.client.sent == [] and "hex characters" in err
+
+
+def test_a_send_with_the_right_expect_mails_and_logs_the_fingerprint(tmp_path: Path, monkeypatch, capsys, quick):
+    world = new_world(tmp_path)
+    _, out, _ = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--json",
+                        "--mail-class", "first-class")
+    preview = json.loads(out)["preview"]
+    code, out, err = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--mail-class",
+                             "first-class", "--send", "--yes", "--expect", preview["fingerprint"][:12], "--by", "A. Manager")
+    assert code == 0, err
+    assert len(world.client.sent) == 1 and world.client.sent[0]["owner_ids"] == [1101, 1102]
+    assert "not a promise" not in out
+    logged = json.loads((world.data / "mailroom" / "sent.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    import jason.tasks.mailroom as mailroom
+
+    assert logged["fingerprint"] == preview["fingerprint"]
+    assert mailroom.load_preview(world.data, logged["previewId"])["fingerprint"] == preview["fingerprint"]   # this run's own record
+    assert logged["by"] == "A. Manager" and "approval" not in logged
+
+
+def test_a_send_without_expect_works_as_before_and_says_a_preview_is_not_a_promise(tmp_path: Path, monkeypatch, capsys, quick):
+    world = new_world(tmp_path)
+    code, out, err = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--send", "--yes")
+    assert code == 0 and len(world.client.sent) == 1
+    assert "a preview is not a promise" in out and "--expect" in out
+    logged = json.loads((world.data / "mailroom" / "sent.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert len(logged["fingerprint"]) == 64
+
+
+def test_preview_shows_a_saved_preview_current_or_stale_and_sends_exactly_it(tmp_path: Path, monkeypatch, capsys, quick):
+    world = new_world(tmp_path)
+    _, out, _ = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--json",
+                        "--mail-class", "first-class")
+    preview = json.loads(out)["preview"]
+    code, out, _ = cli_run(monkeypatch, capsys, world, "--preview", preview["fingerprint"][:8])
+    assert code == 0 and "current" in out and "STALE" not in out and "Nothing is mailed" in out and world.client.sent == []
+    assert "A. Owner" not in out
+    world.client.rows[102]["address"] = "9 Other Rd\nExample City, CA 95000"
+    code, out, err = cli_run(monkeypatch, capsys, world, "--preview", preview["id"])
+    assert code == 1 and "STALE" in out and "an address, a name, or a flag" in out
+    code, out, err = cli_run(monkeypatch, capsys, world, "--preview", preview["id"], "--send", "--yes")
+    assert code == 2 and world.client.sent == [] and "stale" in err
+    world.client.rows[102]["address"] = "125 Example Rd\nExample City, CA 95000"
+    code, out, err = cli_run(monkeypatch, capsys, world, "--preview", preview["id"], "--send", "--yes")
+    assert code == 0, err
+    assert len(world.client.sent) == 1 and world.client.sent[0]["mail_class"] == "first class"
+    code, out, err = cli_run(monkeypatch, capsys, world, "--preview", "nothing-like-it")
+    assert code == 2 and "no saved preview" in err
+
+
+def test_an_old_preview_is_stale_by_age(tmp_path: Path, monkeypatch, capsys):
+    world = new_world(tmp_path)
+    _, out, _ = cli_run(monkeypatch, capsys, world, "--pdf", str(world.pdf), "--units", UNITS, "--json")
+    saved = Path(json.loads(out)["saved"])
+    record = json.loads(saved.read_text(encoding="utf-8"))
+    record["read"] = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(timespec="seconds")
+    saved.write_text(json.dumps(record), encoding="utf-8")
+    code, out, _ = cli_run(monkeypatch, capsys, world, "--preview", record["id"])
+    assert code == 1 and "24-hour limit" in out
+
+
+def test_a_read_back_that_fails_still_logs_the_mailing(tmp_path: Path, quick):
+    import jason.tasks.mailroom as mailroom
+
+    world = kept(tmp_path)
+
+    class Broken(FakeMailClient):
+        def mail_pdf_batches(self, org_id):
+            if self.sent:
+                raise RuntimeError("PayHOA did not answer")
+            return super().mail_pdf_batches(org_id)
+
+    client = Broken()
+    prepared = mailroom.prepare(client, ORG, world.data, world.pdf, ["123 Example Rd"])
+    record = mailroom.send(client, ORG, world.data, prepared, by="A. Manager")
+    assert len(client.sent) == 1 and record["batches"] == [] and "did not answer" in record["readBackError"]
+    assert (world.data / "mailroom" / "sent.jsonl").read_text(encoding="utf-8").count("readBackError") == 1

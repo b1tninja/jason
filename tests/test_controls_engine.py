@@ -28,8 +28,8 @@ def world(tmp_path, monkeypatch):
 
 def adopt(world, kind_key, params, key="pay", effective=LONG_AGO.isoformat(), **kw):
     """Put a control through the store the way the secretary's record does, effective long ago."""
-    control = make(params=params, scope=Scope(ScopeKind.KIND, kind_key), basis=kw.pop("basis", Basis("Bylaws 1.1")),
-                   key=key)
+    control = make(params=params, scope=kw.pop("scope", None) or Scope(ScopeKind.KIND, kind_key),
+                   basis=kw.pop("basis", Basis("Bylaws 1.1")), key=key)
     for act, extra in ((ControlAct.SUGGEST, {"control": control}), (ControlAct.PROPOSE, {}),
                        (ControlAct.ADOPT, {"decision": "dec-1", "effective": effective})):
         store.record(act, key, by="A Secretary", why="a test", data_dir=world, profile="alpha",
@@ -303,7 +303,33 @@ def test_registered_kinds_carry_categories_as_data_and_none_is_a_money_kind_yet(
     from jason.approvals import registry
 
     assert registry.ActionKind.__dataclass_fields__["categories"].default == ()
-    assert all(k.categories == () for k in registry.KINDS)      # attaching a bill pays nothing: see docs/controls.md
+    assert all(k.categories == () for k in registry.KINDS if k.key != "payhoa-mailroom-send")   # attaching a bill pays nothing
+    assert registry.get("payhoa-mailroom-send").categories == ("payment",)     # a mailing is charged postage: docs/controls.md
+
+
+def test_a_payment_signers_control_scoped_to_all_binds_the_mailroom_send_kind(world, monkeypatch):
+    """The first registered kind that moves the association's money: a control of a payment type scoped to all now applies
+    to it, with no change to the control. A kind that carries no category is untouched (tests/test_controls_effective.py)."""
+    from mailroom_support import ORG, kept
+
+    use_profile(monkeypatch)
+    monkeypatch.setattr("jason.tasks.mailroom.READ_BACK", (0.0,))
+    mail = kept(world, mail_class="first-class")
+    key = "payhoa-mailroom-send"
+    adopt(mail.data, key, {"signers": 2, "must_include": [R.TREASURER.value]}, scope=Scope())     # payment-signers, all kinds
+    assert effective.effective_approver(key, {}, controls=store.load(data_dir=mail.data), roster=FULL, today=TODAY
+                                        ).must_include == (R.TREASURER,)
+    live = Live(mail.client, ORG, mail.data, terminal=True)
+    a = engine.plan(key, live, by="A Manager", scope={"preview": mail.record["id"]})
+    assert a.cost_cents == mail.record["totalCents"]                       # the amount a threshold control would read
+    engine.decide(a.id, "all", by="A Manager", data_dir=mail.data)
+    president = FULL[0].name
+    engine.submit(a.id, by=president, data_dir=mail.data)                  # a first signature need not be the treasurer
+    with pytest.raises(Refused, match="requires the treasurer among the signers"):
+        engine.confirm(a.id, by=FULL[1].name, data_dir=mail.data)          # the secretary is not the treasurer
+    engine.confirm(a.id, by=FULL[2].name, data_dir=mail.data)
+    done = engine.apply(a.id, live, by=president, data_dir=mail.data)
+    assert done.approval.status is S.APPLIED and len(mail.client.sent) == 1
 
 
 def test_the_community_interface_has_an_empty_default():

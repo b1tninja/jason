@@ -44,6 +44,7 @@ class Live:
     data_dir: Path | None = None
     env: Any = None
     today: date | None = None
+    terminal: bool = False                     # set only by the command a person runs at a terminal, for a terminal-only kind
 
 
 @dataclass
@@ -496,6 +497,8 @@ def apply(approval_id: str, live: Live, *, by: str, via: str = "cli", data_dir: 
         a = store.load(ident, data_dir)
         kind = registry.get(a.kind)
         problems = _problems(a, kind, data_dir)
+        if kind.terminal_only and not live.terminal:
+            problems.append(kind.terminal_note)
         if problems:
             audit.append(data_dir, "apply.refused", approval=a.id, kind=a.kind, actor=by, via=via,
                          fingerprint=a.fingerprint, detail="; ".join(problems))
