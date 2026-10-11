@@ -36,20 +36,25 @@ export function Figure({ page, loader, caption, zoom, sizes: given, facts, confi
   );
 }
 
-export function ComparePane({ page, prev, prevSegFirst, loader, zoom, onZoom, onClose, facts, confidential, starts }: {
-  page: number; prev: number | null; prevSegFirst: number | null; loader: ThumbLoader; zoom: Zoom; onZoom(z: Zoom): void; onClose(): void;
+/** The compare pane (the "Compare" drawer): this page beside the page before and the first page of the segment before, with a step to the
+ * previous and next page and a jump to the segment's first page. It stands in a drawer, which gives it its Close button. */
+export function ComparePane({ page, pages, prev, prevSegFirst, segFirst, loader, zoom, onZoom, onGo, facts, confidential, starts }: {
+  page: number; pages: number; prev: number | null; prevSegFirst: number | null; segFirst: number; loader: ThumbLoader; zoom: Zoom; onZoom(z: Zoom): void; onGo(page: number): void;
   facts: FactsCache; confidential: boolean; starts: boolean;
 }) {
-  const ref = useRef<HTMLElement>(null);
   return (
-    <section ref={ref} className="split-compare" aria-label="Compare pages">
+    <section className="split-compare" aria-label="Compare pages">
       <div className="row wrap split-compare-head">
-        <h2>Compare</h2>
         <div role="group" aria-label="Zoom" className="row">
           {ZOOMS.map((z) => <button key={z.id} type="button" aria-pressed={zoom === z.id} onClick={() => onZoom(z.id)}>{z.words}</button>)}
         </div>
         <span className="muted">Keys + and - change the zoom.</span>
-        <button type="button" onClick={onClose}>Close the compare pane</button>
+      </div>
+      <div className="row wrap split-compare-nav" role="group" aria-label="Pages to compare">
+        <button type="button" disabled={page <= 1} onClick={() => onGo(page - 1)}>Previous page</button>
+        <strong aria-live="polite">Page {page} of {pages}</strong>
+        <button type="button" disabled={page >= pages} onClick={() => onGo(page + 1)}>Next page</button>
+        <button type="button" disabled={segFirst === page} onClick={() => onGo(segFirst)}>{`First page of this segment (${segFirst})`}</button>
       </div>
       <div className="split-compare-grid">
         {prev !== null && <Figure page={prev} loader={loader} caption="The page before" zoom={zoom} facts={facts} confidential={confidential} />}
@@ -130,10 +135,13 @@ export const KEYS: [string, string][] = [
   ["Home, End, Page Up, Page Down", "First page, last page, one screen"],
   ["G or /", "Go to a page"],
   ["V and 1 to 4", "Change the view"],
-  ["+ and -", "Zoom in the compare pane, or resize the album"],
+  ["+ and -", "Zoom in the compare drawer, or resize the album"],
+  ["F", "Focus: the pages fill the screen (the console's menu and header are hidden); Esc leaves it"],
+  ["S", "Open or close the segments drawer"],
+  ["C or a double click", "Open or close the compare drawer on this page"],
   ["Z and Shift Z", "Undo and redo (also Y, and Ctrl Z)"],
   ["?", "This list"],
-  ["Esc", "Close a menu or the compare pane; clear the selection"],
+  ["Esc", "Close a menu, a drawer, or focus; clear the selection"],
 ];
 
 export function KeyHelp({ onClose }: { onClose(): void }) {

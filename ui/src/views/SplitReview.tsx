@@ -51,17 +51,21 @@ const NO_TURNS: Turns = {};
 
 function turnOf(v: string): Turn | null { return v === "fix" ? "fix" : v === "90" || v === "180" || v === "270" ? (Number(v) as Turn) : null; }
 
-export function SplitReview({ backend, id, by, loader, facts, status, drop, setDrop, onBack, onDone, confidential, onRename, turns = NO_TURNS, setTurns, onReviewPages }: {
+export function SplitReview({ backend, id, by, loader, facts, status, drop, setDrop, onBack, onDone, confidential, onRename, turns = NO_TURNS, setTurns, onReviewPages, onBusy }: {
   backend: SplitBackend; id: string; by: string; loader: ThumbLoader; facts: FactsCache; status: string; drop: number[]; setDrop(d: number[]): void;
   onBack(): void; onDone(): void; confidential: boolean; onRename(page: number, title: string): Promise<void>;
   /** pages a person chose to turn in the new files, and the way to change them (the page menu sets them too) */
   turns?: Turns; setTurns?(t: Turns): void;
   /** jump to the listed pages (leaves the review): "Review these pages" */
   onReviewPages?(pages: number[], why: string): void;
+  /** told whenever a request is running, so a drawer around the review does not close under a write */
+  onBusy?(busy: boolean): void;
 }) {
   const [review, setReview] = useState<Review | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onBusy?.(busy); }, [busy, onBusy]);
+  useEffect(() => () => onBusy?.(false), [onBusy]);
   const [preview, setPreview] = useState<ApplyAnswer | null>(null);
   const [result, setResult] = useState<ApplyAnswer | null>(null);
   const [keepCopies, setKeepCopies] = useState(false);

@@ -149,6 +149,12 @@ async function openDemo() {
   await waitFor(() => expect(cell(1)).toBeTruthy());
 }
 const saved = () => waitFor(() => expect(document.querySelector('[data-save="saved"]')).toBeTruthy());
+type Role = "menuitem" | "menuitemradio" | "menuitemcheckbox";
+/** open a toolbar menu and run one of its items */
+async function pick(user: ReturnType<typeof userEvent.setup>, menu: string, item: string | RegExp, role: Role = "menuitem") {
+  await user.click(screen.getByRole("button", { name: menu }));
+  await user.click(await screen.findByRole(role, { name: item }));
+}
 
 describe("marking pages in the demo", () => {
   it("opens a made-up 120-page draft with only the pages near the view built", async () => {
@@ -195,7 +201,7 @@ describe("marking pages in the demo", () => {
     expect(screen.getByText(/6 pages selected \(3 to 8\)/)).toBeInTheDocument();
     expect(cell(8)).toHaveAttribute("aria-pressed", "false");                         // selected, not marked
     expect(cell(6).closest("[data-cell]")).toHaveAttribute("data-selected", "true");
-    await user.click(screen.getByText("More"));
+    await pick(user, "Mark", "Every Nth page…");
     expect(screen.getByRole("button", { name: /^Add \d+ starts?$/ })).toBeEnabled();
   });
 
@@ -264,8 +270,7 @@ describe("marking pages in the demo", () => {
     expect(within(dashed).getByText(/Suggested, High/)).toBeInTheDocument();           // a word, not just a dash
     const page = Number(dashed.dataset.page);
     expect(dashed.querySelector("button")).toHaveAccessibleName(/Suggested start, high confidence/);
-    await user.click(screen.getByText("Suggest"));
-    await user.click(screen.getByRole("button", { name: /Accept \d+ at High confidence/ }));
+    await pick(user, "Mark", /Accept \d+ at High confidence/);
     await waitFor(() => expect(cell(page)).toHaveAttribute("aria-pressed", "true"));
     expect(cell(page)).toHaveAccessibleName(/Starts segment/);
     await saved();
@@ -275,14 +280,14 @@ describe("marking pages in the demo", () => {
   it("changes the view and keeps the page in view: filmstrip, scroll, list", async () => {
     const user = userEvent.setup();
     await openDemo();
-    await user.click(screen.getByRole("button", { name: "Filmstrip" }));
+    await pick(user, "View", "Filmstrip", "menuitemradio");
     expect(await screen.findByRole("group", { name: "Pages, as a strip" })).toBeInTheDocument();
     expect(screen.getByText(/Page 1 of 120/, { selector: "strong" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Scroll" }));
+    await pick(user, "View", "Scroll", "menuitemradio");
     expect(await screen.findByRole("grid", { name: "Pages, one at a time" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Scroll across" }));
+    await pick(user, "View", "Scroll across", "menuitemcheckbox");
     expect(await screen.findByRole("group", { name: "Pages, one at a time" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "List" }));
+    await pick(user, "View", "List", "menuitemradio");
     const list = await screen.findByRole("region", { name: "Segments and suggested starts" });
     expect(within(list).getAllByRole("listitem").length).toBeGreaterThan(3);           // segment 1 and the suggestions
   });
@@ -320,7 +325,7 @@ describe("marking pages in the demo", () => {
   it("marks every Nth page from the More menu after showing how many it adds", async () => {
     const user = userEvent.setup();
     await openDemo();
-    await user.click(screen.getByText("More"));
+    await pick(user, "Mark", "Every Nth page…");
     fireEvent.change(screen.getByLabelText("Every how many pages"), { target: { value: "30" } });
     const add = screen.getByRole("button", { name: "Add 3 starts" });                  // pages 31, 61, 91
     await user.click(add);
@@ -331,7 +336,7 @@ describe("marking pages in the demo", () => {
   it("asks before splitting on blank pages that look like the backs of pages", async () => {
     const user = userEvent.setup();
     await openDemo();
-    await user.click(screen.getByText("More"));
+    await pick(user, "Mark", "Split on blank pages…");
     await user.click(screen.getByRole("button", { name: "Find blank pages" }));
     const status = await screen.findByText(/blank pages \(\d+%\)\. This adds/);
     expect(status).toHaveTextContent("4 blank pages");

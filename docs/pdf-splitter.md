@@ -325,7 +325,7 @@ Component names follow [console/components.md](console/components.md) convention
 +--------------------------------------------------------------------------------+
 ```
 
-At 1200 px and wider the **segment rail** sits at the right. Under 1200 px it becomes a bottom sheet opened from a bar showing the count ("7 segments"). Under 720 px the view picker is a single **View** menu and the bulk actions live under **More**. The frame has one `h1` (the screen title), the file's label (masked if confidential), the counts, and the draft's save state in words.
+This is the first design's frame. The built screen has no permanent side panel: the pages take the whole width, a slim strip of numbered segment chips replaces the rail, the toolbar is a row of menus, and the rail, the compare pane, and the review are pull-out drawers (5.11). The frame has one `h1` (the screen title), the file's label (masked if confidential), the counts, and the draft's save state in words.
 
 ### 5.2 Marking a first page
 
@@ -363,7 +363,7 @@ All four views share one windowed data source (section 3.4); a person's scroll p
 
 ### 5.4 The segment rail
 
-The rail is the always-on list of segments (a compact form of the segment list). Each entry: number, first page chip, "pages 15-22 (8)", a title guess, a small marker for a collision at apply (5.7). A drag handle reorders nothing (the order is the file's order; section 6.3). The rail's header shows the totals and has **Review and split** as the one primary action; it is disabled with its reason in words until there are at least two segments or the person chooses "Split into one" (see 5.7).
+The rail is the list of segments (a compact form of the segment list); in the built screen it is the segments drawer (5.11), and a slim strip of numbered chips is what stays on screen. Each entry: number, first page chip, "pages 15-22 (8)", a title guess, a small marker for a collision at apply (5.7). A drag handle reorders nothing (the order is the file's order; section 6.3). The rail's header shows the totals and has **Review and split** as the one primary action; it is disabled with its reason in words until there are at least two segments or the person chooses "Split into one" (see 5.7).
 
 ### 5.5 Bulk actions
 
@@ -396,8 +396,11 @@ Each bulk act states in a line what it will do and by how many pages **before** 
 | `V` | cycle views; `1`-`4` choose one |
 | `+` / `-` | zoom in the compare pane or change the album's size |
 | `Z` / `Shift`+`Z` | undo / redo (also `Ctrl`+`Z` and `Ctrl`+`Shift`+`Z`) |
+| `F` | focus mode: the console's header and menu are hidden and the splitter fills the window (5.11) |
+| `S` | open or close the segments drawer |
+| `C` (or a double click on a page) | open or close the compare drawer on the page in focus |
 | `?` | the key map |
-| `Esc` | close a menu or the compare pane, clear the selection |
+| `Esc` | in this order: clear the selection, close the open tool panel, a drawer that overlays, then leave focus mode; inside a menu or a drawer it closes that one |
 
 Touch: **tap** marks; **long-press** the menu; **drag a boundary marker** moves it (the marker has a 44 px target, with a visible handle when the page is focused); **two-finger pinch** changes the album's size or zooms the compare pane; **swipe** moves a page in the filmstrip. Touch targets are at least 44 px; the rail's bottom sheet has a drag handle and a close button as well as the swipe.
 
@@ -469,6 +472,57 @@ Budgets are asserted in a browser test (section 9) with a made-up 2,000-page PDF
 | **Save conflict** | a two-column comparison of the two drafts with *Keep mine*, *Keep theirs*, *Merge boundaries* (the union); never silent |
 | **Another person is editing** | a line naming them and the time of their last change; the second session is read-only until the first leaves, or both may edit with the conflict rule above (open item 7) |
 | **Stale** (the file's bytes changed) | "This file changed after you started. Your marks are for the old version, kept here." The new version opens as a fresh draft |
+
+### 5.11 The toolbar, the drawers, and the focus layout (built 2026-10-11)
+
+The first build had a side rail, a compare pane under the pages, and a busy toolbar, so the pages were cramped between the console's sidebar and the rail. The layout is now one column that fills the room, and everything else is a menu or a drawer. Pictures and the render queue are not part of this (5.3, 3.4); this is layout only, and the windowing math and the loader are as they were.
+
+```
+ Split document   120 pages · Draft saved · 7 segments · suggestions: 9 open            All drafts
++---------------------------------------------------------------------------------------------+
+| Draft v  View v  Mark v  Pages v  Help v   Size ---o--      Undo Redo [Segments 7] [Compare] [Focus] [Review and split] |
++---------------------------------------------------------------------------------------------+
+ [> 1 p.1] [2 p.15 !] [3 p.23] [4 p.40] ...                         the strip: numbered chips, one tap to jump
++--+------------------------------------------------------------------------------------+--+
+|S |                                                                                       |C |
+|e |                          (the pages, the whole width and height)                       |o |   edge tabs: a tap, or a drag
+|g |                                                                                       |m |   toward the pages, opens a drawer
++--+------------------------------------------------------------------------------------+--+
+ Page 37 of 412   [slider with ticks ---------o---------]   Go to [37] [Go]
+```
+
+**Size of the screen.** The screen is as tall as the window under the console's header, and the pages take what the toolbar, the strip, and the bottom bar leave. The album's cells fill the width: the columns are the whole number of cells of about the chosen size that fit, and the cell is widened to use what is left over (`splitLayout.fitCell`), so there is no side gutter. The scroll box keeps its scrollbar's room (`scrollbar-gutter`), so a scrollbar appearing does not refit the columns. The scroll and filmstrip views size a page to the height they have.
+
+**Focus mode** (`F`, the Focus button, or View, Focus). The console's header, its menu, and the strips above the page are hidden (`html[data-split-focus]` in `split.css`) and the splitter is the window's size. Esc leaves it, after anything else that Esc would close. It is kept for the tab (`jason-split-layout-<id>` in `sessionStorage`) and ends when the person leaves the screen.
+
+**The toolbar** is one tab stop (arrow keys, Home and End move along it) of menu buttons and a few direct controls. Each menu button has `aria-haspopup` and `aria-expanded`; Enter, Space, or Down opens it; inside, the arrows, Home, End, and the first letter move, Enter runs an item, Esc closes it and gives the focus back to the button, and Left and Right go to the next menu. A chosen item is a check mark and `aria-checked`, never a colour. An item that runs a bulk act says what it will do and by how many, in its own label, before it runs.
+
+| Menu | Holds |
+|---|---|
+| **Draft** | All drafts; Undo, Redo; the save state in words, and Retry or Restore when there is something to retry or restore; Review and split (disabled with its reason in the label) |
+| **View** | Pages as Album, Filmstrip, Scroll, List; Scroll across; Larger and Smaller pages; Fill the width with whole columns (with the count of columns); Show Suggestions, Flags, Rejected suggestions; Focus, the Segments and Compare drawers, which side the segments drawer is on, and whether it is pinned |
+| **Mark** | Suggest splits; Accept N at High confidence; Accept N at Medium or better; Every Nth page, Split on blank pages, At page-number restarts (each opens a small panel for its number or its plan, and states its count before it runs); Clear all my marks (N) |
+| **Pages** | The menu for the page in focus; Find and fix sideways pages; Next and Previous start or suggestion; First, Last; Jump to a page |
+| **Help** | The key map |
+
+Direct controls: the size slider (album), Undo, Redo, Segments, Compare, Focus, and **Review and split**.
+
+**Drawers.** The segments (the segment and suggestion lists), the compare pane (this page, the page before, the first page of the segment before, previous and next page, the segment's first page, zoom, full screen), and the review are each a drawer. A drawer overlays the pages from an edge and does not shrink them: segments from the left or the right (a choice in View, kept for the tab), compare from the right, the review from the right (a bottom sheet on a phone). It opens from its toolbar button, its key (`S`, `C`), or its **edge tab** (a tap, or a drag toward the pages past 12 px and mostly along the axis, so it never reads a tap, a scroll, or a boundary drag as one). It closes from Esc, its Close button, its grip (a tap, or a drag back toward the edge), or the scrim. The segments drawer is closed by default under 1400 px; from 1400 px it opens by itself, docked. Nothing inside a closed drawer is built. Focus moves into a drawer when it opens and back to what opened it when it closes. A drawer's entry is a slide, and only when `prefers-reduced-motion` allows it. The review will not close while a write is running.
+
+**Pin open.** From 1200 px a drawer has **Pin open**: it docks beside the pages, which then reflow, and has no scrim. One drawer is pinned at a time, and the choice is kept for the tab. Under 1200 px a drawer only overlays. The review is never pinned.
+
+**Flags and the reasons for a suggestion** are not a column: the first flag of a segment shows in the segments drawer and the list view, its full sentences and acts open in the flags dialog, and a suggestion's reason opens in the page menu (a sheet).
+
+**By width.**
+
+| Width | Layout |
+|---|---|
+| 1400 px and up | the toolbar, the strip, the pages the whole width; the segments drawer open and docked by default, compare and the review overlay |
+| 1200 to 1399 px | the same, with the segments drawer closed until asked for; drawers can be pinned |
+| 720 to 1199 px (tablet) | the toolbar and the strip; drawers overlay and have edge tabs; nothing docks |
+| under 720 px (phone) | a single **View** menu (with Undo, Redo, Focus beside it) at the top; a bottom action bar of Mark, Pages, Segments, Compare, and Review and split; every drawer is a full-width bottom sheet, one at a time; no edge tabs |
+
+**What stays.** Every key of 5.6 and every gesture of 5.2 still work; a key pressed while the focus has fallen to the page itself is handled as if it came from the grid. After a mark moves pages to other rows, the cell that had the focus is given the focus again.
 
 ## 6. Apply: writing the new files
 

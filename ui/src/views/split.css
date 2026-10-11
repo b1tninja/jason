@@ -7,25 +7,156 @@
 .split-view :is(input, select, textarea) { padding: .4rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; max-width: 100%; }
 .split-view :is(button, summary, input, select, [tabindex], a):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .split-counts, .split-selbar, .split-notes { margin: 0; }
-.split-live { min-height: 1.2em; margin: 0; color: var(--muted); font-size: .9rem; }
+
 .split-notes { padding-left: 1.2rem; }
 
-/* toolbar and its pop-overs */
-.split-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; position: relative; }
-.split-toolbar [aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 600; }
-.split-pop { position: relative; }
-.split-pop > summary { list-style: none; cursor: pointer; padding: .35rem .7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
-.split-pop > summary::-webkit-details-marker { display: none; }
-.split-pop[open] > summary { border-color: var(--accent); }
-.split-pop-body { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: min(24rem, calc(100vw - 2rem)); max-height: 70vh; overflow: auto; display: grid; gap: .4rem; padding: .75rem; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
-.split-pop-body > * { margin: 0; }
-.split-pop-body input[type="number"] { width: 5rem; }
+/* ==== the screen's layout (docs/pdf-splitter.md, 5.9): one column that fills the room; the panels are drawers ====
+   The shell is as tall as the window under the console's header (all of it in focus mode); the toolbar, the segment strip, and the bottom bar
+   take what they need and the stage, the pages, takes the rest. A drawer overlays the stage from an edge, or docks beside the pages when pinned. */
+.console-body:has(.split-shell) { max-width: none; }
+.split-shell { display: flex; flex-direction: column; gap: .4rem; position: relative; margin: 0; min-height: 30rem;
+  height: calc(100vh - var(--console-bar-h, 0px) - 3rem); height: calc(100dvh - var(--console-bar-h, 0px) - 3rem); }
+.split-shell > * { flex: none; min-width: 0; }
+.split-shell > .split-stage { flex: 1 1 auto; min-height: 0; }
+.split-shell[data-focus] { height: 100vh; height: 100dvh; padding: .5rem .75rem; background: var(--bg); }
+/* focus: the console's header, menu, and strips give way so the pages have the window */
+html[data-split-focus] :is(.console-bar, .console-nav, .console-goto, .role-strip, .console-owner-banner, .console-body > .drawer-pinned, .drawer-float) { display: none !important; }
+html[data-split-focus] :is(.console-body, .console-main) { display: block; padding: 0; margin: 0; max-width: none; }
+html[data-split-focus] .console-body { gap: 0; }
 
-/* the work area */
-.split-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
-.split-main.has-rail { grid-template-columns: minmax(0, 1fr) 22rem; }
-.split-work { display: grid; gap: .75rem; min-width: 0; }
-.split-scroll { position: relative; overflow: auto; height: min(68vh, 720px); border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overscroll-behavior: contain; }
+.split-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .9rem; }
+.split-head h1 { font-size: 1.1rem; margin: 0; }
+.split-head .split-counts { flex: 1 1 18rem; font-size: .85rem; }
+.split-head-link { margin-left: auto; font-size: .85rem; }
+.split-line { margin: 0; font-size: .85rem; }
+.split-live { margin: 0; color: var(--muted); font-size: .85rem; }
+.split-live:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+
+/* the toolbar: menus, a few direct controls, one tab stop */
+.split-toolbar { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; position: relative; padding: .25rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.split-toolbar button, .split-actionbar button { padding: .3rem .65rem; }
+.split-toolbar [aria-pressed="true"], .split-actionbar [aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 600; }
+.split-tb-gap { flex: 1 1 0; }
+.split-size { display: inline-flex; align-items: center; gap: .4rem; }
+.split-size input[type="range"] { width: 7rem; padding: 0; border: 0; background: transparent; }
+.split-count { display: inline-block; min-width: 1.4em; padding: 0 .35em; margin-left: .2rem; border: 1px solid var(--rule); border-radius: 999px; font-size: .75rem; text-align: center; }
+.split-menuwrap { position: relative; display: inline-block; }
+.split-menubtn[aria-expanded="true"] { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
+.split-caret { margin-left: .35rem; font-size: .7em; }
+.split-menupop { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 17rem; max-width: min(26rem, calc(100vw - 1rem)); max-height: 70vh; overflow: auto; display: grid; padding: .3rem;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 28%, transparent); }
+.split-menuwrap[data-align="end"] .split-menupop { left: auto; right: 0; }
+.split-menuwrap[data-up] .split-menupop { top: auto; bottom: calc(100% + 4px); }
+.split-mi { box-sizing: border-box; display: grid; grid-template-columns: 1.2em 1fr auto; gap: .5rem; align-items: center; width: 100%; min-height: 34px; padding: .35rem .5rem; border: 0; border-radius: 6px;
+  background: transparent; color: var(--ink); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.split-mi:hover, .split-mi:focus-visible { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.split-mi:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.split-mi[aria-disabled="true"] { color: var(--muted); cursor: default; }
+.split-mi[data-checked] .split-mi-label { font-weight: 650; }
+.split-mi-keys { font: inherit; font-size: .75rem; padding: 0 .35rem; border: 1px solid var(--rule); border-radius: 4px; color: var(--muted); }
+.split-mi-sep { border-top: 1px solid var(--line); margin: .25rem 0; }
+.split-mi-head { padding: .35rem .5rem .1rem; font-size: .75rem; color: var(--muted); }
+
+/* the slim strip of numbered segment chips */
+.split-strip ol { display: flex; gap: .3rem; list-style: none; margin: 0; padding: .1rem .1rem .25rem; overflow-x: auto; }
+.split-chipbtn { flex: none; display: inline-flex; align-items: center; gap: .3rem; min-width: 2.2rem; min-height: 30px; padding: 0 .6rem; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
+.split-chipbtn span { color: var(--muted); }
+.split-chipbtn[aria-current="true"] { border: 2px solid var(--accent); padding: 0 calc(.6rem - 1px); font-weight: 650; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.split-chipbtn[aria-current="true"]::before { content: "\25B6"; font-size: .55em; }
+.split-chipflag { min-width: 1.1em; text-align: center; border: 1px solid currentColor; border-radius: 50%; font-weight: 700; color: var(--ink) !important; }
+
+/* the stage: the pages, with the drawers over them or beside them */
+.split-stage { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "work"; overflow: hidden; border-radius: 8px; }
+.split-stage[data-dock="left"] { grid-template-columns: var(--dock-w) minmax(0, 1fr); grid-template-areas: "dock work"; gap: .5rem; }
+.split-stage[data-dock="right"] { grid-template-columns: minmax(0, 1fr) var(--dock-w); grid-template-areas: "work dock"; gap: .5rem; }
+.split-work { grid-area: work; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.split-gridwrap { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
+.split-gridwrap > .split-scroll { height: 100%; scrollbar-gutter: stable; }
+.split-gridwrap[data-axis="x"] { display: flex; align-items: center; }
+.split-gridwrap[data-axis="x"] > .split-scroll { height: auto; max-height: 100%; width: 100%; }
+.split-gridwrap > .split-list { height: 100%; max-height: none; }
+.split-selbar { margin: 0; font-size: .9rem; }
+
+/* drawers */
+.split-drawer { z-index: 30; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border: 1px solid var(--rule); color: var(--ink); outline: none; }
+.split-drawer:not([data-docked]) { position: absolute; top: 0; bottom: 0; box-shadow: 0 0 30px color-mix(in srgb, var(--ink) 32%, transparent); }
+.split-drawer[data-side="left"]:not([data-docked]) { left: 0; max-width: 100%; border-width: 0 1px 0 0; }
+.split-drawer[data-side="right"]:not([data-docked]) { right: 0; max-width: 100%; border-width: 0 0 0 1px; }
+.split-drawer[data-side="bottom"]:not([data-docked]) { top: auto; left: 0; right: 0; bottom: 0; height: 92%; border-radius: 14px 14px 0 0; border-width: 1px 0 0; }
+.split-drawer[data-docked] { grid-area: dock; position: relative; border-radius: 8px; width: auto !important; }
+.split-drawer[data-full] { width: 100% !important; }
+.split-scrim { position: absolute; inset: 0; z-index: 25; background: color-mix(in srgb, var(--ink) 30%, transparent); }
+.split-drawer-head { display: flex; align-items: center; gap: .5rem; padding: .3rem .5rem; border-bottom: 1px solid var(--line); flex: none; }
+.split-drawer-head h2 { flex: 1; margin: 0; font-size: 1rem; }
+.split-drawer-acts { display: flex; flex-wrap: wrap; gap: .3rem; justify-content: flex-end; }
+.split-drawer-acts button, .split-grip { padding: .25rem .6rem; }
+.split-grip { min-width: 40px; min-height: 34px; display: inline-grid; place-items: center; cursor: grab; touch-action: none; }
+.split-grip:active { cursor: grabbing; }
+.split-drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: .75rem; overscroll-behavior: contain; }
+.split-drawer[data-drawer="review"] .split-drawer-body { padding: .75rem 1rem 1rem; }
+.split-drawer[data-drawer="inspect"] .split-figure-pic { max-height: none; }
+.split-drawer[data-drawer="inspect"] .split-compare { border: 0; padding: 0; }
+.split-compare-nav { align-items: center; }
+@media (prefers-reduced-motion: no-preference) {
+  .split-drawer[data-side="left"]:not([data-docked]) { animation: split-from-left .18s ease-out; }
+  .split-drawer[data-side="right"]:not([data-docked]) { animation: split-from-right .18s ease-out; }
+  .split-drawer[data-side="bottom"]:not([data-docked]) { animation: split-from-bottom .2s ease-out; }
+  .split-scrim { animation: split-fade .18s linear; }
+}
+@keyframes split-from-left { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes split-from-right { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes split-from-bottom { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes split-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* the tab at an edge that opens a drawer */
+.split-edgetab { position: absolute; z-index: 20; top: calc(18% + var(--slot, 0) * 9rem); min-width: 30px; min-height: 100px; padding: .5rem .2rem; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--rule); background: var(--panel); color: var(--ink); cursor: pointer; touch-action: none; }
+.split-edgetab[data-slot="1"] { --slot: 1; }
+.split-edgetab[data-side="left"] { left: 0; border-left: 0; border-radius: 0 8px 8px 0; }
+.split-edgetab[data-side="right"] { right: 0; border-right: 0; border-radius: 8px 0 0 8px; }
+.split-edgetab:hover, .split-edgetab:focus-visible { border-color: var(--accent); }
+.split-edgetab-words { writing-mode: vertical-rl; display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; white-space: nowrap; }
+.split-edgetab-words b { font-weight: 650; }
+
+/* a small panel for a mark rule that needs a choice first */
+.split-toolpanel { position: absolute; z-index: 15; top: .5rem; left: .5rem; width: min(26rem, calc(100% - 1rem)); max-height: calc(100% - 1rem); overflow: auto; display: grid; gap: .5rem; padding: .75rem;
+  background: var(--panel); border: 2px solid var(--accent); border-radius: 8px; box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 28%, transparent); outline: none; }
+.split-toolpanel-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.split-toolpanel-head h2 { margin: 0; }
+.split-toolpanel-body { display: grid; gap: .5rem; }
+.split-toolpanel-body > * { margin: 0; }
+.split-toolpanel input[type="number"] { width: 5rem; }
+
+/* the filmstrip fills the stage: the page large, the strip under it */
+.split-film { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: .5rem; height: 100%; min-height: 0; }
+.split-film .split-figure { display: flex; flex-direction: column; min-height: 0; }
+.split-film .split-figure-pic { flex: 1 1 auto; min-height: 0; max-height: none; position: relative; overflow: hidden; }
+.split-film .split-figure-pic img { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.split-film .split-figure-pic .notice { position: absolute; left: 0; right: 0; top: 40%; margin: 0; z-index: 1; }
+
+/* the phone: the stage is the whole width, the drawers are bottom sheets, the actions sit in a bar at the bottom */
+.split-actionbar { display: none; }
+@media (max-width: 719px) {
+  .split-shell { min-height: 24rem; height: calc(100vh - 3.5rem); height: calc(100dvh - 3.5rem); }
+  .split-shell[data-focus] { padding: .25rem .5rem; }
+  .split-head .split-sub { display: none; }
+  .split-head-link { margin-left: 0; }
+  .split-actionbar { display: flex; gap: .25rem; padding: .25rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  .split-actionbar > * { flex: 1 1 0; min-width: 0; }
+  .split-actionbar .split-menuwrap > button, .split-actionbar > button { width: 100%; min-height: 48px; padding: .2rem .25rem; font-size: .8rem; }
+  .split-menupop { position: fixed; left: .5rem; right: .5rem; top: auto; bottom: 5rem; min-width: 0; max-width: none; max-height: 60vh; }
+  .split-menuwrap[data-up] .split-menupop { bottom: 5rem; }
+  .split-toolpanel { top: auto; bottom: .5rem; }
+  .split-bar { flex-wrap: nowrap; gap: .5rem; padding: .35rem .5rem; }
+  .split-where { display: none; }                          /* the Go to field below shows the page */
+  .split-slider { flex: 1 1 0; min-width: 0; }
+  .split-bar form { flex: none; }
+  .split-bar form input[type="number"] { width: 4.2rem; }
+  .split-edgetab { display: none; }
+}
+@media (pointer: coarse) { .split-mi { min-height: 44px; } }
+
+.split-scroll { position: relative; overflow: auto; height: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overscroll-behavior: contain; }
 .split-scroll-x { height: auto; overflow-y: hidden; }
 .split-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .split-spacer { position: relative; }
@@ -70,12 +201,11 @@
 .split-handle::before { content: ""; position: absolute; inset: -9px; }
 .split-scroll[data-dragging] { cursor: grabbing; }
 .split-scroll[data-dragging] .split-handle { cursor: grabbing; }
-.split-film { display: grid; gap: .75rem; min-width: 0; }
 .split-film-head { align-items: center; }
 .split-film .split-scroll-x { padding: 4px 0; }
 
 /* the bottom bar */
-.split-bar { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; position: sticky; bottom: 0; z-index: 5; padding: .5rem .75rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.split-bar { display: flex; flex-wrap: wrap; gap: .25rem 1rem; align-items: center; padding: .5rem .75rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
 .split-slider { position: relative; flex: 1 1 14rem; min-width: 12rem; padding-top: 10px; }
 .split-slider input[type="range"] { width: 100%; margin: 0; padding: 0; border: 0; background: transparent; }
 .split-ticks { position: absolute; left: 8px; right: 8px; top: 2px; height: 10px; pointer-events: none; }
@@ -85,7 +215,6 @@
 .split-ticks .tick-blank { height: 4px; top: 6px; background: var(--rule); }
 
 /* the segment list and the rail */
-.split-rail { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: .75rem; max-height: calc(100vh - 6rem); overflow: auto; position: sticky; top: .5rem; }
 .split-rail-body { display: grid; gap: .5rem; }
 .split-rail-foot { align-items: center; }
 .split-list { overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); max-height: 560px; }
@@ -107,8 +236,6 @@
 .split-row-item[data-tall] .split-row-acts button { min-height: 36px; }
 .split-title-field input { width: 100%; padding: .15rem .4rem; font-size: .85rem; }
 .is-compact .split-row-acts { max-width: 9rem; }
-.split-sheet-bar { flex: 1 0 100%; text-align: left; padding: .6rem .8rem; min-height: 44px; }
-.split-sheet { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; max-height: 78vh; overflow: auto; padding: .75rem 1rem 1rem; background: var(--panel); border-top: 2px solid var(--accent); box-shadow: 0 -8px 24px color-mix(in srgb, var(--ink) 25%, transparent); }
 
 /* the page menu and the key map */
 .split-menu-wrap { position: fixed; inset: 0; z-index: 50; display: grid; align-items: end; justify-items: center; }
@@ -158,11 +285,8 @@
 .split-conflict h2, .split-conflict h3, .split-conflict p { margin: 0; }
 .split-conflict-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; }
 
-@media (pointer: coarse) { .split-toolbar button, .split-toolbar summary, .split-bar button, .split-row-acts button { min-height: 44px; } }
-@media (max-width: 1199px) { .split-main.has-rail { grid-template-columns: minmax(0, 1fr); } }
+@media (pointer: coarse) { .split-toolbar button, .split-actionbar button, .split-menupop .split-mi, .split-drawer-head button, .split-chipbtn, .split-bar button, .split-row-acts button { min-height: 44px; } }
 @media (max-width: 719px) {
-  .split-scroll { height: min(60vh, 560px); }
-  .split-pop-body { position: fixed; left: .5rem; right: .5rem; top: auto; bottom: .5rem; width: auto; max-height: 70vh; }
   .split-review-table, .split-drafts { min-width: 0; }
   .split-review-table thead, .split-drafts thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .split-review-table, .split-review-table tbody, .split-review-table tr, .split-review-table td, .split-review-table th[scope="row"],

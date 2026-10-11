@@ -21,6 +21,8 @@ async function openDemo() {
   await waitFor(() => expect(cell(1)).toBeTruthy());
 }
 const saved = () => waitFor(() => expect(document.querySelector('[data-save="saved"]')).toBeTruthy());
+/** the segments drawer is closed under 1400 px: open it from the toolbar */
+const openRail = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: /^Segments \d/ }));
 const reviewButton = () => screen.getAllByRole("button", { name: "Review and split" })[0];
 
 describe("flag and turn words (the model)", () => {
@@ -171,7 +173,9 @@ describe("sideways pages on the cells and in the page menu", () => {
 
 describe("flags on the rail", () => {
   it("shows the first flag as glyph and words in the compact rail, a button for the rest, and the count in the summary", async () => {
+    const user = userEvent.setup();
     await openDemo();
+    await openRail(user);
     const chips = await screen.findByRole("group", { name: "Flags for segment 1" });
     expect(within(chips).getByText("3 sideways pages")).toBeInTheDocument();
     expect(chips.querySelectorAll("svg[data-glyph='refresh-cw']").length).toBe(1);
@@ -184,6 +188,7 @@ describe("flags on the rail", () => {
   it("opens every flag in a sentence, states the estimate as an estimate, and goes to a sideways page", async () => {
     const user = userEvent.setup();
     await openDemo();
+    await openRail(user);
     const chips = await screen.findByRole("group", { name: "Flags for segment 1" });
     await user.click(within(chips).getByRole("button", { name: /All 3 flags/ }));
     const dialog = await screen.findByRole("dialog", { name: "Flags for segment 1" });
@@ -198,6 +203,7 @@ describe("flags on the rail", () => {
   it("fixes the flagged sideways pages from the dialog", async () => {
     const user = userEvent.setup();
     await openDemo();
+    await openRail(user);
     const chips = await screen.findByRole("group", { name: "Flags for segment 1" });
     await user.click(within(chips).getByRole("button", { name: /All 3 flags/ }));
     const dialog = await screen.findByRole("dialog", { name: "Flags for segment 1" });
@@ -209,6 +215,7 @@ describe("flags on the rail", () => {
   it("walks the pages that may start another document with 'Review these pages', marking nothing until a button is pressed", async () => {
     const user = userEvent.setup();
     await openDemo();
+    await openRail(user);
     const chips = await screen.findByRole("group", { name: "Flags for segment 1" });
     await user.click(within(chips).getByRole("button", { name: /All 3 flags/ }));
     const dialog = await screen.findByRole("dialog", { name: "Flags for segment 1" });
@@ -232,11 +239,11 @@ describe("flags on the rail", () => {
     expect(screen.queryByRole("region", { name: "Reviewing pages" })).toBeNull();
   });
 
-  it("finds the sideways pages from More and fixes them all in the new files", async () => {
+  it("finds the sideways pages from the Pages menu and fixes them all in the new files", async () => {
     const user = userEvent.setup();
     await openDemo();
-    const more = screen.getByText("More");
-    await user.click(more);
+    await user.click(screen.getByRole("button", { name: "Pages" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Find and fix sideways pages…" }));
     await user.click(screen.getByRole("button", { name: "Find sideways pages" }));
     expect(await screen.findByText(/3 pages are sideways\. Turning is done in the new files only/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Fix all 3 sideways pages" }));
