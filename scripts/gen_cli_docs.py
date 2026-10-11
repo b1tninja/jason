@@ -153,6 +153,7 @@ GROUPS: dict[str, str] = {
     "policies": "Law, legal, insurance & claims",
     "incidents": "Law, legal, insurance & claims",
     "deadlines": "Law, legal, insurance & claims",
+    "life-safety": "Law, legal, insurance & claims",
     # Google Workspace
     "gmail": "Google Workspace",
     "drive": "Google Workspace",
@@ -189,6 +190,7 @@ GROUPS: dict[str, str] = {
     "sync-liens": "Property records & county",
     "sync-secured": "Property records & county",
     "sync-tax": "Property records & county",
+    "county-tax": "Property records & county",
     "land-sync": "Property records & county",
     "hoa-reports": "Property records & county",
     "brief": "Property records & county",
