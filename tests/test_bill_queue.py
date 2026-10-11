@@ -212,7 +212,7 @@ def test_a_dry_run_command_prints_the_unrouted_and_keeps_the_run(tmp_path, monke
         yield agent
 
     monkeypatch.setattr(cli, "_agent", fake_agent)
-    args = argparse.Namespace(verbose=False, source=None, date_window_days=7, dry_run=True, approve=False, skip_sync=False, env=None)
+    args = argparse.Namespace(verbose=False, source=None, date_window_days=7, dry_run=True, yes=False, approve=False, skip_sync=False, env=None)
     assert cli.cmd_sync_bills(args) == 0
     out = capsys.readouterr().out
     assert "Not routed to a bill source" in out and "[unknown] tx=3" in out and "ACH SOMEONE ELSE" in out
@@ -237,3 +237,48 @@ def test_the_profiles_payee_rows_build_and_classify_a_bank_line():
 
     assert payee_of({"description": "Online Transfer from CHK ...1234"}, PAYEE_RULES) is PayeeClass.TRANSFER
     assert payee_of({"description": "something no row names"}, PAYEE_RULES) is PayeeClass.UNKNOWN
+
+
+def _run_command(tmp_path, monkeypatch, **flags):
+    import argparse
+    from contextlib import contextmanager
+
+    from jason import cli
+    from jason.tasks.sync_bills import SyncBillsReport
+
+    calls = []
+    rep = SyncBillsReport(upload=SimpleNamespace(results=[], summary=lambda: "0 transactions"))
+    agent = SimpleNamespace(sync_bills=lambda **kw: calls.append(kw) or rep,
+                            settings=SimpleNamespace(payhoa_catalog=tmp_path / "catalog.json"))
+
+    @contextmanager
+    def fake_agent(args):
+        yield agent
+
+    monkeypatch.setattr(cli, "_agent", fake_agent)
+    base = dict(verbose=False, source=None, date_window_days=7, dry_run=False, yes=False, approve=False, skip_sync=False, env=None)
+    return cli.cmd_sync_bills(argparse.Namespace(**{**base, **flags})), calls
+
+
+def test_sync_bills_without_yes_is_the_dry_run_and_says_what_adds_the_upload(tmp_path, monkeypatch, capsys):
+    code, calls = _run_command(tmp_path, monkeypatch)
+    out = capsys.readouterr().out
+    assert code == 0 and calls[0]["dry_run"] is True
+    assert "nothing was synced or uploaded" in out and "add --yes" in out and "last-dry-run.json" in out
+    assert bill_dry_run.load(tmp_path) is not None                              # the run is kept for the console
+
+
+def test_sync_bills_with_yes_syncs_and_uploads_and_keeps_no_dry_run(tmp_path, monkeypatch, capsys):
+    code, calls = _run_command(tmp_path, monkeypatch, yes=True)
+    assert code == 0 and calls[0]["dry_run"] is False and bill_dry_run.load(tmp_path) is None
+    assert "nothing was synced" not in capsys.readouterr().out
+
+
+def test_an_explicit_dry_run_with_yes_is_still_a_dry_run(tmp_path, monkeypatch):
+    code, calls = _run_command(tmp_path, monkeypatch, dry_run=True, yes=True)
+    assert code == 0 and calls[0]["dry_run"] is True
+
+
+def test_approve_goes_with_yes(tmp_path, monkeypatch, capsys):
+    code, calls = _run_command(tmp_path, monkeypatch, approve=True)
+    assert code == 2 and calls == [] and "goes with --yes" in capsys.readouterr().err

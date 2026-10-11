@@ -35,8 +35,8 @@ Each month, unreviewed SMUD and City of Sacramento charges have no PDF.
 Identify SMUD and the City from the transaction text, not from the vendor list. Download a PDF only when a transaction still needs one.
 
 ```bash
-jason sync-bills --dry-run
-jason sync-bills
+jason sync-bills              # a dry run
+jason sync-bills --yes        # sync the needed portals and upload the matched PDFs
 ```
 
 ## Annotate a governing document

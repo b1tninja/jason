@@ -225,15 +225,16 @@ Plans of writes outside jason, approved item by item by a named person
 
 ### `jason sync-bills`
 
-PayHOA-first: list pending utility txs, sync only needed portals (SMUD / i-doxs), then attach PDFs
+PayHOA-first: list pending utility txs, sync only needed portals (SMUD / i-doxs), then attach PDFs (a dry run unless --yes)
 
 | Option | Value | Help |
 |---|---|---|
 | `--date-window-days` | DATE_WINDOW_DAYS | Max \|tx date - bill date\| in days (default: 7) |
 | `--source` | {smud,idoxs,proactive,signalservice} | Limit to one bill source (default: all registered) |
 | `--skip-sync` |  | Attach using local caches only (skip portal sync) |
-| `--dry-run` |  | List pending matches without portal sync or uploads |
-| `--approve` |  | Mark transaction approved after successful upload |
+| `--dry-run` |  | List pending matches without portal sync or uploads (the default without --yes) |
+| `--yes` |  | Sync the portals that are needed and upload the matched PDFs to PayHOA (without it, only the dry run) |
+| `--approve` |  | With --yes: mark the transaction approved after a successful upload |
 | `-v`, `--verbose` |  |  |
 
 ### `jason upload-smud-bills`

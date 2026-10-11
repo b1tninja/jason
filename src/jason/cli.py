@@ -136,15 +136,20 @@ def cmd_sync_bills(args: argparse.Namespace) -> int:
         format="%(levelname)s %(message)s",
     )
     sources = [args.source] if getattr(args, "source", None) else None
+    if args.approve and not args.yes:
+        print("jason sync-bills: --approve marks PayHOA transactions approved; it goes with --yes", file=sys.stderr)
+        return 2
+    # Uploads to PayHOA and portal syncs happen only with --yes, as every other write does; without it this is the dry run.
+    dry_run = args.dry_run or not args.yes
     with _agent(args) as agent:
         report = agent.sync_bills(
             date_window_days=args.date_window_days,
-            dry_run=args.dry_run,
+            dry_run=dry_run,
             approve=args.approve,
             skip_sync=args.skip_sync,
             sources=sources,
         )
-        if args.dry_run:
+        if dry_run:
             from jason.tasks.bill_dry_run import record
 
             kept = record(agent.settings.payhoa_catalog.parent, report, window_days=args.date_window_days)
@@ -186,11 +191,13 @@ def cmd_sync_bills(args: argparse.Namespace) -> int:
     print()
     print("=== Attach to PayHOA ===")
     if report.upload is not None:
-        _print_upload_report(report.upload, dry_run=args.dry_run)
+        _print_upload_report(report.upload, dry_run=dry_run)
     else:
         print("(no upload step)")
-    if args.dry_run:
+    if dry_run:
         print(f"(kept as {kept.name}: the console shows this run with its age)")
+        if not args.dry_run:
+            print("(nothing was synced or uploaded: add --yes to sync the portals that are needed and attach the matched bills)")
     return 0
 
 
@@ -3590,7 +3597,7 @@ def build_parser() -> argparse.ArgumentParser:
         "sync-bills",
         help=(
             "PayHOA-first: list pending utility txs, sync only needed "
-            "portals (SMUD / i-doxs), then attach PDFs"
+            "portals (SMUD / i-doxs), then attach PDFs (a dry run unless --yes)"
         ),
     )
     _add_common(sync_bills)
@@ -3613,12 +3620,17 @@ def build_parser() -> argparse.ArgumentParser:
     sync_bills.add_argument(
         "--dry-run",
         action="store_true",
-        help="List pending matches without portal sync or uploads",
+        help="List pending matches without portal sync or uploads (the default without --yes)",
+    )
+    sync_bills.add_argument(
+        "--yes",
+        action="store_true",
+        help="Sync the portals that are needed and upload the matched PDFs to PayHOA (without it, only the dry run)",
     )
     sync_bills.add_argument(
         "--approve",
         action="store_true",
-        help="Mark transaction approved after successful upload",
+        help="With --yes: mark the transaction approved after a successful upload",
     )
     sync_bills.add_argument("-v", "--verbose", action="store_true")
     sync_bills.set_defaults(func=cmd_sync_bills)

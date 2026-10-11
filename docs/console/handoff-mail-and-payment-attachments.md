@@ -15,7 +15,7 @@ Nothing below is built as a single workbench yet. `#/inbox` lists threads awaiti
 
 1. **Mail workbench.** The manager reviews association email as conversations (headers first; bodies only when a draft or signature path needs them), sees whose move it is, and can ask jason for a **follow-up plan** or a **Gmail draft** — jason never sends.
 2. **Payments workbench.** PayHOA’s unapproved expense transactions drive a **sync → match → attach** loop: only the portals that have pending transactions are synced; a PDF attaches only on a unique amount-and-date match.
-3. **Agent proposes, person confirms.** Every sync, attach, and draft is a plan with evidence. The console shows the plan first; the terminal’s `jason sync-bills` has **no `--yes`** and uploads unless `--dry-run` is given (see “Checked against the code”), so the console never runs it from a click until a gate exists.
+3. **Agent proposes, person confirms.** Every sync, attach, and draft is a plan with evidence. The console shows the plan first; the terminal’s `jason sync-bills` was ungated (it uploaded unless `--dry-run` was given); it now uploads only with `--yes` (see “Checked against the code”), and the console never runs it from a click until an approvals kind exists.
 4. **No match is not silence.** When no bill or invoice is found — and when a transaction routes to no source at all — jason opens an **investigation card**: other sources to try, payment evidence already on disk, and a recommended next act (or “hold for a person”).
 5. **County tax is not City utilities.** ACH from the tax collector must not route to the City’s bill portal; it is its own payee class, with its own source (the tax catalog), or it stays unmatched with an investigation.
 6. **Caveats stay on screen.** “Awaiting us” can be wrong if someone answered by phone; a related payment or letter is a lead, not proof.
@@ -343,6 +343,7 @@ Routes are proposed, consistent with [information-architecture.md](information-a
 ### What the build adds (in this order)
 
 Built 2026-10-10:
+0. **`sync-bills` uploads only with `--yes`.** Without it the command is the dry run (kept for the console, and it says what adds the upload); `--approve` goes with `--yes`; a portal sync and an upload both need it, so the scheduler's guard covers it. *Not done:* the resolve stage still takes the first unused match where the cache stage flags ambiguity, so a dry run and a live run can still disagree.
 1. **`PayeeClass` and `PayeeRule`** (`jason.community.payees`; `Community.payee_rules()`, empty by default; the profile's rows in its `payees.py`) and an **unrouted** list in the engine: `SyncBillsReport.unrouted` and `jason sync-bills` print every unapproved transaction no source owns, with its payee class, instead of dropping it.
 2. **A kept dry run** (`jason.tasks.bill_dry_run`): `sync-bills --dry-run` writes `data/bills/last-dry-run.json` (the results, the window, who, when, and the PayHOA snapshot it ran against).
 3. **The queue** (`jason.tasks.bill_queue`, `jason.sources.offline.routing_registry`, `GET /api/bill-attach?source=&status=`): the stored snapshot routed with no store, client, or network, the snapshot's age against its source's own stale-after (the PayHOA transactions default), and the kept dry run applied to a row only when it ran against this snapshot (otherwise it is shown as `earlier`).
@@ -350,10 +351,9 @@ Built 2026-10-10:
 5. **The outcome** (`jason.tasks.bill_outcomes`, `POST /api/write/bill-investigation/<tx>` `{outcome, doc?, note?}`): a person's word in the signer's name, append only, `data/bills/investigations.json`. `attached-bill` and `attached-receipt-only` name the record they point to. It attaches nothing and approves nothing.
 
 Still to build:
-6. **`sync-bills` gains `--yes` for uploads** (a dry run needs none), so it joins every other write and the scheduler's guard covers it. The resolve stage reports ambiguity as the cache stage does. *Not done: it changes a command people run; see the open decisions.*
-7. **A county-tax `BillSource` over `TaxStore`** (where the profile's county has a tax adapter), so a catalog bill with its PDF attaches like any other. The investigation already reads the catalog; this makes the attach itself work.
-8. **The attach**: an approvals kind `payhoa-attach-bills` (plan = transaction → PDF), parallel to `owner-info-tags`; until then the attach is the terminal command.
-9. **The screens** over the three loaders (the tab, the queue, the card); the same-amount lead below.
+6. **A county-tax `BillSource` over `TaxStore`** (where the profile's county has a tax adapter), so a catalog bill with its PDF attaches like any other. The investigation already reads the catalog; this makes the attach itself work.
+7. **The attach**: an approvals kind `payhoa-attach-bills` (plan = transaction → PDF), parallel to `owner-info-tags`; until then the attach is the terminal command.
+8. **The screens** over the three loaders (the tab, the queue, the card); the same-amount lead below.
 
 **A same-amount attachment is a lead, never the bill.** The first run of the investigation recommended attaching an earlier month's bill to a recurring payment of the same amount. A twin (the same amount, an attachment already on another transaction) is now a `lead` that says "how that one was filed, not this payment's bill", and is never the recommendation.
 
@@ -392,7 +392,7 @@ Each with a recommendation; the first four are the treasurer's or the board's, n
 4. **May a bank “payment sent” email satisfy the treasurer's monthly review** when the bill PDF is still missing, or must the bill always be attached? A policy for the board or the treasurer; jason does not invent it. Until it is written the outcome `attached-receipt-only` is recorded as such and the invoice review keeps the transaction listed.
 5. **Gmail bodies in the conversation screen:** never / only for draft / only with “Show message”? Headers-first is the current product rule; keep it.
 6. **Where does a person's “propose a rule row” go?** To the board's action register as a finding, not a code change; once the profile owner adds the row, the transaction routes. Recommended.
-7. **Should `sync-bills` ever run on a schedule?** No: it uploads. A scheduled **dry run** (read-only) with the result kept is reasonable once the kept result exists; a person adopts it in `jason cadence` like any source.
+7. **Should `sync-bills` ever run on a schedule?** Not with `--yes`: it uploads. A scheduled **dry run** (read-only; the bare command) with the result kept is reasonable now that the result is kept; a person adopts it in `jason cadence` like any source.
 
 ## Acceptance criteria (first cut)
 

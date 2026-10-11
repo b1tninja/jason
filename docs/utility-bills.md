@@ -61,11 +61,13 @@ The brief carries a backtest: this year's finished months predicted from the bil
 Each month the bank feed brings unreviewed SMUD and City of Sacramento charges with no PDF. `jason sync-bills` lists those PayHOA transactions, syncs only the portals that have a pending match, and attaches the bill when the amount and date line up.
 
 ```bash
-jason sync-bills --dry-run
-jason sync-bills
-jason sync-bills --source smud
-jason sync-bills --skip-sync      # attach from the local cache only
+jason sync-bills                  # a dry run: reads PayHOA, lists what would match; syncs and uploads nothing
+jason sync-bills --yes            # sync the portals that are needed and upload the matched PDFs to PayHOA
+jason sync-bills --source smud --yes
+jason sync-bills --skip-sync --yes   # attach from the local cache only
 ```
+
+Without `--yes` the command is the dry run (`--dry-run` says so explicitly), and it keeps its result in `data/bills/last-dry-run.json` for the console. `--approve` (mark a transaction approved after its upload) goes with `--yes`.
 
 The matching rules:
 1. **The queue:** unreviewed PayHOA transactions (`reviewed=false`).
