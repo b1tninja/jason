@@ -1,0 +1,425 @@
+{
+ "_about": "Who may read each web source (tests/test_loaders_are_gated.py). gate: p2 = the offices that open P2; p0 = any signed-in roster person; admin = an administrator as themselves; p2+admin = either; open = no sign-in (public or owner-view by design). A loader not listed fails the test: gate it in jason.web.gates (or in the loader) or classify it here with a reason.",
+ "loaders": {
+  "agenda-plan": {
+   "gate": "p2",
+   "why": "the planned agenda, with executive subjects"
+  },
+  "approvals": {
+   "gate": "p2",
+   "why": "the letters inbox and the engine's plans, which name owners and tags"
+  },
+  "association-records": {
+   "gate": "p0",
+   "why": "the recorded instruments; liens the association placed are held back unless the private view is open"
+  },
+  "associations": {
+   "gate": "p0",
+   "why": "the county's association directory: public registry data"
+  },
+  "audit-chains": {
+   "gate": "p2",
+   "why": "deed chains by parcel: the owners and parties in each"
+  },
+  "backflow": {
+   "gate": "p0",
+   "why": "the backflow program's assemblies, notices' clocks, and testers"
+  },
+  "bill-attach": {
+   "gate": "p0",
+   "why": "unapproved PayHOA transactions waiting on a bill; the loader requires a signed-in roster person"
+  },
+  "bill-investigation": {
+   "gate": "p0",
+   "why": "what to try for a payment with no bill; the loader requires a signed-in roster person and holds P2 items back"
+  },
+  "board-digest": {
+   "gate": "p2",
+   "why": "a digest of the board's items and what moved, which names owners and units"
+  },
+  "board-items": {
+   "gate": "p2",
+   "why": "the board's action items, which name owners and units (executive rows are held back further)"
+  },
+  "budget": {
+   "gate": "p0",
+   "why": "the association's budget against actuals (members may ask for it under CIV 5200)"
+  },
+  "calendar": {
+   "gate": "p0",
+   "why": "the association's calendar of duties and due dates (the owner view reads its own disclosures loader)"
+  },
+  "campaign-status": {
+   "gate": "p2",
+   "why": "a campaign's funnel by owner and unit; the loader requires P2"
+  },
+  "canvases": {
+   "gate": "p2",
+   "why": "a person's scratchpads, clips of any source"
+  },
+  "citation-gaps": {
+   "gate": "open",
+   "why": "which statutes surveyed sources cite that the shelf lacks: public law, no member data"
+  },
+  "citations": {
+   "gate": "open",
+   "why": "the statutes a source cites against the shelf: public law, no member data"
+  },
+  "collections": {
+   "gate": "p2",
+   "why": "each account's unit address, balance, standing, and the statute's next step"
+  },
+  "communities": {
+   "gate": "p0",
+   "why": "the profiles this checkout can load, with onboarding progress"
+  },
+  "community": {
+   "gate": "p0",
+   "why": "the standing facts, each sourced; the loader requires a signed-in roster person"
+  },
+  "community-profile": {
+   "gate": "open",
+   "why": "the public owner page's content: names, site pages, contact groups; the owner view reads it before any sign-in"
+  },
+  "decisions": {
+   "gate": "p2",
+   "why": "the board's recorded decisions, which can name an owner (executive rows are held back further)"
+  },
+  "delinquency": {
+   "gate": "p2",
+   "why": "each account's unit address, balance, lien, and the board's recorded steps"
+  },
+  "dock": {
+   "gate": "p2",
+   "why": "asks answered from the records and jason's stores, whatever they hold"
+  },
+  "document-codes": {
+   "gate": "p0",
+   "why": "the QR codes read off documents, masked"
+  },
+  "document-readings": {
+   "gate": "p0",
+   "why": "the readings of the association's documents"
+  },
+  "documents-located": {
+   "gate": "p0",
+   "why": "documents the locator found for a county; private persons' names are P1, for the roster"
+  },
+  "drive-files": {
+   "gate": "p0",
+   "why": "the Drive catalog on disk: names and paths"
+  },
+  "drive-list": {
+   "gate": "p0",
+   "why": "a Drive folder's children over jason's token; the loader requires P1 where console sign-in is set up"
+  },
+  "drive-resolve": {
+   "gate": "p0",
+   "why": "a pasted Drive link; the loader requires P1 where console sign-in is set up"
+  },
+  "drive-search": {
+   "gate": "p0",
+   "why": "a Drive name search; the loader requires P1 where console sign-in is set up"
+  },
+  "duties": {
+   "gate": "p0",
+   "why": "the manager's duty anchors: general, no member's name"
+  },
+  "embeds": {
+   "gate": "p0",
+   "why": "the calendar and recordings; a confidential recording is held back unless the private view is open"
+  },
+  "facts": {
+   "gate": "open",
+   "why": "community facts and assumed defaults, not about a member; open as before (jason.web.extra.unit_records)"
+  },
+  "filing-plan": {
+   "gate": "p0",
+   "why": "the last Drive filing plan a person ran"
+  },
+  "followups": {
+   "gate": "p2",
+   "why": "dated actions with their basis; the loader requires P2"
+  },
+  "form-library": {
+   "gate": "p2",
+   "why": "the forms the profile offers; the loader requires P2"
+  },
+  "governing-documents": {
+   "gate": "p0",
+   "why": "the governing documents with recorded and Drive copies"
+  },
+  "hearings": {
+   "gate": "p2",
+   "why": "an owner's hearing: the unit, the grounds, the notice and decision"
+  },
+  "instance-integrations": {
+   "gate": "admin",
+   "why": "the instance's connections and vault paths"
+  },
+  "instance-limits": {
+   "gate": "admin",
+   "why": "the instance layer's limits and who set them"
+  },
+  "instance-schedules": {
+   "gate": "admin",
+   "why": "every community's cadences"
+  },
+  "instance-service": {
+   "gate": "admin",
+   "why": "every community's heartbeat, lease, and lanes"
+  },
+  "instrument-graph": {
+   "gate": "p0",
+   "why": "the recorded instruments as a typed graph; an owner's name only by a logged reveal"
+  },
+  "insurance": {
+   "gate": "p2",
+   "why": "policies, limits, and claims (the owner view reads a filtered copy of it, which passes)"
+  },
+  "insurance-renewals": {
+   "gate": "p2",
+   "why": "each policy with the board's renewal decision and whether the members must be told"
+  },
+  "invoices": {
+   "gate": "p0",
+   "why": "vendor invoices and what was paid, from the ledger"
+  },
+  "jobs": {
+   "gate": "admin",
+   "why": "job commands and logs, which can name people and paths"
+  },
+  "key-documents": {
+   "gate": "p0",
+   "why": "the key documents checklist and its links"
+  },
+  "leads": {
+   "gate": "p0",
+   "why": "places where the stores show something not yet pinned"
+  },
+  "ledger-validation": {
+   "gate": "p0",
+   "why": "the ledger's own checks"
+  },
+  "legal-cases": {
+   "gate": "p2",
+   "why": "privileged matters and counsel's file"
+  },
+  "library": {
+   "gate": "p0",
+   "why": "the document library listing; confidential rows are held back unless the private view is open"
+  },
+  "library-kinds": {
+   "gate": "p0",
+   "why": "the kinds' shelf"
+  },
+  "library-status": {
+   "gate": "p0",
+   "why": "the library's counts and freshness"
+  },
+  "life-safety": {
+   "gate": "p0",
+   "why": "the life-safety systems and deficiencies; the loader requires a signed-in roster person and holds P2 detail back"
+  },
+  "limits": {
+   "gate": "p2+admin",
+   "why": "this community's limits; officers, managers, and administrators read"
+  },
+  "loss-packet": {
+   "gate": "p2",
+   "why": "a unit's loss packet; the loader requires P2"
+  },
+  "mail-triage": {
+   "gate": "p2",
+   "why": "the association's mail, each letter with its sender and the person's choice"
+  },
+  "meeting": {
+   "gate": "p2",
+   "why": "a meeting's items, packet, and minutes frame, which name owners and units"
+  },
+  "meeting-room": {
+   "gate": "p2",
+   "why": "the live meeting's roster, log, and polls (the owner view reads a filtered copy of it, which passes)"
+  },
+  "meetings": {
+   "gate": "p2",
+   "why": "every meeting's records as the catalog keeps them, executive-session records among them (the owner view reads its own meetings loader)"
+  },
+  "minutes-review": {
+   "gate": "p2",
+   "why": "minutes drafts with privacy flags that name members beside a delinquency, fine, or hearing"
+  },
+  "onboarding": {
+   "gate": "p0",
+   "why": "onboarding progress: accounts, facts, records, and what a person recorded"
+  },
+  "onboarding-session": {
+   "gate": "p0",
+   "why": "onboarding gates, computed statuses, and questions"
+  },
+  "open-items": {
+   "gate": "p2",
+   "why": "the board's open matters, which name owners and units"
+  },
+  "outstanding-responses": {
+   "gate": "p2",
+   "why": "who was sent a copy and has no answer, by owner and unit"
+  },
+  "owner-digest": {
+   "gate": "open",
+   "why": "the owner's Overview, built from an allowlist of what a member is entitled to; the owner view reads it before any sign-in"
+  },
+  "owner-info": {
+   "gate": "p2",
+   "why": "each owner's information answers and the PayHOA writes they call for, by standing"
+  },
+  "paint": {
+   "gate": "p0",
+   "why": "the paint schedule against the catalog copy; the loader requires a signed-in roster person"
+  },
+  "paint-color": {
+   "gate": "p0",
+   "why": "one paint color from the catalog copy; the loader requires a signed-in roster person"
+  },
+  "people": {
+   "gate": "p0",
+   "why": "who holds each office; the loader requires a signed-in roster person"
+  },
+  "photos": {
+   "gate": "p0",
+   "why": "the saved photo albums"
+  },
+  "reconciliations": {
+   "gate": "p0",
+   "why": "the bank reconciliations, a board duty record"
+  },
+  "record-bindings": {
+   "gate": "p0",
+   "why": "a slot's bound folders: counts only"
+  },
+  "record-readings": {
+   "gate": "p0",
+   "why": "the confirmations queue's record readings"
+  },
+  "record-slot": {
+   "gate": "p0",
+   "why": "one record slot: holders, reading, and trail"
+  },
+  "record-slots": {
+   "gate": "p0",
+   "why": "the record checklist: holders and the library's reading"
+  },
+  "records-inventory": {
+   "gate": "p0",
+   "why": "the CIV 5200 record kinds and what the shelf holds"
+  },
+  "records-requests": {
+   "gate": "p2",
+   "why": "each member's records request: unit, stated purpose, decisions (the owner view reads its own form loader)"
+  },
+  "reference-page": {
+   "gate": "open",
+   "why": "one page of a published work"
+  },
+  "reference-works": {
+   "gate": "open",
+   "why": "the reference shelf: published works and statutes"
+  },
+  "registers": {
+   "gate": "p2",
+   "why": "the board's registers: rows of the board's sheet, which name owners and units"
+  },
+  "report-portal": {
+   "gate": "p0",
+   "why": "a vendor's public report portal and its reports"
+  },
+  "request-letter": {
+   "gate": "p0",
+   "why": "the onboarding request letter, from the items marked asked"
+  },
+  "request-links": {
+   "gate": "p2",
+   "why": "requests by unit and their draft replies"
+  },
+  "reserve-findings": {
+   "gate": "p0",
+   "why": "each reserve borrowing with the board's finding"
+  },
+  "reserves": {
+   "gate": "p0",
+   "why": "reserve transfers and the study (the owner view reads a summary of its own)"
+  },
+  "response": {
+   "gate": "p2",
+   "why": "one arrival, its reading and acts; the loader requires P2 and opens the rest only in the private view"
+  },
+  "responses": {
+   "gate": "p2",
+   "why": "the arrivals the last check kept, by name and unit; the loader requires P2"
+  },
+  "rule-changes": {
+   "gate": "p0",
+   "why": "proposed rule changes: text and the 4360 timeline"
+  },
+  "rule-events": {
+   "gate": "p0",
+   "why": "the acts on record for a rule"
+  },
+  "rule-record": {
+   "gate": "p0",
+   "why": "one rule on a day"
+  },
+  "rule-record-compare": {
+   "gate": "p0",
+   "why": "the working Doc against the adopted words"
+  },
+  "rule-record-history": {
+   "gate": "p0",
+   "why": "every version of a rule"
+  },
+  "rule-records": {
+   "gate": "p0",
+   "why": "the association's rules as records (rules are distributed to members)"
+  },
+  "rule-uses": {
+   "gate": "p0",
+   "why": "the uses linked to a rule"
+  },
+  "split-session": {
+   "gate": "p2",
+   "why": "one splitter draft; the loader requires P2"
+  },
+  "split-sessions": {
+   "gate": "p2",
+   "why": "the splitter's drafts; the loader requires P2"
+  },
+  "status": {
+   "gate": "admin",
+   "why": "the administrator's Status: sign-ins and failures"
+  },
+  "templates": {
+   "gate": "p0",
+   "why": "the letter templates and their tokens: base text, no member's name"
+  },
+  "theme": {
+   "gate": "open",
+   "why": "brand tokens for the console and the public owner page; read before sign-in"
+  },
+  "title-watch": {
+   "gate": "p2",
+   "why": "liens and ownership changes by parcel: the owner behind each"
+  },
+  "unit-record": {
+   "gate": "p2",
+   "why": "a unit's record of improvements; the loader requires P2"
+  },
+  "utility-payments": {
+   "gate": "p0",
+   "why": "utility payments and their audit"
+  },
+  "watchlist": {
+   "gate": "p0",
+   "why": "the life-safety items with their standing in words"
+  }
+ }
+}

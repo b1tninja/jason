@@ -1740,6 +1740,28 @@ LESSONS: tuple[Lesson, ...] = (
                                  "view=owner and renders no board-only section)"),
            docs=("docs/console/security-and-privacy.md (Built: the server answers the owner view)",),
            notes=("Still open: the standalone #/meeting-room?audience=owner link does not carry view=owner.",)),
+    Lesson("loaders-served-members-to-anyone", date(2026, 10, 11), (Area.GOVERNING,),
+           "The design audits of the money, platform, and property briefs found web loaders with no check at all: "
+           "delinquency and collections (each unit's address and balance), jobs (commands and logs that name people), "
+           "and, on a sweep of all 105, some seventy more that answered a person who was not signed in, among them "
+           "records requests, mail, hearings, liens, the board's items, and legal matters.",
+           "jason.web.app.source only calls a loader, so a read is gated only if its loader is. Each new loader "
+           "had to remember to gate itself, and the ones built before sign-in, and several after it, did not. "
+           "Nothing failed when one forgot.",
+           "jason.web.gates holds one table, loader to gate (p2 for member data and the board's working set, p0 "
+           "for the association's own records, admin for jobs), and default_loaders() wraps every loader in it: "
+           "401 signed out and 403 for an office that does not open the level, once console sign-in is set up "
+           "(as drive_choose has always done; with none set up the loopback console is as open as before). A "
+           "loader that gates itself, or is open by design (the owner page's theme and profile, the statute shelf), "
+           "is recorded with a reason in tests/fixtures/loader_gates.json. The owner view still reads the board "
+           "loaders it filters. A new loader appears in neither place and fails until someone classifies it.",
+           Status.FIXED, guards=("tests/test_loaders_are_gated.py (every loader, called signed out, with no office, "
+                                 "as an administrator, and as a manager, against tests/fixtures/loader_gates.json)",
+                                 "jason.web.gates.GATES"),
+           docs=("docs/console/security-and-privacy.md",),
+           notes=("Still open: with console sign-in not set up the gated loaders answer anyone at the machine, "
+                  "and the approvals routes under /api/approvals/<id> (the blueprint, not a loader) are not in "
+                  "this table.",)),
     Lesson("dock-counts-everyones", date(2026, 10, 4), (Area.DOCUMENTS, Area.GOVERNING),
            "The dock's red counts totaled every overdue deadline and task whoever was signed in, and the Approvals "
            "badge counted every requested letter. A free Ask question with no library hit became a task with no "

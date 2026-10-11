@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from flask import Flask, Response, abort, current_app, has_request_context, jsonify, make_response, request, session
+from werkzeug.exceptions import HTTPException
 
 SERVED_LOG = Path("access") / "served.jsonl"
 PRIVATE_LOG = Path("access") / "private.jsonl"
@@ -976,6 +977,8 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
         args = {k: v for k, v in request.args.to_dict().items() if k != "confidential"}
         try:
             out = load(args)
+        except HTTPException:
+            raise                 # the loader's own gate (jason.web.gates): 401 signed out, 403 for the office
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
         except Exception as exc:  # noqa: BLE001 - a missing store is a miss to show, as the source route says it

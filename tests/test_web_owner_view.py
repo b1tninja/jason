@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+import webclient
 from jason.web.app import create_app
 
 OWNED = json.loads((Path(__file__).resolve().parents[1] / "ui" / "src" / "ownerScreens.json").read_text(encoding="utf-8"))
@@ -104,7 +105,9 @@ def owner_app(tmp_path, monkeypatch):
     loaders = {**default_loaders(), **board, "meeting-room": lambda a: _room(), "insurance": lambda a: _insurance()}
     dist = tmp_path / "dist"
     dist.mkdir()
-    return create_app(dist, loaders, extra_writes=False, approvals_live=None).test_client()
+    # No console sign-in, whatever this machine's .env sets up: the board's own loaders are then open (jason.web.gates).
+    return create_app(dist, loaders, extra_writes=False, approvals_live=None,
+                      sign_in=webclient.roster_sign_in(configured=False)).test_client()
 
 
 def _clean(body: str, where: str) -> None:

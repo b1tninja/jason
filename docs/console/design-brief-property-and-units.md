@@ -231,7 +231,7 @@ These are not the design's: who may confirm a step (the offices that open P2; a 
 | The color check of a chosen color | Draw it | A loader and a `--request` command (design only); a profile `paint_policy()` for "near enough" |
 | Refresh the catalog, make the Doc | Draw `Command` with Copy | No paint writer or job exists; the Doc replaces edits made in it, `Confirm` says so |
 | Interior colors (`InteriorColorRegister`) | Draw the empty state and one report | The component and a register (`interior_reports()` is empty by default) |
-| The unit tab and the packet (C2, C3) | Yes: both loaders and writers are built | The view; **the loaders do no viewer check** (no sign-in, no P2 test, no log of an opening, unlike `life-safety`), and the writers take `by` from the body when no one is signed in and have no admin-view refusal: a build item before a view ships |
+| The unit tab and the packet (C2, C3) | Yes: both loaders and writers are built | The view; **the loaders and writers now check the viewer** (P2, 2026-10-11; unlike `life-safety` an opening is not logged, since nothing at P3 is served), and the writers take `by` from the signer |
 | Plan for a unit | Draw "plan matched" | The loader takes `plan=`; no code bridges a unit to its plan (`unit_characteristics` is not wired) |
 | Packet confirmations append-only | Draw the trail | `confirm_step` **replaces** a step's earlier confirmation (decision 2) |
 | Packet pairs of provision and words | Draw each pair | `recited` lists only the found ones, so the words cannot be paired to `provisions` when one is missing; a loader change |

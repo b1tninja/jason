@@ -114,8 +114,8 @@ Verified against the code on 2026-10-11 (`ui/src`, `src/jason/web/sources.py`).
 |---|---|---|
 | `#/payments` (`MoneyView`, tabs Budget vs actual, Reconciliations, Invoice review, Collections) over loaders `budget`, `reconciliations`, `invoices`, `collections` | Yes; read only. Its code comment calls it "the monthly review"; it records no review | A matrix, a path, a reviewer, a ratification: **no `monthly-review` loader, no store** (`data/finance/monthly-reviews.json` is a proposal), no write |
 | `#/books` (`BooksChecksView`: Utility payments, Ledger validation) | Yes | Income and expense, check register, and ledger loaders (`books-report`, `ledger-query`) are MCP only; no statement-to-month check for 5500(d) |
-| `#/liens` (`DelinquencyView`) over `delinquency`, writer `POST /api/write/delinquency/<apn>` | Yes: table, standing, next step, 7 recordable steps behind `Confirm`, roll-call reminder, executive-session banner | The 22-step page, the clocks, the acts between the board's steps (notice mailed, request, offers, copy, release): **no store**. The built `Step` has one value for the lien vote and recording. The `delinquency` loader has **no office check** |
-| The Collections tab of `#/payments` | Yes, and it lists unit address and past due to anyone who opens it | Needs the same office check; the portfolio band is the counts-only alternative |
+| `#/liens` (`DelinquencyView`) over `delinquency`, writer `POST /api/write/delinquency/<apn>` | Yes: table, standing, next step, 7 recordable steps behind `Confirm`, roll-call reminder, executive-session banner | The 22-step page, the clocks, the acts between the board's steps (notice mailed, request, offers, copy, release): **no store**. The built `Step` has one value for the lien vote and recording. The `delinquency` loader is P2 (`jason.web.gates`, 2026-10-11) |
+| The Collections tab of `#/payments` | Yes, and it lists unit address and past due, to the offices that open P2 (`collections` is gated like `delinquency`, 2026-10-11) | The portfolio band is the counts-only alternative |
 | Bill attach and investigation | Loaders and writer built | **No view reads `bill-attach` or `bill-investigation`** (grep of `ui/src`); drawn in the mail-and-payments brief |
 | Pre-lien notice | Notice catalog rows and checklist; payment plan form | No base template. Mailroom takes `--mail-class` (standard, first-class) and `--tracking` (certified, registered); certified is untried on a live send |
 | Recitations | Statutes on the shelf for 5500 to 5502, 5650 to 5690, 5700 to 5740 | Civil Code 2934a, CCP 415.10, 116.110 to 116.810, B&P 11211.7: not on the shelf |
@@ -141,7 +141,7 @@ Differences to fix in the specs, found while verifying: `finance.md` calls the s
 1. **Ratification actor:** the secretary only (recommended), or any officer; from draft minutes (with the state updating) or only once adopted.
 2. **A director who cannot sign in:** each records their own review (recommended), or the secretary records one "reported by".
 3. **Snapshot in the review record:** digest plus headline cents and counts (recommended), or digest only.
-4. **Collections tab and receivables:** counts only on the review (recommended), and an office check on the `delinquency` and `collections` loaders before either page is exposed.
+4. **Collections tab and receivables:** counts only on the review (recommended), and the office check on the `delinquency` and `collections` loaders (built: P2, `jason.web.gates`).
 5. **Split the lien step** into the vote and the recording, and migrate the existing rows (they stand for both).
 6. **A store for the acts between the board's steps** (the clocks have no anchor without it), and a pre-lien notice base template with who adopts its wording.
 7. **A written counting policy** for a period ending on a weekend or holiday, proposed to the board (Civil Code 4350), each use recorded.

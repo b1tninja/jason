@@ -153,7 +153,7 @@ def test_the_routes_serve_the_loaders_and_the_write(data, tmp_path):
     from jason.web.sources import default_loaders
 
     loaders = {k: v for k, v in default_loaders().items() if k in ("associations", "documents-located")}
-    c = webclient.client(create_app(tmp_path, loaders))
+    c = webclient.client(create_app(tmp_path, loaders, sign_in=webclient.roster_sign_in(configured=False)))   # sign-in off, whatever .env sets up
     assert c.get("/api/associations?county=Placer").json["surveyed"] is False
     assert c.get("/api/documents-located").json["missing"] is True
     posted = c.post("/api/write/documents-located/locate", json={"by": "A Person"})

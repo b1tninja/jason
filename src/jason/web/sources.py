@@ -979,6 +979,14 @@ def extra_writer(store: str):
 
 
 def default_loaders() -> dict[str, Any]:
+    """Every source the app serves. A loader that gates itself is as it is; the others are wrapped by the table in
+    ``jason.web.gates``, so none answers a person who is not signed in once console sign-in is set up."""
+    from jason.web import gates
+
+    return gates.apply(_loaders())
+
+
+def _loaders() -> dict[str, Any]:
     return {**{name: _lazy(spec) for name, spec in EXTRA_LOADERS.items()},
         "board-digest": board_digest,
         "board-items": board_items,

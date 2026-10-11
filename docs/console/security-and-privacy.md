@@ -137,6 +137,15 @@ Without sign-in set up, or with no one signed in and sign-in not required, the c
 
 **Built: the role class.** The console derives one of three classes from a person's offices (`jason.web.signin.role_class`, in `GET /api/session` as `roleClass`): an **officer** holds a board office, a **manager** holds the manager's office and no board office, an **administrator** is one of jason's admins who holds no office. An admin who holds an office is that office's class. The class filters the nav and picks the landing screen (`roles` on a screen in `ui/src/App.tsx`: Decisions is for officers and administrators), and the role strip shows each class's moves. It is a view, not a check: the server refuses by office only where a loader says so (`GET /api/status` for an admin as themselves, `GET /api/people` for anyone off the roster) and by data level (above).
 
+**Built: every read is gated** (`jason.web.gates`). `GET /api/<source>` only calls the loader, so a read is open unless its loader checks. One table names the gate of every loader that does not check for itself, and `default_loaders()` wraps each one in it:
+
+- **P2** (the offices that open contact details and members' submissions) for member data and the board's working set: delinquency, collections, liens and title, deed chains, hearings, records requests, requests by unit, mail, minutes drafts, owner information, legal matters, the board's items and decisions and meeting, scratchpads, registers, and insurance.
+- **P0** (any signed-in roster person) for the association's own records and operations: the budget, reconciliations, invoices, reserves, the library and the record checklist, rules, templates, onboarding, and the like.
+- **Administrator** (as themselves) for `jobs`, whose commands and logs can name people, as for `status` and the instance.
+- **Open by design:** the owner page's `theme` and `community-profile`, the owner Overview (`owner-digest`), community `facts` (not about a member), and the statute shelf (`reference-works`, `reference-page`, `citations`, `citation-gaps`).
+
+Once console sign-in is set up a gated read answers 401 signed out and 403 for an office that does not open the level. Where it is not set up (the loopback default) the console is as open as it was, as `drive_choose` has always been. A read in the owner view passes: the owner hook filters the board loaders it calls. `tests/test_loaders_are_gated.py` calls every loader signed out, with no office, as an administrator, and as a manager, and compares what each did with `tests/fixtures/loader_gates.json`, so a loader that is in neither place fails until someone classifies it. The routes that are not loaders (the approvals blueprint's `/api/approvals/<id>` and the evidence routes) carry their own checks and are not in the table.
+
 **Proposed.** Screen-level access by role, enforced on the server at each loader and write (hiding a button is not a check). The Screens and Can sign columns are proposed. The data levels in the last column are the built `SEE_RULES` above, which are what the server enforces today:
 
 | Role | Screens | Can sign | Data levels, as built |
