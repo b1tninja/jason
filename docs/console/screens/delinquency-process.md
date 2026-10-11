@@ -1,6 +1,6 @@
 # Delinquency process
 
-A run page, `#/work/delinquency-account/<apn>` (one parcel), reached from `#/liens` (the list, built as `DelinquencyView`), in the Money group · phase 2 · CLI: `jason who-owes`, `jason who-owes-sheet`, `jason digest`; MCP: `association_collections`, `assessment_liens`
+A run page, `#/work/delinquency-account/<run id>` (one parcel; the id is opaque and never carries the parcel number), reached from `#/liens` (the list, built as `DelinquencyView`), in the Money group · phase 2 · CLI: `jason who-owes`, `jason who-owes-sheet`, `jason digest`; MCP: `association_collections`, `assessment_liens`
 
 ## In the console
 

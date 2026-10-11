@@ -1,6 +1,6 @@
 # Design brief: the board's money oversight (the monthly review and the delinquency process)
 
-One page of orientation for the design agent, for two screens: the monthly review ([screens/monthly-review.md](screens/monthly-review.md), `#/monthly-review`, embedded by the run `monthly-review`) and the delinquency account ([screens/delinquency-process.md](screens/delinquency-process.md), `#/work/delinquency-account/<apn>`, reached from `#/liens`). It does not repeat the specs; it says what to read in what order, what to draw, what is built, and a made-up community to draw against. The definitions are in [../workflows/money.md](../workflows/money.md) (2.3 `monthly-review`, 2.4 `delinquency-account`, 4 the clocks). Where a spec and the code disagree, the code wins and this page names the difference (section G).
+One page of orientation for the design agent, for two screens: the monthly review ([screens/monthly-review.md](screens/monthly-review.md), `#/monthly-review`, embedded by the run `monthly-review`) and the delinquency account ([screens/delinquency-process.md](screens/delinquency-process.md), `#/work/delinquency-account/<run id>` (an opaque id, never the parcel number; the parcel shows inside the run, where the viewer's level allows), reached from `#/liens`). It does not repeat the specs; it says what to read in what order, what to draw, what is built, and a made-up community to draw against. The definitions are in [../workflows/money.md](../workflows/money.md) (2.3 `monthly-review`, 2.4 `delinquency-account`, 4 the clocks). Where a spec and the code disagree, the code wins and this page names the difference (section G).
 
 The design project may use the association's real details. What comes back into the repository is general: no association's name, street, bank, or private fact; made-up samples only ("Oakview", "A. Owner", "123 Main St", "Example Bank", dates in 2099).
 
@@ -47,7 +47,7 @@ Five bands in the spec's order, under a header that carries one line: "Reviewed 
 ### C4. Findings and history (bands 3 and 5)
 Findings by part, each a person's words with a later answer; **held** findings (about an owner's account) as "1 held finding" outside the private view. History: every act with who and when; a correction beside what it corrects, the original never removed. The caveats close the page, verbatim from the loader.
 
-### C5. The delinquency account page, as a run (`#/work/delinquency-account/<apn>`)
+### C5. The delinquency account page, as a run (`#/work/delinquency-account/<run id>` (an opaque id, never the parcel number; the parcel shows inside the run, where the viewer's level allows))
 Eight bands in order. Header: breadcrumb "Liens and delinquency > Parcel 000-000-000-0000 (123 Main St)", run state, and the **executive-session banner** (CIV 4935) with the ledger's age. Then:
 
 - **Clocks** (`ClockStrip`): pre-lien notice mailed, earliest recording (+30 days), request window (15 days), plan meeting (45 days), copy due (10 days), enforcement (30 days), release due (21 days), redemption (90 days). Each: the date, a `BasisPill` (`law` and the section), the label "computed by jason from the statute's day-count, the earliest day", and the state (`not started`, `upcoming`, `passed`). A clock past its day says so in the statute's words and shows the follow-up it opened.

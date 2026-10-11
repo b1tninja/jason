@@ -1,6 +1,6 @@
 # Design brief: Work (the runs list, the run page, and starting a run)
 
-One page of orientation for the design agent, for the durable-workflow screens specified in [screens/work.md](screens/work.md). It does not repeat the spec; it says what to read in what order, each screen and component to draw, what can be drawn today, and a made-up community to draw against. The model behind the screens is [../workflows-design.md](../workflows-design.md); the engine is [../workflows-engine.md](../workflows-engine.md). **None of the engine is built**, so every screen below is drawn from the sample in section H.
+One page of orientation for the design agent, for the durable-workflow screens specified in [screens/work.md](screens/work.md). It does not repeat the spec; it says what to read in what order, each screen and component to draw, what can be drawn today, and a made-up community to draw against. The model behind the screens is [../workflows-design.md](../workflows-design.md); the engine is [../workflows-engine.md](../workflows-engine.md). **The engine, its loaders, and the Work screens are built** (two definitions are registered of the many the family pages describe), so draw from the sample in section H and say so for what has no definition yet.
 
 The design project may use the association's real details. What comes back into the repository is general: no association's name, street, vendor, bank, or private fact; made-up samples only ("123 Main St", "Example County", "Example Alarm").
 
