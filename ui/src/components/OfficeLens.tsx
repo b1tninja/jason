@@ -4,6 +4,7 @@ import {
   BANDS, bandTitle, hashWithLens, holdsAny, isOwnLens, lensFromHash, notYours, officesText, theOffice,
   type BandKey, type OfficeInfo, type OfficeRow, type OfficeViewData,
 } from "../lib/officeView";
+import { MINE_HREF, runHref } from "../lib/work";
 import { Card } from "./Card";
 import { Caveats } from "./Caveats";
 import { DueDate } from "./DueDate";
@@ -81,7 +82,10 @@ export function DisabledForOffice({ office, mine, what = "do this", children }: 
   );
 }
 
-const screenLink = (row: OfficeRow) => (row.screen ? <a href={`#/${row.screen}`}>Open</a> : null);
+// A run row links to the run (`#/work/<definition>/<id>`); any other row, to the screen that owns it.
+const screenLink = (row: OfficeRow) =>
+  row.type === "run" && row.definition && row.id ? <a href={runHref(row.definition, row.id)}>Open the run</a>
+    : row.screen ? <a href={`#/${row.screen}`}>Open</a> : null;
 
 function RowMarks({ row }: { row: OfficeRow }) {
   return (
@@ -128,6 +132,7 @@ export function OfficeBand({ band, data }: { band: BandKey; data: OfficeViewData
         {!error && rows.length === 0 && <EmptyState>{empty[band]}</EmptyState>}
         {rows.length > 0 && <ul className="office-rows">{rows.map((r, i) => <OfficeRowItem key={`${r.type}-${r.key ?? r.id ?? i}-${r.office}`} row={r} />)}</ul>}
         {total > rows.length && <p className="muted">{total - rows.length} more.</p>}
+        {band === "work" && own && total > 0 && <p><a href={MINE_HREF}>All your runs ({total} open)</a></p>}
       </div>
     </Card>
   );

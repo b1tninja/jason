@@ -30,6 +30,8 @@ export interface OfficeRow {
   backup?: boolean;
   id?: string;
   key?: string;
+  /** A run row's workflow definition: with `id`, the run's address (`#/work/<definition>/<id>`). */
+  definition?: string;
 }
 
 export interface NotComposed { band: string; what: string; why: string }

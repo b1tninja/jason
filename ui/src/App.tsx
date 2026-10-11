@@ -52,6 +52,7 @@ import { LimitsView } from "./views/LimitsView";
 import { RecordsView } from "./views/RecordsView";
 import { SplitView } from "./views/SplitView";
 import { StatusView } from "./views/StatusView";
+import { WorkView } from "./views/WorkView";
 
 function BoardDigest() {
   const r = useApi<Digest>("/api/board-digest");
@@ -64,7 +65,7 @@ function BoardDigest() {
   );
 }
 
-export const GROUPS = ["Overview", "Governance", "Money", "Records", "Setup", "Instance"] as const;
+export const GROUPS = ["Overview", "Work", "Governance", "Money", "Records", "Setup", "Instance"] as const;
 
 interface ScreenDef extends ConsoleScreen {
   view: (p: { audience: Audience }) => JSX.Element;
@@ -102,6 +103,9 @@ export const SCREENS: ScreenDef[] = [
   { id: "onboarding", label: "Onboarding", group: "Overview", view: () => <OnboardingView /> },
   // The administrator's landing: sources, sign-ins, setup's gates, failures (GET /api/status, an admin only).
   { id: "status", label: "Status", group: "Overview", admin: true, view: () => <StatusView /> },
+  // Work (docs/console/screens/work.md): `#/work` the open runs, `#/work/<definition>/<id>` one run, `#/work/definitions` what can be run,
+  // `#/work/start` starting one. The board's offices and the manager read (GET /api/work, P2); never the owner view.
+  { id: "work", label: "Work", group: "Work", roles: ["officer", "manager", "administrator"], view: () => <WorkView /> },
   // Governance
   { id: "actions", label: "Board action items", group: "Governance", aliases: ["board"], view: () => <BoardItemsView /> },
   { id: "decisions", label: "Decisions", group: "Governance", roles: ["officer", "administrator"], view: () => <DecisionsView /> },

@@ -127,3 +127,13 @@ export { ControlRow, ControlQuestionRow, RefusedRow, type ProposeAs } from "./Co
 export { ControlCard, ControlChangedBanner, controlDates } from "./ControlCard";
 // Office views (docs/console/screens/office-views.md): the lens, its banner, the office bands, and a control the viewer's offices do not hold. lib/officeView.ts has the loader shape.
 export { OfficeLens, OfficeBanner, OfficeBands, OfficeBand, OfficeRowItem, NotComposed, OfficeToday, DisabledForOffice, useOfficeLens } from "./OfficeLens";
+// Work (docs/console/screens/work.md, docs/console/design-brief-work.md): the runs, one run, and the pieces they are drawn from. lib/work.ts has the loaders' shapes.
+export { BasisPill } from "./BasisPill";
+export { StepStateWord } from "./StepStateWord";
+export { RunRow, moveWords, isPastLegal } from "./RunRow";
+export { WorkflowRail } from "./WorkflowRail";
+export { RunStepPanel, evidenceRef } from "./RunStepPanel";
+export { ClockStrip, LawBlock, lawCitation } from "./ClockStrip";
+export { ChangedSince } from "./ChangedSince";
+export { RunHistory } from "./RunHistory";
+export { StartRun } from "./StartRun";
