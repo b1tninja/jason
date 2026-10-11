@@ -2481,6 +2481,42 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-static-route-must-set-module-and-wasm-types", date(2026, 10, 11), (Area.REPOSITORY,),
+           "On Windows the static route served .mjs files as text/plain, which broke pdf.js's module worker.",
+           "The type came from the operating system's registry.",
+           "The app sets text/javascript for .mjs and .js and application/wasm for .wasm, with a test; the browser "
+           "decoder self-test is what noticed.",
+           Status.FIXED, guards=("tests/test_web.py (the MIME types test)",), docs=("docs/pdf-splitter.md",)),
+    Lesson("a-browser-decoder-fails-silently-so-prove-it-at-start", date(2026, 10, 11), (Area.REPOSITORY, Area.ONBOARDING),
+           "pdf.js draws a JPEG 2000 or CCITT page as blank white, with no error, when its decoder files are missing.",
+           "A blank page is a valid picture.",
+           "A start-up self-test draws a tiny JPEG 2000 and a CCITT page; a failure turns browser drawing off for the "
+           "visit and says why, and a page drawn white that the server says has ink falls back to the server.",
+           Status.FIXED, guards=("ui/src/views/splitClient.test.ts", "e2e/tests (the blocked-decoder spec)"),
+           docs=("docs/pdf-splitter-client-side.md",),
+           notes=("Open: a lossless RGB JPEG 2000 from Pillow drew with a red half in pdf.js; try a real scanner's file "
+                  "before trusting that colour path.",)),
+    Lesson("a-windowed-grid-remounts-the-focused-cell", date(2026, 10, 11), (Area.REPOSITORY,),
+           "Marking a start re-laid the rows, the focused cell remounted, and the grid's own focus restore missed because "
+           "its window lags one render, so focus fell to the page and keys stopped working.",
+           "A restore that runs against a stale window finds no cell.",
+           "The editor re-focuses the page two frames after a layout change if focus was in the grid, and routes a "
+           "keydown on the body to the screen's key handler unless a dialog is open.",
+           Status.FIXED, guards=("e2e/tests/layout.spec.ts", "the undo-with-z step"), docs=("docs/console/screens/split.md",),
+           notes=("Open: PageGrid's own restore is probably a latent bug.",)),
+    Lesson("a-column-refit-must-reserve-the-scrollbar", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A layout that refits columns to the measured width remounted the cell being edited when the scrollbar appeared "
+           "and changed the width.",
+           "The width the columns were computed from included the scrollbar's room only sometimes.",
+           "The scroll box uses scrollbar-gutter: stable, with an 18 px reserve where that is unsupported.",
+           Status.FIXED, guards=("e2e/tests/layout.spec.ts",), docs=("docs/console/screens/split.md",)),
+    Lesson("render-where-the-bytes-already-are", date(2026, 10, 11), (Area.REPOSITORY, Area.ONBOARDING),
+           "Rendering a local file on the server needed an upload, an open and a render round trip before anything showed, "
+           "and per-page requests stalled the grid.",
+           "Every picture was drawn on the server.",
+           "A file chosen on this computer is drawn by the browser at once; a library or Drive file is already on the "
+           "server, so only the thumbnails needed are streamed there, and the server's facts stay authoritative.",
+           Status.FIXED, guards=("e2e/tests (local preview makes zero thumb requests)",), docs=("docs/pdf-splitter.md",)),
     Lesson("an-http-client-logs-the-urls-it-fetches", date(2026, 10, 11), (Area.REPOSITORY,),
            "A Drive request's URL contains the file id, and the HTTP client logs request URLs at INFO, so a flow that "
            "promised no ids in logs would have written them.",
@@ -3472,6 +3508,39 @@ LESSONS: tuple[Lesson, ...] = (
            "files classify outside `member_kinds()`. PayHOA's Email Attachments folder is how a broadcast sends its "
            "files; the check should treat it as sending, not storage.",
            Status.OPEN,
+           docs=("docs/drive-sync-rules.md",)),
+    Lesson("aging-redaction-missed-an-account", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "Remaking the failed member copies of the treasurer's reports, the first pass left a builder's account row "
+           "(its name and a five-figure balance) readable, because it names no street address, and on a page whose rows "
+           "are packed tight the last bar painted over the top of the Totals row.",
+           "The redactor took an account row to be one that names a unit's address, and padded each bar by a point "
+           "past the row's text box; the line boxes of tight rows overlap, so the padding reached the next row.",
+           "Every row between the aging table's header and its Totals row is an account, with or without a balance on "
+           "its line (a page with no Totals row takes only the rows with a balance or an address, so its footer stays). "
+           "Only the row's unit cell is barred, from the text's own box, and the balances stay (the board's choice: "
+           "report what is owed, not who owes it). A bar stops before the next row's box. The copy is written only "
+           "when no unit cell still carries text and the aging balances are unchanged.",
+           Status.FIXED,
+           guards=("tests/test_redact.py::test_the_member_copy_keeps_balances_and_removes_who_owes",
+                   "tests/test_redact.py::test_a_bar_never_paints_over_the_totals",
+                   "tests/test_payhoa_documents.py::test_a_file_that_still_lists_units_is_refused_and_nothing_changes")),
+    Lesson("member-copy-kept-who-owes", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "Practising the member copy on every treasurer's report on file found eight published copies that still "
+           "showed who owes: five with the aging units readable, one with a unit left beside its balance, two (one of "
+           "them also among the five) that kept the general ledger's per-unit receivables (owners' names on each "
+           "payment, every unit's subtotal), and one with a unit's subtotal on a page scanned and barred by hand.",
+           "The copies were made by hand: boxes drawn over text (the text stayed underneath), ledger pages dropped by "
+           "eye, and boundary pages scanned so they could be barred, which no reader can check afterwards. Nothing "
+           "read a copy back before it was published.",
+           "`jason member-copy` makes the copy from the original: unit cells barred, the receivables sections removed "
+           "(pages wholly inside dropped, a scanned page inside one dropped, rows on a boundary page removed under a "
+           "note), hidden information cleared, and the copy read back with two PDF readers for any unit, owner's "
+           "payment line, or unit subtotal before it is written. `--practice` runs it on every report on file and "
+           "reads the published copies back. `jason payhoa-docs --replace` refuses a file the read-back fails.",
+           Status.FIXED,
+           guards=("tests/test_redact.py::test_a_copy_that_still_names_who_owes_is_not_written",
+                   "tests/test_redact.py::test_nothing_is_left_under_a_bar_for_any_reader",
+                   "tests/test_redact.py::test_the_read_back_finds_a_published_copy_that_leaks"),
            docs=("docs/drive-sync-rules.md",)),
     Lesson("redacted-name-is-not-a-redaction", date(2026, 10, 11), (Area.DOCUMENTS,),
            "The library held six treasurer's reports confidential whose names say they are the redacted member copies, and "
