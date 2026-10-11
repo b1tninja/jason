@@ -930,6 +930,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "backflow": "jason.web.extra.inspections:backflow",  # the program's assemblies, notices' clocks, discrepancies, tester check
     "watchlist": "jason.web.extra.inspections:watchlist",  # the life-safety items with their standing in words
     "limits": "jason.web.extra.limits_view:limits",  # Setup > Limits: this community's limits in force, each with source, range, ceiling, last change, why; officers, managers, administrators read
+    "library-files": "jason.web.extra.library_browse:library_files",  # ?kind=&source=&since=&until=&text=&minPages=&sort=&page= the library's PDFs for the splitter's explorer, with filter counts; a name search is a POST (/api/write/library/files); disk only; board only; a confidential file masked
     "split-sessions": "jason.web.extra.split:split_sessions",  # the PDF splitter's drafts: id, status, pages, counts; a confidential file masked; the board's
     "split-session": "jason.web.extra.split:split_session",  # ?id=&facts=1-200&review=1 one draft: boundaries, segments, suggestions with reasons, version; the board's
     "instance-limits": "jason.web.extra.limits_view:instance_limits",  # Instance > Limits: the instance layer (value, ceiling, who, why); an admin as themselves only; never a community's values
@@ -956,6 +957,7 @@ EXTRA_WRITERS: dict[str, str] = {
     "intake": "jason.web.extra.onboarding_setup:write",  # a signed-in person's answer, queued; applied in a terminal
     "records": "jason.web.extra.record_slots:write",  # pick, answer, unpin, bind, keep, repin, more, reopen, read on a slot: jason's own stores; the file is never touched
     "drive": "jason.web.extra.drive_choose:write",  # list, search, resolve, bound: Drive read over jason's token (POST so a name is never in a URL); writes nothing
+    "library": "jason.web.extra.library_browse:write",  # files {q, kind, source, ...}: the library explorer's list with a name search (POST so a name is never in a URL); disk only
     "split": "jason.web.extra.split:write",  # <session id|new> {act: open, boundaries, mark, ..., suggest, review, apply, decline}: a draft change as the signed-in person; apply is a dry run unless dryRun is false and confirm is true; writes through the record intake's one split writer
     "limits": "jason.web.extra.limits_view:write",  # <instance|community> {act: set|reset, changes, reason, dryRun}: a dry run unless dryRun is false; the signed-in administrator, with a reason; the one writer is jason.limits
 }

@@ -209,6 +209,10 @@
    "gate": "p0",
    "why": "the document library listing; confidential rows are held back unless the private view is open"
   },
+  "library-files": {
+   "gate": "p2",
+   "why": "the splitter's library browser; the loader requires P2, reads disk only, and masks a confidential file"
+  },
   "library-kinds": {
    "gate": "p0",
    "why": "the kinds' shelf"

@@ -220,7 +220,7 @@ LIMITS: tuple[Limit, ...] = (
                            "fetch from using the machine for an hour.",
           when_hit="This file is {amount}; the largest jason fetches is {limit}. Nothing was copied. Open it in Google, or ask "
                    "your community's administrator to raise the limit (the most allowed is {ceiling}).",
-          applies_to=("tasks.drive_copies.export", "tasks.record_readback._problem"), restart="next_job"),
+          applies_to=("tasks.drive_copies.export", "tasks.record_readback._problem", "tasks.split_session._fetch_drive"), restart="next_job"),
     Limit("split.auto_read", True, None, None, "switch",
           "After a person confirms a split, queue a read-back job for each new part file (on the same lane, in the confirming "
           "person's name). Off: each part is read by hand.",

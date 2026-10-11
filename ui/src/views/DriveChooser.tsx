@@ -7,7 +7,16 @@ import { MAX_PICK_FILES, sizeWords, type Cardinality, type DriveItem, type Drive
 export interface ChooserSlot { key: string; title: string; cardinality: Cardinality; source: string }
 export type ChooserTab = "drive" | "paste" | "upload";
 
-const TABS: { id: ChooserTab; label: string }[] = [
+/** Choosing one file for something other than a slot (the splitter): the dialog ends at the pick, shows only the tabs that read Drive,
+ * lists only PDFs as choosable, and offers no folder binding. */
+export interface ChooserPick {
+  /** the dialog's heading */
+  title: string;
+  /** called with the file chosen; the dialog then closes itself */
+  onChoose: (file: { ref: string; name: string; size: number | null }) => void;
+}
+
+const ALL_TABS: { id: ChooserTab; label: string }[] = [
   { id: "drive", label: "Drive" }, { id: "paste", label: "Paste a link" }, { id: "upload", label: "From this computer" },
 ];
 
@@ -118,7 +127,7 @@ function itemNotes(it: DriveItem): string[] {
 
 interface Crumb { id: string; name: string; drive: string }
 
-function NotConnected({ d }: { d: { why?: string; command?: string } }) {
+export function NotConnected({ d }: { d: { why?: string; command?: string } }) {
   return (
     <div className="notice notice-warn" role="alert">
       <p>{d.why ?? "jason cannot read Drive."}</p>
@@ -127,7 +136,7 @@ function NotConnected({ d }: { d: { why?: string; command?: string } }) {
   );
 }
 
-function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (its: DriveItem[]) => void; onBind: (c: Crumb) => void }) {
+function DriveTab({ slot, onPick, onBind, pdfOnly = false }: { slot: ChooserSlot; onPick: (its: DriveItem[]) => void; onBind?: (c: Crumb) => void; pdfOnly?: boolean }) {
   // A series or a set that grows takes several files in one pick; a slot that holds one takes one.
   const multi = slot.cardinality !== "one";
   const [crumbs, setCrumbs] = useState<Crumb[]>([]);
@@ -224,7 +233,8 @@ function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (its: D
                       </li>
                     );
                   }
-                  const ok = it.readable && !!it.id;
+                  const notPdf = pdfOnly && it.type !== "pdf";
+                  const ok = it.readable && !!it.id && !notPdf;
                   return (
                     <li key={`${it.id}-${i}`} className={ok ? undefined : "record-file-off"}>
                       <input type={multi ? "checkbox" : "radio"} id={rid} name={`${id}-pick`} disabled={!ok || (full && !isChosen(it))} checked={isChosen(it)} onChange={() => toggle(it)} />{" "}
@@ -233,6 +243,7 @@ function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (its: D
                         <span className="muted">{it.type}, {sizeWords(it.size)}, modified {it.modified}{it.owner ? `, owner ${it.owner}` : ""}</span>
                       </label>
                       {isChosen(it) && <span className="record-selected"> selected</span>}
+                      {notPdf && it.readable && <p className="record-file-why">The splitter takes a PDF; this is a {it.type}. Export it as a PDF in Google and upload that.</p>}
                       {!it.readable && <p className="record-file-why">jason cannot open this file{it.why ? `: ${it.why}` : ""}. Share it with the account shown, or upload it.</p>}
                       {notes.length > 0 && <p className="muted record-file-notes">{notes.join(" · ")}</p>}
                     </li>
@@ -251,13 +262,13 @@ function DriveTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (its: D
           : chosen.length === 1 ? `1 file selected for ${slot.title}: ${chosen[0].name}` : `${chosen.length} files selected for ${slot.title}`}</span>
         <button type="button" className="primary" disabled={chosen.length === 0} onClick={() => onPick(chosen)}>{chosen.length > 1 ? `Pick ${chosen.length} files` : "Pick"}</button>
         {multi && chosen.length > 0 && <button type="button" onClick={() => setChosen([])}>Clear the selection</button>}
-        {here && !searched && <button type="button" onClick={() => onBind(here)}>Choose this folder for {slot.title}</button>}
+        {here && !searched && onBind && <button type="button" onClick={() => onBind(here)}>Choose this folder for {slot.title}</button>}
       </div>
     </div>
   );
 }
 
-function PasteTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (ref: string, name: string) => void; onBind: (ref: string, name: string) => void }) {
+function PasteTab({ slot, onPick, onBind, pdfOnly = false }: { slot: ChooserSlot; onPick: (ref: string, name: string, size: number | null) => void; onBind?: (ref: string, name: string) => void; pdfOnly?: boolean }) {
   const id = useId();
   const [ref, setRef] = useState("");
   const [found, setFound] = useState<DriveResolved | null>(null);
@@ -286,8 +297,12 @@ function PasteTab({ slot, onPick, onBind }: { slot: ChooserSlot; onPick: (ref: s
           {found.opens && <p className="muted">{found.opens}</p>}
           {found.doc && <p className="muted">{found.doc}</p>}
           {found.kind === "folder"
-            ? (<><p className="muted">{found.offer}</p><button type="button" className="primary" onClick={() => onBind(ref.trim(), found.name ?? "the folder")}>Choose this folder for {slot.title}</button></>)
-            : (<button type="button" className="primary" disabled={found.readable === false} onClick={() => onPick(ref.trim(), found.name ?? "the file")}>Pick this file for {slot.title}</button>)}
+            ? (onBind
+              ? (<><p className="muted">{found.offer}</p><button type="button" className="primary" onClick={() => onBind(ref.trim(), found.name ?? "the folder")}>Choose this folder for {slot.title}</button></>)
+              : <p className="notice notice-warn" role="note">That is a folder. Open it in the Drive tab and choose a PDF in it.</p>)
+            : (pdfOnly && found.type !== "pdf"
+              ? <p className="notice notice-warn" role="note">The splitter takes a PDF; this is a {found.type}. Export it as a PDF in Google and upload that.</p>
+              : <button type="button" className="primary" disabled={found.readable === false} onClick={() => onPick(ref.trim(), found.name ?? "the file", found.size ?? null)}>{pdfOnly ? "Choose this file" : `Pick this file for ${slot.title}`}</button>)}
         </div>
       )}
     </div>
@@ -342,8 +357,8 @@ function UploadTab({ slot, by, onDone, onCancel }: { slot: ChooserSlot; by: stri
 /** "Choose a file from Drive for THE SLOT": a modal dialog with three sources, each ending in the same preview and confirm. Drive is
  * browsed or searched through jason's own Drive token (a POST for each read, so a name or link is never in a web address); a pasted
  * link is looked up; an upload stays in jason's store. Escape closes it and nothing is picked. */
-export function DriveChooser({ slot, by, startTab = "drive", onClose, onDone }: {
-  slot: ChooserSlot; by: string; startTab?: ChooserTab; onClose: () => void; onDone: (p: Plan) => void;
+export function DriveChooser({ slot, by, startTab = "drive", onClose, onDone, pick }: {
+  slot: ChooserSlot; by: string; startTab?: ChooserTab; onClose: () => void; onDone: (p: Plan) => void; pick?: ChooserPick;
 }) {
   const id = useId();
   const [tab, setTab] = useState<ChooserTab>(startTab);
@@ -352,6 +367,8 @@ export function DriveChooser({ slot, by, startTab = "drive", onClose, onDone }: 
   const head = useRef<HTMLHeadingElement | null>(null);
   useEffect(() => { head.current?.focus(); }, []);
 
+  const TABS = pick ? ALL_TABS.filter((t) => t.id !== "upload") : ALL_TABS;
+  const choose = (file: { ref: string; name: string; size: number | null }) => { pick?.onChoose(file); onClose(); };
   const keys = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
     if (e.key !== "Tab" || !dialog.current) return;
@@ -373,7 +390,7 @@ export function DriveChooser({ slot, by, startTab = "drive", onClose, onDone }: 
     <div className="record-overlay" onKeyDown={keys}>
       <div role="dialog" aria-modal="true" aria-labelledby={`${id}-h`} className="record-dialog" ref={dialog}>
         <header className="record-dialog-head">
-          <h2 id={`${id}-h`} tabIndex={-1} ref={head}>{`Choose a file from Drive for ${slot.title}`}</h2>
+          <h2 id={`${id}-h`} tabIndex={-1} ref={head}>{pick ? pick.title : `Choose a file from Drive for ${slot.title}`}</h2>
           <button type="button" onClick={onClose} aria-label="Close without picking anything">Close</button>
         </header>
         {step ? (
@@ -386,8 +403,12 @@ export function DriveChooser({ slot, by, startTab = "drive", onClose, onDone }: 
               ))}
             </div>
             <div role="tabpanel" id={`${id}-p-${tab}`} aria-labelledby={`${id}-t-${tab}`} className="record-tabpanel">
-              {tab === "drive" && <DriveTab slot={slot} onPick={(its) => setStep(its.length === 1 ? { kind: "pick", ref: its[0].id, name: its[0].name } : { kind: "pick", ref: its[0].id, name: `${its.length} files`, many: its.map((i) => ({ ref: i.id, name: i.name })) })} onBind={(c) => setStep({ kind: "bind", ref: c.id, name: c.name })} />}
-              {tab === "paste" && <PasteTab slot={slot} onPick={(ref, name) => setStep({ kind: "pick", ref, name })} onBind={(ref, name) => setStep({ kind: "bind", ref, name })} />}
+              {tab === "drive" && (pick
+                ? <DriveTab slot={slot} pdfOnly onPick={(its) => choose({ ref: its[0].id, name: its[0].name, size: its[0].size })} />
+                : <DriveTab slot={slot} onPick={(its) => setStep(its.length === 1 ? { kind: "pick", ref: its[0].id, name: its[0].name } : { kind: "pick", ref: its[0].id, name: `${its.length} files`, many: its.map((i) => ({ ref: i.id, name: i.name })) })} onBind={(c) => setStep({ kind: "bind", ref: c.id, name: c.name })} />)}
+              {tab === "paste" && (pick
+                ? <PasteTab slot={slot} pdfOnly onPick={(ref, name, size) => choose({ ref, name, size })} />
+                : <PasteTab slot={slot} onPick={(ref, name) => setStep({ kind: "pick", ref, name })} onBind={(ref, name) => setStep({ kind: "bind", ref, name })} />)}
               {tab === "upload" && <UploadTab slot={slot} by={by} onDone={onDone} onCancel={onClose} />}
             </div>
           </>

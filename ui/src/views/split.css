@@ -214,3 +214,40 @@
 .split-turn-list select { min-width: 12rem; }
 .split-turn-page { min-width: 16rem; }
 @media (pointer: coarse) { .split-walk button, .split-flag-item .row button, .split-flag-list button { min-height: 44px; } }
+
+/* the library explorer (docs/pdf-splitter.md, "Choosing a file from the library"): chips are buttons that say pressed with a check and a
+   heavier outline (and aria-pressed), never by colour alone; a row is a radio and its label; the phone shows a card for each file */
+.lib-browser { display: grid; gap: .6rem; min-width: 0; }
+.lib-search { display: grid; gap: .3rem; }
+.lib-search input[type="search"] { flex: 1 1 14rem; min-width: 0; }
+.lib-more > summary { cursor: pointer; width: fit-content; }
+.lib-more-body { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: end; padding-top: .4rem; }
+.lib-more-body .muted { flex-basis: 100%; margin: 0; }
+.lib-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.lib-chips button { padding: .25rem .65rem; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-size: .85rem; cursor: pointer; }
+.lib-chips button[aria-pressed="true"] { border: 2px solid var(--accent); padding: calc(.25rem - 1px) calc(.65rem - 1px); font-weight: 650; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.lib-chips button[aria-pressed="true"]::before { content: "\2713\00a0"; }
+.lib-tools { align-items: end; }
+.lib-count { margin: 0; }
+.lib-table-wrap { max-height: 28rem; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.lib-table { width: 100%; border-collapse: collapse; min-width: 44rem; }
+.lib-table th, .lib-table td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.lib-table thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.lib-table tbody tr { cursor: pointer; }
+.lib-table tbody tr[data-off] { cursor: default; color: var(--muted); }
+.lib-table tbody tr[data-selected] { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); box-shadow: inset 4px 0 0 var(--accent); }
+.lib-table tbody tr:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lib-name { font-weight: 600; overflow-wrap: anywhere; }
+.lib-why, .lib-caveats { margin: .2rem 0 0; font-size: .85rem; }
+.lib-caveats { padding-left: 1.2rem; }
+.lib-text { display: inline-flex; gap: .25rem; align-items: center; }
+@media (pointer: coarse) { .lib-chips button, .lib-table input[type="radio"], .lib-search button, .lib-tools button, .lib-tools select { min-height: 44px; } .lib-table input[type="radio"] { min-width: 24px; } }
+@media (max-width: 719px) {
+  .lib-table { min-width: 0; }
+  .lib-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .lib-table, .lib-table tbody, .lib-table tr, .lib-table td, .lib-table th[scope="row"] { display: block; }
+  .lib-table tr { padding: .6rem .5rem; border-bottom: 1px solid var(--line); content-visibility: auto; contain-intrinsic-size: auto 9rem; }
+  .lib-table td, .lib-table th[scope="row"] { border: 0; padding: .15rem 0; }
+  .lib-table td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: .8rem; }
+  .lib-table-wrap { max-height: 70vh; }
+}

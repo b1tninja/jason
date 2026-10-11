@@ -62,6 +62,41 @@ def build(data: Path, dist: Path, required: bool = False):
     return app
 
 
+def seed_library(data: Path) -> None:
+    """A made-up library for the explorer: three PDFs (a 13-page scan filed from the PayHOA library, a 2-page minutes file taken in by
+    hand with its text held, and a confidential statement), their classification rows, and the text the library holds for one."""
+    import sqlite3
+
+    import pymupdf
+
+    from jason.community import split_gold
+    from jason.tasks.library import SCHEMA
+
+    files = data / "library" / "files"
+    (data / "library" / "text").mkdir(parents=True, exist_ok=True)
+    (files / "Board").mkdir(parents=True, exist_ok=True)
+    (files / "Confidential").mkdir(parents=True, exist_ok=True)
+    (files / "Board" / "Combined Scan 2099.pdf").write_bytes(split_gold.numbered().pdf)
+
+    def small(path: Path, pages: list[str]) -> None:
+        doc = pymupdf.open()
+        for text in pages:
+            doc.new_page().insert_text((72, 100), text)
+        doc.save(str(path))
+        doc.close()
+
+    small(files / "Board" / "Board Minutes 2099-06.pdf", ["Minutes of the board meeting, made up.", "Motion carried, made up."])
+    small(files / "Confidential" / "Bank Statement 2099-06.pdf", ["Statement, made up."])
+    (data / "library" / "text" / "7002.txt").write_text("Minutes of the board meeting, made up.", encoding="utf-8")
+    rows = [("7001", "payhoa", "Board/Combined Scan 2099.pdf", "Combined Scan 2099.pdf", "", "", "", "NONE", "2099-06", 0),
+            ("7002", "ingest", "Board/Board Minutes 2099-06.pdf", "Board Minutes 2099-06.pdf", "minutes", "governance", "minutes", "NAME", "2099-06", 0),
+            ("7003", "payhoa", "Confidential/Bank Statement 2099-06.pdf", "Bank Statement 2099-06.pdf", "bank_statement", "financial", "", "NAME", "2099-06", 1)]
+    with sqlite3.connect(data / "library" / "library.db") as conn:
+        conn.execute(SCHEMA)
+        conn.executemany("INSERT INTO documents (id, source, path, name, kind, category, records, method, period, confidential, evidence)"
+                         " VALUES (?,?,?,?,?,?,?,?,?,?,'')", rows)
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--port", type=int, default=8765)
@@ -80,6 +115,7 @@ def main(argv: list[str] | None = None) -> None:
 
     (data / "e2e").mkdir(exist_ok=True)
     (data / "e2e" / "sample.pdf").write_bytes(split_gold.numbered().pdf)      # five made-up documents of 3, 2, 4, 1, and 3 pages
+    seed_library(data)
     os.environ["JASON_DATA_DIR"] = str(data.resolve())      # every store the console reads or writes is under the throwaway folder
     app = build(data, Path(a.dist), a.require_sign_in)
     from waitress import serve

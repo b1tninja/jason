@@ -9,6 +9,10 @@ import { realBackend, type ListAnswer, type OpenAnswer, type OpenRef, type Split
 import { DemoBackend } from "./splitDemo";
 import { DEMO_ID, parseSplitRoute, sizeText, splitRoute, type ListedSession } from "./splitModel";
 import { useFileBytes, useUploadCap } from "./RecordActs";
+import { DriveChooser, NotConnected, type ChooserSlot } from "./DriveChooser";
+import { LibraryBrowser } from "./LibraryBrowser";
+import { libraryFiles, type LibraryFile } from "./libraryModel";
+import "./records.css";
 import "./split.css";
 
 let demo: DemoBackend | null = null;
@@ -38,15 +42,21 @@ function stamp(t: string): string { return t ? t.slice(0, 16).replace("T", " ") 
 
 /** Opening a file: choose one (upload, or a library id), check it (a dry run, in the server's words: its pages, its size, the limit it
  * may hit), then open it. A draft write keeps a copy and a session; no PDF is written until the review's confirm. */
-function OpenPanel({ backend, by }: { backend: SplitBackend; by: string }) {
-  const [tab, setTab] = useState<"upload" | "library">("upload");
+type OpenTab = "upload" | "library" | "drive";
+const DRIVE_SLOT: ChooserSlot = { key: "split", title: "splitting", cardinality: "one", source: "" };
+
+export function OpenPanel({ backend, by, libraryFetcher }: { backend: SplitBackend; by: string; libraryFetcher?: typeof libraryFiles }) {
+  const [tab, setTab] = useState<OpenTab>("upload");
   const file = useFileBytes();
   const cap = useUploadCap();
-  const [lib, setLib] = useState("");
+  const [lib, setLib] = useState<LibraryFile | null>(null);
+  const [drive, setDrive] = useState<{ ref: string; name: string; size: number | null } | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const [checked, setChecked] = useState<OpenAnswer | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const ref: OpenRef | null = tab === "upload" ? (file.file ? { kind: "upload", name: file.file.name, base64: file.file.base64 } : null) : lib.trim() ? { kind: "library", id: lib.trim() } : null;
+  const ref: OpenRef | null = tab === "upload" ? (file.file ? { kind: "upload", name: file.file.name, base64: file.file.base64 } : null)
+    : tab === "library" ? (lib?.id ? { kind: "library", id: lib.id } : null) : drive ? { kind: "drive", id: drive.ref } : null;
   const tooBig = tab === "upload" && !!file.file && cap.bytes !== null && file.file.size > cap.bytes;
   const reset = () => { setChecked(null); setError(""); };
   const go = async (dry: boolean) => {
@@ -54,7 +64,8 @@ function OpenPanel({ backend, by }: { backend: SplitBackend; by: string }) {
     setBusy(true); setError("");
     try {
       const a = await backend.open(ref, dry, by);
-      if (dry) setChecked(a);
+      if (a.driveConnected === false) setChecked(a);
+      else if (dry) setChecked(a);
       else if (a.session) window.location.hash = splitRoute(a.session.id).slice(1);
     } catch (e) { setChecked(null); setError((e as Error).message); } finally { setBusy(false); }
   };
@@ -64,6 +75,7 @@ function OpenPanel({ backend, by }: { backend: SplitBackend; by: string }) {
       <div role="group" aria-label="Where the file is" className="row wrap">
         <button type="button" aria-pressed={tab === "upload"} onClick={() => { setTab("upload"); reset(); }}>From this computer</button>
         <button type="button" aria-pressed={tab === "library"} onClick={() => { setTab("library"); reset(); }}>From the library</button>
+        <button type="button" aria-pressed={tab === "drive"} onClick={() => { setTab("drive"); reset(); }}>From Drive</button>
       </div>
       {tab === "upload" ? (
         <div className="split-field">
@@ -74,23 +86,37 @@ function OpenPanel({ backend, by }: { backend: SplitBackend; by: string }) {
           {file.file && <p className="muted">{file.file.name}, {sizeText(file.file.size)}. {cap.words ? `The largest upload is ${cap.words}.` : ""}</p>}
           {tooBig && <p className="notice notice-warn" role="alert">This file is {sizeText(file.file!.size)}; the largest upload is {cap.words}. Nothing was sent. Split the scan into smaller files first, or ask your community's administrator to raise the limit.</p>}
         </div>
+      ) : tab === "library" ? (
+        <div className="split-field">
+          <LibraryBrowser selectedId={lib?.id ?? ""} fetcher={libraryFetcher} onSelect={(f) => { setLib(f); reset(); }} />
+          <p className="muted" role="status">{lib ? `Chosen: ${lib.name}${lib.pages ? `, ${lib.pages} pages` : ""}${lib.size !== null ? `, ${sizeText(lib.size)}` : ""}.` : "No file chosen yet."}</p>
+        </div>
       ) : (
         <div className="split-field">
-          <label htmlFor="split-lib">Library file id</label>
-          <input id="split-lib" value={lib} onChange={(e) => { setLib(e.target.value); reset(); }} placeholder="for example 1a2b3c" autoComplete="off" />
-          <p className="muted">The id the library gives a file (the Library action "Split document" opens it the same way).</p>
+          <p>
+            <button type="button" onClick={() => setChoosing(true)}>{drive ? "Choose a different file in Drive" : "Choose a PDF in Drive"}</button>
+          </p>
+          {drive
+            ? <p role="status">Chosen in Drive: <strong>{drive.name}</strong>{drive.size !== null ? `, ${sizeText(drive.size)}` : ""}.</p>
+            : <p className="muted" role="status">No file chosen yet.</p>}
+          <p className="muted">jason reads Drive with its own account and writes nothing there. A file that account cannot see is not listed: share it with the account shown, or upload the file.</p>
+          {choosing && <DriveChooser slot={DRIVE_SLOT} by={by} startTab="drive" onClose={() => setChoosing(false)} onDone={() => undefined}
+            pick={{ title: "Choose a PDF in Drive to split", onChoose: (f) => { setDrive(f); reset(); } }} />}
         </div>
       )}
-      <p className="muted">A file in Drive: put it in the library or upload it first. The splitter reads a copy and never changes the original.</p>
+      <p className="muted">The splitter reads a copy and never changes the original, wherever it is.</p>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
+      {checked && checked.driveConnected === false && <NotConnected d={checked} />}
       {checked?.dryRun && checked.would && (
         <div className="split-preview" role="region" aria-label="What opening will do">
           <h3>What will happen</h3>
-          <p>{checked.would.pages} pages, {sizeText(checked.would.size)}. It keeps {checked.would.keeps}. {checked.note}</p>
+          {checked.would.pages === null
+            ? <p>{checked.would.size !== null ? `${sizeText(checked.would.size)}. ` : ""}{checked.would.fetches ? `${checked.would.fetches.charAt(0).toUpperCase()}${checked.would.fetches.slice(1)}. ` : ""}Its pages are counted when it is read. It keeps {checked.would.keeps}. {checked.note}</p>
+            : <p>{checked.would.pages} pages, {sizeText(checked.would.size ?? 0)}. It keeps {checked.would.keeps}. {checked.note}</p>}
         </div>
       )}
       <div className="row wrap">
-        {!checked ? <button type="button" className="primary" disabled={!ref || busy || tooBig} onClick={() => go(true)}>Check the file</button>
+        {!checked?.dryRun ? <button type="button" className="primary" disabled={!ref || busy || tooBig} onClick={() => go(true)}>Check the file</button>
           : <button type="button" className="primary" disabled={busy} onClick={() => go(false)}>Open it for splitting</button>}
       </div>
     </section>

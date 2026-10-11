@@ -4,11 +4,15 @@ import type { ActAnswer, ApplyAnswer, ListedSession, Review, SessionAnswer, Sess
 /** What the splitter's screens ask of a server. `RealBackend` is the console's routes (docs/pdf-splitter.md, section 9.4); the demo
  * (`splitDemo.ts`) answers the same questions from memory, so a person can try the interactions with no server. */
 export interface OpenAnswer {
-  ok?: boolean; resumed?: boolean; session?: SessionView; dryRun?: boolean; would?: { act: string; pages: number; size: number; by: string; keeps: string };
+  ok?: boolean; resumed?: boolean; session?: SessionView; dryRun?: boolean;
+  /** `pages` is null for a Drive file (its pages are counted when it is read, after the checks); `fetches` says so in words. */
+  would?: { act: string; pages: number | null; size: number | null; by: string; keeps: string; source?: string; fetches?: string; pagesCounted?: string };
   note?: string; factsPending?: boolean; caveats?: string[];
+  /** Drive is not connected on this server: `found` is false, with the sentence and the command that fixes it. */
+  found?: boolean; driveConnected?: boolean; why?: string; command?: string;
 }
 export interface ListAnswer { found?: boolean; note?: string; sessions: ListedSession[]; limits?: { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number }; caveats?: string[] }
-export type OpenRef = { kind: "library"; id: string } | { kind: "upload"; name: string; base64: string };
+export type OpenRef = { kind: "library"; id: string } | { kind: "upload"; name: string; base64: string } | { kind: "drive"; id: string };
 export type ActBody = { act: string; by?: string; version?: number; dryRun?: boolean; [k: string]: unknown };
 export type AnyAnswer = ActAnswer & ApplyAnswer & { review?: Review };
 

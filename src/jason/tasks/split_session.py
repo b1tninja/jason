@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import sqlite3
+import logging
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,6 +34,8 @@ from jason import limits, storage
 from jason.community import split_suggest
 from jason.community.split_session import PageFact, Source, SplitConflict, SplitSession, new_id, now
 from jason.tasks import record_slots as rs
+
+log = logging.getLogger(__name__)
 
 FOLDER = "split"
 INLINE_PAGES = 60                    # a file this short has its facts and first suggestions made as it opens; a longer one is a job
@@ -130,7 +133,7 @@ def _library_row(root: Path, doc_id: str) -> dict[str, Any] | None:
 def _resolve(ref: dict[str, Any], root: Path) -> dict[str, Any]:
     """Where the bytes come from: ``{"path": Path | None, "data": bytes | None, "kind", "ref", "confidential", "stamp"}``. A ref is
     ``{"kind": "library", "id"}``, ``{"kind": "path", "path"}`` (a person's own machine: the command line), ``{"kind": "upload", "name",
-    "base64"}`` (the console), or ``{"kind": "drive"}`` (not built: a Drive pick is copied to the library or uploaded first)."""
+    "base64"}`` (the console), or ``{"kind": "drive", "id"}`` (a Drive file id or link; ``open_session`` reads it once, see ``_fetch_drive``)."""
     kind = str(ref.get("kind") or ("library" if ref.get("id") else "path" if ref.get("path") else "")).strip().lower()
     if kind == "library":
         row = _library_row(root, str(ref.get("id") or ""))
@@ -170,8 +173,7 @@ def _resolve(ref: dict[str, Any], root: Path) -> dict[str, Any]:
             raise ValueError("the splitter takes a PDF")
         return {"path": None, "data": data, "kind": kind, "ref": "", "confidential": False, "stamp": ""}
     if kind == "drive":
-        raise ValueError("A Drive file is split from a copy: put it in the library or upload it first (picking from Drive comes "
-                         "with the record chooser's join). Nothing was opened.")
+        raise ValueError("A Drive file is fetched by open_session (it needs the Drive client); nothing was opened.")
     raise ValueError("a file to split is a library id, a path on this machine, or an upload")
 
 
@@ -413,15 +415,74 @@ def find_resumable(root: Path, sha256: str) -> SplitSession | None:
     return None
 
 
+DRIVE_PDF = "application/pdf"
+
+
+def _fetch_drive(ref: dict[str, Any], root: Path, drive: Any, community: Any, profile: str, *, dry_run: bool) -> dict[str, Any]:
+    """A Drive file into the splitter, read-only and once. The metadata is read first and every refusal that needs only it is made
+    before a byte moves: a link that is not Drive's, a file jason's account cannot open, a folder, a Google Doc or other non-PDF, a
+    file over ``fetch.max_bytes``, a drive with no room (``storage.require_room``). A dry run stops there (it cannot know the pages
+    without the bytes; the real open counts them before it keeps anything). Otherwise the bytes are fetched once, in memory, and
+    returned as a ``found`` for the same hash-addressed copy every other source makes. Nothing is ever written to Drive, and the
+    file's id and name are not logged or put in the history."""
+    from jason.community.record_slots import parse_drive_ref
+    from jason.tasks import drive_choose as dc
+
+    parsed = parse_drive_ref(str(ref.get("id") or ref.get("ref") or ref.get("link") or ""))     # a ValueError says what was wrong
+    if drive is None:
+        drive = dc.open_client()                                     # DriveUnavailable (a ValueError) carries the fix command
+    try:
+        meta = drive.file_metadata(parsed.id, dc.FIELDS)
+    except Exception as exc:  # noqa: BLE001 - a Google refusal is told in jason's words, never with its text
+        raise ValueError(dc.refusal_words(exc).replace("Nothing was picked.", "Nothing was opened.")) from None
+    mime = str(meta.get("mimeType") or "")
+    ok, why = dc.readable(meta)
+    if mime == dc.FOLDER_MIME_TYPE:
+        raise ValueError("That is a folder, not a file. Open the folder and choose a PDF in it. Nothing was opened.")
+    if mime != DRIVE_PDF:
+        raise ValueError(f"The splitter takes a PDF, and that is {('a ' + dc.type_word(mime)) if mime else 'not a PDF'}. "
+                         "Export it as a PDF in Google (File, Download, PDF) and upload that. Nothing was opened.")
+    if not ok:
+        raise ValueError(f"jason cannot open this file: {why}. Nothing was opened.")
+    size = dc._size(meta)
+    cap = int(limits.value("fetch.max_bytes", community=community))
+    if size is not None:
+        limits.check("fetch.max_bytes", size, community=community, record=not dry_run)
+    held = bool(dc.known(community, root, profile).for_item(meta).get("held"))
+    if dry_run:
+        return {"dry": True, "size": size, "held": held, "cap": cap}
+    if size is not None:
+        storage.require_room(Path(root), size)
+    try:
+        data = drive.download_bytes(parsed.id)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(dc.refusal_words(exc).replace("Nothing was picked.", "Nothing was opened.")) from None
+    if len(data) > cap:
+        raise limits.refusal("fetch.max_bytes", len(data), cap)
+    log.info("split: one file read from Drive (%d bytes)", len(data))
+    return {"path": None, "data": data, "kind": "drive", "ref": "", "confidential": held, "stamp": ""}
+
+
 def open_session(ref: dict[str, Any], *, by: str, dry_run: bool = False, suggest: bool = True, facts: bool | None = None,
-                 community: Any = None, root: Path | None = None, profile: str | None = None) -> dict[str, Any]:
+                 community: Any = None, root: Path | None = None, profile: str | None = None, drive: Any = None) -> dict[str, Any]:
     """Open a file for splitting, or resume the draft on the same bytes. ``dry_run`` says what would happen and keeps nothing (no copy,
     no session). A file over ``split.max_pages`` is refused in the limit's words before anything is kept. Small files get their facts
     and the first suggestions now; a longer one is left with its facts pending for a job (``queue_facts``)."""
     root = _root(root)
     profile = rs._profile(profile, community)
     person = rs._who(by)
-    found = _resolve(ref, root)
+    if str(ref.get("kind") or "").strip().lower() == "drive":
+        got = _fetch_drive(ref, root, drive, community, profile, dry_run=dry_run)
+        if got.get("dry"):
+            return {"dryRun": True, "would": {"act": "open", "pages": None, "size": got["size"], "by": person, "source": "drive",
+                                              "keeps": "a copy of the file under the splitter's own folder and a draft session",
+                                              "fetches": "one read of the file from Drive; the original is never changed",
+                                              "pagesCounted": "when the file is read"},
+                    "note": "A dry run: nothing was read or kept. Its pages are counted when the file is read, and a file over the "
+                            "splitter's page limit is refused before a copy is kept. Add --yes to open the file.", "caveats": list(CAVEATS)}
+        found = got
+    else:
+        found = _resolve(ref, root)
     pages = _peek_pages(found)
     limits.check("split.max_pages", pages, community=community, record=not dry_run)
     if dry_run:
@@ -430,6 +491,7 @@ def open_session(ref: dict[str, Any], *, by: str, dry_run: bool = False, suggest
                                           "keeps": "a copy of the file under the splitter's own folder and a draft session"},
                 "note": "A dry run: nothing was kept. Add --yes to open the file.", "caveats": list(CAVEATS)}
     sha, size = _ingest(root, found)
+    found["data"] = None                     # the bytes are in the store now; hold no second copy while the facts are read
     existing = find_resumable(root, sha)
     if existing is not None:
         return {"ok": True, "resumed": True, "session": view_of(root, existing), "caveats": list(CAVEATS)}
@@ -449,7 +511,8 @@ def open_session(ref: dict[str, Any], *, by: str, dry_run: bool = False, suggest
         session.notes.append("Page facts are not measured yet; they fill in as the background job runs.")
         save(root, session)
         out["factsPending"] = True
-    _history(root, {"profile": profile, "act": "split-open", "session": session.id, "by": person, "pages": pages})
+    _history(root, {"profile": profile, "act": "split-open", "session": session.id, "by": person, "pages": pages,
+                     "from": found["kind"]})
     out["session"] = view_of(root, session)
     out["caveats"] = list(CAVEATS)
     return out

@@ -11,8 +11,12 @@
 - ``write(key, body)`` is ``POST /api/write/split/<session id>`` (``/api/write/split/new`` for ``open``), behind the write guard's token,
   with ``by`` (the signed-in person; a different name is refused). ``body["act"]`` is one of:
 
-  - ``open`` ``{"ref": {"kind": "library", "id": ...} | {"kind": "upload", "name": ..., "base64": ...}, "dryRun": false}``: start or
-    resume (the same bytes resume the same draft). A server path is never taken from the console;
+  - ``open`` ``{"ref": {"kind": "library", "id": ...} | {"kind": "upload", "name": ..., "base64": ...} | {"kind": "drive", "id": <Drive
+    file id or link>}, "dryRun": false}``: start or resume (the same bytes resume the same draft). A server path is never taken from the
+    console. A **Drive** file is read once, read-only, with the server's Drive token (never a browser): the dry run reads only its
+    metadata and says what would happen (its pages are counted when it is read); the open refuses a folder, a non-PDF, a file over
+    ``fetch.max_bytes``, a full drive, and a file over ``split.max_pages`` before it keeps a copy. When Drive is not connected the answer
+    is ``{"found": false, "driveConnected": false, "why", "command"}``. Nothing is written to Drive;
   - ``boundaries`` ``{"boundaries": [[page, level], ...], "version": N}``: the autosave, the whole boundary set (one undo step);
   - ``mark`` / ``unmark`` ``{"pages": [..]}``, ``move`` ``{"from", "to"}``, ``level`` ``{"page", "level"}``, ``clear`` ``{"pages": [..]}``,
     ``range`` ``{"first", "last", "every"}``, ``label`` ``{"page", "field", "value"}``, ``undo``, ``redo``, ``accept`` / ``reject``
@@ -29,7 +33,7 @@
     degrees jason measured the page's text needs), or ``"sideways"`` for every page measured sideways. ``review`` takes the same;
   - ``decline`` ``{"dryRun": false}``.
 
-Nothing here reaches Drive, PayHOA, Google, or the county. A confidential file is masked in every answer, and its pictures need the
+Nothing here reaches PayHOA, Google, or the county; the one Drive read is ``open`` with ``{"kind": "drive"}``, and it writes nothing there. A confidential file is masked in every answer, and its pictures need the
 private view (``jason.web.split``).
 """
 
@@ -144,7 +148,21 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             ref = dict(body.get("ref") or {})
             if ref.get("path") or str(ref.get("kind") or "") == "path":
                 raise ValueError("the console opens a library file or an upload's bytes, never a path on the server")
-            out = ss.open_session(ref, by=by, dry_run=bool(body.get("dryRun")), community=community, root=root)
+            client = None
+            if str(ref.get("kind") or "") == "drive":
+                from jason.tasks import drive_choose
+                from jason.web.extra import drive_choose as web_drive
+
+                try:
+                    client = web_drive._open()
+                except drive_choose.DriveUnavailable as exc:
+                    return drive_choose.unavailable_answer(exc)
+            try:
+                out = ss.open_session(ref, by=by, dry_run=bool(body.get("dryRun")), community=community, root=root, drive=client)
+            finally:
+                closer = getattr(client, "close", None)
+                if callable(closer):
+                    closer()
             if not body.get("dryRun") and out.get("factsPending"):
                 out.update(ss.queue_facts(root, out["session"]["id"], by))
             return {"ok": True, "act": act, **{k: v for k, v in out.items() if k != "ok"}}

@@ -100,13 +100,16 @@ describe("the start screen", () => {
     const calls = serve({
       "/api/split-sessions": { sessions: [] },
       "/api/limits": { limits: [{ key: "upload.max_bytes", value: 10, words: "10 bytes" }] },
+      "/api/write/library/files": { found: true, total: 1, next: null, uncounted: 0, sort: "modified", order: "desc", empty: "",
+        counts: { kinds: { minutes: 1 }, sources: { payhoa: 1 }, files: 1, all: 1, noText: 0, withDraft: 0, notHere: 0 },
+        files: [{ id: "lib-1", name: "Made Up Minutes.pdf", kind: "minutes", source: "payhoa", sourceLabel: "PayHOA", pages: 5000, size: 9000, modified: "2099-06-01", added: "", hasText: true, draft: null, held: false, copies: 1, onDisk: true, openable: true, why: "", opens: "" }] },
       "/api/write/split/new": () => ({ status: 400, body: { error: "This file has 5000 pages; the splitter opens files of up to 3000. Nothing was changed." } }),
     });
     window.location.hash = "#/setup/split";
     render(<SplitView />);
     await screen.findByText(/No drafts yet/);
     await user.click(screen.getByRole("button", { name: "From the library" }));
-    await user.type(screen.getByLabelText("Library file id"), "lib-1");
+    await user.click(await screen.findByRole("radio", { name: /Made Up Minutes\.pdf/ }));
     await user.click(screen.getByRole("button", { name: "Check the file" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("This file has 5000 pages; the splitter opens files of up to 3000. Nothing was changed.");
     await user.click(screen.getByRole("button", { name: "From this computer" }));

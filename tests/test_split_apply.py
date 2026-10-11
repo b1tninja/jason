@@ -74,7 +74,7 @@ def test_a_dry_run_open_keeps_nothing_and_a_file_over_the_page_limit_is_refused_
     encrypted.write_bytes(doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="x", owner_pw="y"))
     with pytest.raises(ValueError, match="could not be read: it is protected with a password"):
         open_(world, encrypted)
-    with pytest.raises(ValueError, match="Drive file is split from a copy"):
+    with pytest.raises(ValueError, match="neither a Drive link nor a file id"):          # a Drive file is read by its id (tests/test_split_library_drive.py)
         ss.open_session({"kind": "drive", "id": "x"}, by=BY, **kw(world))
     with pytest.raises(ValueError, match="no such file"):
         ss.open_session({"kind": "path", "path": str(world.tmp / "nope.pdf")}, by=BY, **kw(world))

@@ -77,6 +77,51 @@ test.describe("signed in, the splitter", () => {
     await expect(row).toContainText("13");
   });
 
+  test("the library is browsed, searched by POST, filtered, and a file opened from it", async ({ page, watch }) => {
+    await signIn(page, "A Manager", "setup/split");
+    await page.getByRole("button", { name: "From the library" }).click();
+    const table = page.getByRole("table", { name: /Files in the library/ });
+    await expect(table.getByText("Combined Scan 2099.pdf")).toBeVisible();
+    await expect(table.getByText("Board Minutes 2099-06.pdf")).toBeVisible();
+    await expect(page.getByTestId("lib-count")).toContainText("3 of 3 files shown");
+
+    // a confidential file is named by its kind, has no radio to choose, and its real name appears nowhere
+    const held = table.getByRole("row").filter({ hasText: "a confidential file (kind: bank statement)" });
+    await expect(held.getByRole("radio")).toBeDisabled();
+    await expect(page.getByText("Bank Statement 2099-06.pdf")).toHaveCount(0);
+
+    // the chips narrow the list and say pressed; the file's page count was counted from the file
+    const kinds = page.getByRole("group", { name: "Kind of document" });
+    await kinds.getByRole("button", { name: "minutes (1)" }).click();
+    await expect(kinds.getByRole("button", { name: "minutes (1)" })).toHaveAttribute("aria-pressed", "true");
+    await expect(table.getByText("Combined Scan 2099.pdf")).toHaveCount(0);
+    await expect(table.getByRole("row").filter({ hasText: "Board Minutes" })).toContainText("text held");
+    await kinds.getByRole("button", { name: "All kinds (3)" }).click();
+    await expect(table.getByText("Combined Scan 2099.pdf")).toBeVisible();
+
+    // a name is searched in a POST body and never in a web address
+    await page.getByLabel("Search by file name").fill("combined");
+    await page.getByLabel("Search by file name").press("Enter");
+    await expect(table.getByText("Board Minutes 2099-06.pdf")).toHaveCount(0);
+    expect(watch.calls.some((c) => c.method === "POST" && c.url === "/api/write/library/files")).toBe(true);
+    expect(watch.calls.filter((c) => c.url.toLowerCase().includes("combined")), "the name reached a web address").toEqual([]);
+
+    // choose it by keyboard (the radio), check it, open it
+    await table.getByRole("radio", { name: /Combined Scan 2099\.pdf/ }).check();
+    await expect(page.getByText(/Chosen: Combined Scan 2099\.pdf, 13 pages/)).toBeVisible();
+    await page.getByRole("button", { name: "Check the file" }).click();
+    await expect(page.getByRole("region", { name: "What opening will do" })).toContainText("13 pages");
+    await page.getByRole("button", { name: "Open it for splitting" }).click();
+    await expect(page.getByLabel("Draft summary")).toContainText("13 pages");
+    await quiet(page, watch);                                  // the page pictures finish loading before the page is left
+
+    // back at the explorer, the file says a draft exists and links to it
+    await page.evaluate(() => { window.location.hash = "#/setup/split"; });
+    await page.getByRole("button", { name: "From the library" }).click();
+    const row = page.getByRole("table", { name: /Files in the library/ }).getByRole("row").filter({ hasText: "Combined Scan 2099.pdf" });
+    await expect(row).toContainText("draft exists");
+  });
+
   test("the demo needs no server", async ({ page, watch }) => {
     await signIn(page, "A Manager", "setup/split/demo");
     await expect(page.getByRole("note").filter({ hasText: "Made-up pages" })).toBeVisible();
