@@ -14,16 +14,21 @@ here changes, moves, shares, or copies a file.
   word that the set is complete, signed.
 - ``reopen``: takes back the standing answer (not applicable, none exists, waiting) or a closed set. It stays in the trail
   and no longer counts.
+- ``pick_many``: several files for a series or a set in one act, each its own pin, each checked against the slot first; only the clear
+  ones are pinned.
+- ``current``: when a slot has two holders, a person says which is current, with the reason. The person's other pins are unpinned; a pin
+  the specification holds comes back as the text of a patch for a person to apply.
 - ``bind``: a Drive folder named for a slot. Its files are candidates, never pins. For a Civil Code 5200 record the answer
   carries the *proposed* text of a sync rule for a person to apply to the profile; jason edits nothing.
 """
 
 from __future__ import annotations
 
+import json
 import secrets
 from typing import Any
 
-from jason.community.record_slots import Cardinality, Pin, PinKind, parse_drive_ref
+from jason.community.record_slots import Cardinality, Origin, Pin, PinKind, parse_drive_ref
 from jason.tasks import record_slots as rs
 
 MORE_VALUES = {"yes": "yes", "no": "no", "another": "yes", "all": "no"}
@@ -241,4 +246,169 @@ def bind(slot_key: str, folder: str, *, by: str, drive: Any = None, note: str = 
             "proposal": proposal}
 
 
-__all__ = ["bind", "keep", "more", "repin", "reopen"]
+def _file_rows(files: Any) -> list[dict[str, str]]:
+    """The files of a pick, each as ``{"file", "period", "entry", "note"}``: a link or id, or a mapping with those keys."""
+    rows = []
+    for item in (files if isinstance(files, (list, tuple)) else [files]):
+        if isinstance(item, dict):
+            rows.append({k: str(item.get(k) or "").strip() for k in ("file", "period", "entry", "note")})
+        else:
+            rows.append({"file": str(item or "").strip(), "period": "", "entry": "", "note": ""})
+    return [r for r in rows if r["file"]]
+
+
+def _repeating_key_document(slot: Any) -> bool:
+    from jason.community.key_documents import key_document
+
+    row = key_document(slot.key_document) if getattr(slot, "key_document", "") else None
+    return bool(row is not None and row.repeats)
+
+
+def pick_many(slot_key: str, files: Any, *, by: str, period: str = "", note: str = "", entry: str = "", drive: Any = None,
+              dry_run: bool = True, community: Any = None, root: Any = None, profile: str | None = None) -> dict[str, Any]:
+    """Name several files for a slot in one act (the chooser's multi-select). Each file is its own pin, made as ``pick`` makes it, and each
+    is checked first against what the slot already holds: ``pin`` (will be pinned), ``already`` (this very file is pinned), ``collision``
+    (a slot that holds one already holds a different file, or a series already has a different file for that period), ``duplicate`` (named
+    twice in this request), or ``refused`` (not a file link, a series file with no period, a recorded-instrument file with no instrument
+    number). Only the ``pin`` rows are written; the others are shown and left alone. A slot that holds one takes one file here.
+    ``files`` are links or ids (``library:ID`` too), or mappings with their own ``period``, ``entry``, and ``note``; the ``period``,
+    ``entry``, and ``note`` given here are the default for each. At most ``drive_choose.MAX_PAGE`` files, the most the chooser lists at a
+    time. One history line holds the slot, the pins, and the counts: never a file name."""
+    from jason.tasks import drive_choose
+
+    root = rs._root(root)
+    profile = rs._profile(profile, community)
+    person = rs._who(by)
+    slot, hidden = rs._slot(community, slot_key)
+    if hidden:
+        raise ValueError(f"{slot_key} is hidden by the profile: {hidden}. Nothing was written.")
+    rows = _file_rows(files)
+    if not rows:
+        raise ValueError("name at least one file (a Drive link or id, or library:ID)")
+    if len(rows) > drive_choose.MAX_PAGE:
+        raise ValueError(f"one pick takes at most {drive_choose.MAX_PAGE} files (what the chooser lists at a time); pick the rest in another act")
+    if slot.cardinality is Cardinality.ONE and len(rows) > 1:
+        raise ValueError(f"{slot_key} holds one file: pick one, or choose a slot that holds several or a series")
+    computed = next((c for c in rs.compute(community, root, profile) if c.slot.key == slot_key), None)
+    held = [h for h in (computed.holders if computed else []) if h.kind is not PinKind.FOLDER]
+    repeats = _repeating_key_document(slot)
+    seen: set[tuple[str, str, str]] = set()
+    plan: list[dict[str, Any]] = []
+    for n, r in enumerate(rows, 1):
+        row: dict[str, Any] = {"n": n, "period": r["period"] or period, "entry": r["entry"] or entry, "note": r["note"] or note}
+        try:
+            kind, ref = rs.parse_file_ref(r["file"])
+            row["kind"] = kind.value
+            row["period"] = rs._period(slot, row["period"])
+            if slot.cardinality is Cardinality.SERIES and not row["period"]:
+                raise ValueError(f"{slot_key} is a series: name this file's period")
+            if repeats and not row["entry"]:
+                raise ValueError(f"{slot_key} holds recorded instruments: name this file's recording number")
+        except ValueError as exc:
+            plan.append({**row, "action": "refused", "why": str(exc)})
+            continue
+        per = row["period"]
+        key = (kind.value, ref, per)
+        series = slot.cardinality is Cardinality.SERIES
+        twin = next((h for h in held if h.kind is kind and h.ref == ref and (not series or h.period == per)), None)
+        clash = [h for h in held if not (h.kind is kind and h.ref == ref) and (slot.cardinality is Cardinality.ONE or (series and h.period == per))]
+        earlier = [p for p in plan if p["action"] == "pin" and series and p["period"] == per]
+        if key in seen:
+            plan.append({**row, "action": "duplicate", "why": "named twice in this request"})
+        elif earlier and not clash:
+            plan.append({**row, "action": "collision", "why": f"another file in this request is for {per}: it was left alone"})
+        elif twin is not None:
+            plan.append({**row, "action": "already", "pin": twin.id, "why": "this file is already pinned here"})
+        elif clash:
+            plan.append({**row, "action": "collision", "holders": [h.id for h in clash],
+                         "why": f"{slot_key} already holds a different file" + (f" for {per}" if per else "") + ": it was left alone"})
+        else:
+            plan.append({**row, "action": "pin"})
+            seen.add(key)
+    counts = {a: sum(1 for p in plan if p["action"] == a) for a in ("pin", "already", "collision", "duplicate", "refused")}
+    if dry_run:
+        return {"dryRun": True, "would": {"act": "pick", "slot": slot_key, "by": person, "files": len(rows), **counts}, "parts": plan,
+                "counts": counts, "note": "A dry run: nothing was written. Add --yes to pin the files marked pin; the others are left alone. "
+                                         "Each file is its own pin and nothing is copied, moved, shared, or renamed."}
+    pins: list[str] = []
+    for p, src in zip(plan, rows):
+        if p["action"] != "pin":
+            continue
+        got = rs.pick(slot_key, src["file"], by=person, period=p["period"], note=p["note"], entry=p["entry"], drive=drive,
+                      dry_run=False, community=community, root=root, profile=profile)
+        p["pin"] = got["pin"]
+        pins.append(got["pin"])
+    rs._append_history(root, {"at": rs._now(), "profile": profile, "act": "pick-many", "slot": slot_key, "pins": pins, "by": person,
+                              "counts": counts})
+    return {"dryRun": False, "ok": True, "slot": slot_key, "pins": pins, "pin": pins[0] if pins else "", "parts": plan, "counts": counts,
+            "written": f"spec/{profile}/{rs.STORE}", "reading": f"not read yet: jason records --read {slot_key}"}
+
+
+def currents(profile: str, slot_key: str = "") -> list[dict[str, Any]]:
+    """The collision settlements a person recorded in the records file (newest last), those not taken back; one slot's with ``slot_key``."""
+    from jason.community import private
+
+    try:
+        path = private.path_of("records", profile)
+        data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        return []
+    rows = [r for r in (data.get("currents") or []) if isinstance(r, dict) and not r.get("undone")]
+    return [r for r in rows if not slot_key or r.get("slot") == slot_key]
+
+
+def current(slot_key: str, *, pin: str, reason: str, by: str, dry_run: bool = True, community: Any = None, root: Any = None,
+            profile: str | None = None) -> dict[str, Any]:
+    """Say which holder is current when a slot has two (a collision): a person's choice, with the reason, signed. The chosen pin stays;
+    each other holder that is a person's pin is unpinned (kept in the trail, the file untouched). A holder that is the specification's
+    cannot be removed here: it is a change to the profile, so the answer carries the text of a patch for a person to apply, and until it
+    is applied the slot still shows two holders. The history line holds the slot and the pins, never a file name or the reason (the
+    reason is kept with the choice in the records file)."""
+    root = rs._root(root)
+    profile = rs._profile(profile, community)
+    person = rs._who(by)
+    slot, hidden = rs._slot(community, slot_key)
+    if hidden:
+        raise ValueError(f"{slot_key} is hidden by the profile: {hidden}. Nothing was written.")
+    why = rs._words(reason, "reason this one is current")
+    computed = next((c for c in rs.compute(community, root, profile) if c.slot.key == slot_key), None)
+    clashes = list(computed.collisions) if computed else []
+    if not clashes:
+        raise ValueError(f"{slot_key} has no two holders to settle: nothing to choose between")
+    clash = next((c for c in clashes if any(h["pin"] == pin for h in c["holders"])), None)
+    if not pin or clash is None:
+        ids = ", ".join(h["pin"] for c in clashes for h in c["holders"])
+        raise ValueError(f"name the pin that is current with --pin ({ids})")
+    others = [h for h in clash["holders"] if h["pin"] != pin]
+    mine = [h for h in others if h.get("origin") == Origin.DATA.value]
+    coded = [h for h in others if h.get("origin") == Origin.CODE.value]
+    patch = None
+    if coded:
+        lines = ["# Proposed for the profile (a person applies it; jason edits nothing).",
+                 f"# {slot_key}: {person} chose pin {pin} as current. Remove the specification's pin below, or keep the choice here and let",
+                 "# the two holders show until the profile is changed."]
+        lines += [f"#   remove: pin {h['pin']} ({h.get('source') or 'the specification'})" for h in coded]
+        patch = {"kind": "profile change", "text": "\n".join(lines) + "\n",
+                 "note": "The profile changes only by a patch a person applies. Until then the slot still shows two holders."}
+    would = {"act": "current", "slot": slot_key, "pin": pin, "by": person, "unpins": [h["pin"] for h in mine],
+             "patchFor": [h["pin"] for h in coded], "writes": f"spec/{profile}/{rs.STORE}"}
+    if dry_run:
+        return {"dryRun": True, "would": would, "patch": patch,
+                "note": "A dry run: nothing was written. Add --yes to say this one is current. It is your choice, with your reason; the "
+                        "other person's pins are unpinned (the files stay) and the profile is never edited."}
+    ident = "cu-" + secrets.token_hex(4)
+    row = {"id": ident, "slot": slot_key, "period": str(clash.get("period") or ""), "pin": pin, "superseded": [h["pin"] for h in others],
+           "reason": why, "by": person, "at": rs._now(), "undone": None}
+    rs._write_store(profile, lambda data: data.setdefault("currents", []).append(row), purpose="record slots: current")
+    gone: list[str] = []
+    for h in mine:
+        rs.unpin(slot_key, by=person, pin=h["pin"], note=f"superseded: {pin} is current", dry_run=False, community=community, root=root,
+                 profile=profile)
+        gone.append(h["pin"])
+    rs._append_history(root, {"at": rs._now(), "profile": profile, "act": "current", "slot": slot_key, "pin": pin, "current": ident,
+                              "superseded": row["superseded"], "unpinned": gone, "by": person, "store": f"spec/{profile}/{rs.STORE}"})
+    return {"dryRun": False, "ok": True, "current": ident, "pin": pin, "unpinned": gone, "patch": patch, "stillTwo": bool(coded),
+            "written": f"spec/{profile}/{rs.STORE}", "slot": slot_key}
+
+
+__all__ = ["bind", "current", "currents", "keep", "more", "pick_many", "repin", "reopen"]

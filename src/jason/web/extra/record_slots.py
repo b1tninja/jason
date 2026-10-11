@@ -12,6 +12,12 @@ key of a slot is in the URL, never a file's name or id.
 - ``{"act": "pick", "file": LINK_OR_ID, "period": "", "entry": "", "note": ""}``: a Drive link or id (or ``library:ID``);
   its name comes from the Drive catalog on disk when it holds the id (the chooser's ``drive/resolve`` reads a pasted link
   in Drive first, read-only);
+- ``{"act": "pick", "files": [LINK_OR_ID | {"file", "period", "entry", "note"}, ...], "period": "", "entry": "", "note": ""}``: several
+  files for a series or a set in one act (the chooser's multi-select). Each is its own pin, collision-checked first: a row answers ``pin``,
+  ``already``, ``collision``, ``duplicate``, or ``refused`` with its reason, and only the ``pin`` rows are written (``parts``, ``counts``);
+- ``{"act": "current", "pin": ID, "note": reason}``: when a slot has two holders, a person says which is current, with the reason, signed.
+  The other holders that are the person's own pins are unpinned (files untouched); a holder the specification pins cannot be removed here,
+  so the answer carries ``patch``, text for a person to apply to the profile, and ``stillTwo`` is true until it is;
 - ``{"act": "answer", "value": "not_applicable"|"none"|"waiting", "note": ..., "who": ...}``;
 - ``{"act": "unpin", "pin": ID}``;
 - ``{"act": "bind", "folder": LINK_OR_ID}``: name a Drive folder for the slot (its files are candidates, never pins); the answer
@@ -56,13 +62,13 @@ from typing import Any
 
 Args = dict[str, str]
 
-ACTS = ("pick", "answer", "unpin", "bind", "keep", "repin", "more", "reopen", "read", "upload", "split", "ack", "replace")
-LATER = ("current",)
+ACTS = ("pick", "answer", "unpin", "bind", "keep", "repin", "more", "reopen", "read", "upload", "split", "ack", "replace", "current")
+LATER: tuple[str, ...] = ()
 VALUES = {"not_applicable": "notApplicable", "notapplicable": "notApplicable", "notApplicable": "notApplicable", "none": "none", "waiting": "waiting"}
 RETURNED = ("written", "pin", "answer", "already", "reading", "keep", "more", "reopened", "unpinned", "from", "to", "binding", "proposal",
             "dryRun", "would", "note", "reads", "readingMoved", "unchanged", "sha256", "size", "alsoIn", "parts", "filled", "declined",
             "proposal", "acknowledged", "caveats", "job", "queued", "command",
-            "replaced", "first", "then", "partial", "why", "autoRead", "notQueued")
+            "replaced", "first", "then", "partial", "why", "autoRead", "notQueued", "pins", "counts", "current", "unpinned", "patch", "stillTwo")
 
 
 def _private() -> bool:
@@ -101,6 +107,18 @@ def record_slot(args: Args) -> dict[str, Any]:
     if not key:
         raise ValueError("a slot is named by its key: ?key=records/5200/minutes")
     return rs.slot_view(key, _community(), _root(), private=_private())
+
+
+def record_bindings(args: Args) -> dict[str, Any]:
+    """``GET /api/record-bindings?key=``: each folder bound to the slot, with how many files it held when last listed, how many read as this
+    slot's kind (here), another slot's (elsewhere), or none (nowhere), and how many are pinned or read. From the last listing already
+    fetched; it never calls Drive. Disk only."""
+    from jason.tasks import drive_choose
+
+    key = (args.get("key") or "").strip()
+    if not key:
+        raise ValueError("a slot is named by its key: ?key=records/5200/minutes")
+    return drive_choose.binding_counts(key, community=_community(), root=_root())
 
 
 def record_readings(args: Args) -> dict[str, Any]:
@@ -204,9 +222,16 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     kw = {"by": by, "dry_run": dry, "community": community, "root": root}
     note = str(body.get("note") or "")
     try:
-        if act == "pick":
+        if act == "pick" and body.get("files") is not None:
+            if body.get("file"):
+                raise ValueError("send one file (file) or several (files), not both")
+            out = record_acts.pick_many(key, body.get("files"), period=str(body.get("period") or ""), note=note,
+                                        entry=str(body.get("entry") or ""), **kw)
+        elif act == "pick":
             out = rs.pick(key, str(body.get("file") or ""), period=str(body.get("period") or ""), note=note,
                           entry=str(body.get("entry") or ""), **kw)
+        elif act == "current":
+            out = record_acts.current(key, pin=str(body.get("pin") or ""), reason=note, **kw)
         elif act == "answer":
             value = VALUES.get(str(body.get("value") or "").strip())
             if value is None:

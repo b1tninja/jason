@@ -72,10 +72,31 @@ class PageFact:
     lang: str = ""
     lqip: str = ""                     # a 16 by 16 greyscale picture, 256 bytes as hex, for a placeholder
     pending: bool = False
+    turn: int = -1                     # the degrees clockwise the page's text is turned from upright as displayed (0, 90, 180, 270), measured from the
+                                       # text layer's line directions through the page's rotation; -1 when there is no text layer to say
+    start_score: float = 0.0           # the segmentation's summed weight that this page opens a document (its own cue table), 0 when not read
+    phash: str = ""                    # what the page holds, for finding repeats: "t:" and a hash of its words, or "i:" and a mean-hash of its picture
+
+    @property
+    def sideways(self) -> bool:
+        """True only when the text layer was read and its lines run up or down the page as displayed. A page with no text layer is not
+        called sideways: nothing was measured."""
+        return self.turn in (90, 270)
+
+    @property
+    def fix(self) -> int:
+        """The degrees clockwise that make the measured text upright (0 when it is, or when nothing was measured)."""
+        return (360 - self.turn) % 360 if self.turn in (90, 180, 270) else 0
+
+    @property
+    def orientation(self) -> str:
+        """The page as displayed (the PDF's rotation applied): portrait or landscape; empty before the size is known."""
+        return "" if not (self.width and self.height) else "landscape" if self.width > self.height else "portrait"
 
     def to_dict(self) -> dict[str, Any]:
         d = {k: v for k, v in self.__dict__.items()}
         d["label"] = list(self.label) if self.label else None
+        d["sideways"], d["fix"], d["orientation"] = self.sideways, self.fix, self.orientation
         return d
 
     @classmethod

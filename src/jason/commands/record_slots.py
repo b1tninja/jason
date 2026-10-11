@@ -11,6 +11,11 @@ The writes are a person's and each is a **dry run** until ``--yes``:
   (``library:ID``) for the slot. It copies, moves, shares, and renames nothing. ``--period`` places it in a series,
   ``--entry NUMBER`` names the instrument on a recorded-instruments slot (that pick is a key-documents link), and
   ``--resolve`` reads the file's name in Drive first (read-only; a person's sign-in is never opened unless ``--interactive``).
+  ``--also LINK_OR_ID`` (repeat) adds more files to the same act for a series or a set: each is its own pin, checked against what the slot
+  holds first (already pinned, a collision, named twice, or refused are shown and left alone; only the rest are pinned).
+- ``--current KEY --pin ID --reason TEXT --by NAME`` says which holder is current when a slot has two: the person's other pins are unpinned
+  (the files stay) and a pin the specification holds comes back as the text of a patch for a person to apply; ``--bindings KEY`` prints the
+  counts for each folder bound to the slot from its last listing (here, elsewhere, nowhere, pinned, read; disk only, never Drive).
 - ``--answer KEY --not-applicable|--none|--waiting --reason TEXT --by NAME`` records a person's word that the slot has
   no record to pick; ``--who`` says who has it. It hides nothing.
 - ``--unpin KEY --by NAME`` marks a person's pin removed (``--pin ID`` when the slot has several). The file stays.
@@ -67,9 +72,9 @@ def cmd_records(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
     root = data_dir(args)
     community = _community()
     acts = [x for x in (args.pick, args.answer, args.unpin, args.bind, args.keep, args.repin, args.more, args.reopen, args.read,
-                        args.upload, args.split, args.ack, args.replace) if x]
+                        args.upload, args.split, args.ack, args.replace, args.current) if x]
     if len(acts) > 1:
-        print("one act at a time: --pick, --answer, --unpin, --bind, --keep, --repin, --more, --reopen, --read, --upload, --split, --ack, or --replace",
+        print("one act at a time: --pick, --answer, --unpin, --bind, --keep, --repin, --more, --reopen, --read, --upload, --split, --ack, --replace, or --current",
               file=sys.stderr)
         return 2
     dry = not args.yes
@@ -78,11 +83,40 @@ def cmd_records(args: argparse.Namespace, agent_factory: Callable[[Any], Any]) -
             if not args.file:
                 print("--pick KEY needs --file LINK_OR_ID (a Drive link or id, or library:ID)", file=sys.stderr)
                 return 2
+            if args.also:
+                out = record_acts.pick_many(args.pick, [args.file, *args.also], by=args.by or "", period=args.period or "",
+                                            note=args.note or "", entry=args.entry or "", dry_run=dry, community=community, root=root)
+                return _report_many(out, args, to_json)
             with ExitStack() as stack:
                 drive = _connect(args, agent_factory, stack, needed=True) if args.resolve else None
                 out = rs.pick(args.pick, args.file, by=args.by or "", period=args.period or "", note=args.note or "",
                               entry=args.entry or "", drive=drive, dry_run=dry, community=community, root=root)
             return _report(out, args, to_json)
+        if args.current:
+            out = record_acts.current(args.current, pin=args.pin or "", reason=args.reason or "", by=args.by or "", dry_run=dry,
+                                      community=community, root=root)
+            code = _report(out, args, to_json)
+            if not args.json and out.get("patch"):
+                print(out["patch"]["text"])
+                print(out["patch"]["note"])
+            return code
+        if args.bindings:
+            from jason.tasks import drive_choose
+
+            data = drive_choose.binding_counts(args.bindings, community=community, root=root)
+            if args.json:
+                print(to_json(data))
+                return 0
+            for b in data["bindings"]:
+                if not b["listed"]:
+                    print(f"  binding {b['binding']} (by {b['by']}): not listed yet")
+                    continue
+                print(f"  binding {b['binding']} (listed {b['listedAt'][:10]}{', first page only' if b['more'] else ''}): {b['files']} files; "
+                      f"{b['here']} read as this slot's kind, {b['elsewhere']} as another's, {b['nowhere']} as none; "
+                      f"{b['pinned']} pinned, {b['read']} read, {b['notPinned']} not pinned")
+            if not data["bindings"]:
+                print(f"{args.bindings} has no folder bound")
+            return 0
         if args.answer:
             chosen = [k for k, on in (("notApplicable", args.not_applicable), ("none", args.none_exists), ("waiting", args.waiting)) if on]
             if len(chosen) != 1:
@@ -358,6 +392,20 @@ def _print_read(r: dict[str, Any], dry: bool) -> None:
     print(f"      {r['confirm']}")
 
 
+def _report_many(out: dict[str, Any], args: argparse.Namespace, to_json: Callable[[Any], str]) -> int:
+    if args.json:
+        print(to_json(out))
+        return 0
+    c = out["counts"]
+    print(("dry run: would pin " if out.get("dryRun") else "pinned ") + f"{c['pin']} of {len(out['parts'])} files for {args.pick}; "
+          + ", ".join(f"{c[k]} {k}" for k in ("already", "collision", "duplicate", "refused") if c[k]))
+    for p in out["parts"]:
+        print(f"  file {p['n']}: {p['action']}" + (f" ({p['why']})" if p.get("why") else "") + (f" [{p['pin']}]" if p.get("pin") else ""))
+    if out.get("dryRun"):
+        print(out["note"])
+    return 0
+
+
 def _report(out: dict[str, Any], args: argparse.Namespace, to_json: Callable[[Any], str]) -> int:
     if args.json:
         print(to_json(out))
@@ -428,6 +476,11 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--pins", action="store_true", help="list what the specification itself pins for each slot")
     p.add_argument("--pick", metavar="KEY", help="name a file for this slot (with --file and --by); a dry run without --yes")
     p.add_argument("--file", metavar="LINK_OR_ID", help="a Drive link or file id, or library:ID, for --pick; a path on this computer for --upload")
+    p.add_argument("--also", metavar="LINK_OR_ID", action="append", help="with --pick: another file for the same act (repeat); each is its own pin and is "
+                   "checked against what the slot holds first. A series takes the same --period for each")
+    p.add_argument("--current", metavar="KEY", help="when a slot has two holders, say which is current (--pin ID, --reason TEXT, --by); the other "
+                   "person's pins are unpinned and a specification pin comes back as a patch")
+    p.add_argument("--bindings", metavar="KEY", help="the counts for each folder bound to this slot, from its last listing (reads disk, never Drive)")
     p.add_argument("--period", metavar="P", help="with --pick on a series slot: the year (2099), month (2099-06), or quarter (2099-Q2)")
     p.add_argument("--entry", metavar="NUMBER", help="with --pick on a recorded-instruments slot: the instrument's recording number")
     p.add_argument("--resolve", action="store_true", help="with --pick or --bind: read the name in Drive first (read-only)")

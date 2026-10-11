@@ -913,6 +913,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "rule-events": "jason.web.extra.rule_records:rule_events",  # ?id= the acts on record for a rule
     "record-slots": "jason.web.extra.record_slots:record_slots",  # the record checklist; ?group=&state=; disk only, board only
     "record-slot": "jason.web.extra.record_slots:record_slot",  # ?key= one slot: holders, the library's reading, the trail
+    "record-bindings": "jason.web.extra.record_slots:record_bindings",  # ?key= a slot's bound folders: counts from the last listing already fetched (here, elsewhere, nowhere, pinned, read); never calls Drive
     "record-readings": "jason.web.extra.record_slots:record_readings",  # the confirmations queue's "record reading" items; disk only
     "drive-list": "jason.web.extra.drive_choose:drive_list",  # ?parent=&drive=&page=: a Drive folder's children over jason's token; board only
     "drive-search": "jason.web.extra.drive_choose:drive_search",  # a name search is a POST (/api/write/drive/search); board only

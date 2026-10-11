@@ -405,9 +405,99 @@ def bound_files(drive: Any, folder: str, slot_key: str, *, community: Any = None
         counts[where] += 1
         rows.append({**it, "where": where, "readsAs": kind or None,
                      "offeredFor": [] if where == "here" else fits.get(kind, []) if where == "elsewhere" else []})
+    _remember_listing(known(community, root, profile).root, slot_key, folder, rows, bool(page["next"]))
     return {"found": True, "folder": page["parent"], "files": rows, "counts": {**counts, "files": len(rows)},
             "more": page["next"], "caveats": [*CAVEATS, "A file in a bound folder is a candidate for the slot, never a pin; "
                                                   "a person picks it."]}
+
+
+# What a bound folder held when it was last listed -----------------------------------------------------------------------------
+
+LISTINGS = ("records", "binding-listings.json")
+
+
+def _listings_path(root: Path) -> Path:
+    return Path(root).joinpath(*LISTINGS)
+
+
+def _read_listings(root: Path) -> dict[str, Any]:
+    import json
+
+    try:
+        data = json.loads(_listings_path(root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _remember_listing(root: Path, slot_key: str, folder: str, rows: list[dict[str, Any]], more: bool) -> None:
+    """Keep what the last listing of a bound folder showed: for each file its Drive id (none for a confidential file), where it fit, and what
+    it read as. No name, no size, no owner. The next counts read this, never Drive."""
+    import json
+    from datetime import datetime, timezone
+
+    try:
+        ref = parse_drive_ref(folder).id
+    except ValueError:
+        return
+    from jason.locks import Resource, hold
+
+    entry = {"slot": slot_key, "folder": ref, "at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "more": more,
+             "files": [{"id": r.get("id") or "", "where": r.get("where"), "readsAs": r.get("readsAs")} for r in rows]}
+    path = _listings_path(root)
+    try:
+        with hold(Resource.STORE, "binding-listings", timeout=30, purpose="drive bound listing"):
+            data = _read_listings(root)
+            data[f"{slot_key}|{ref}"] = entry
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+            tmp.replace(path)
+    except Exception as exc:  # noqa: BLE001 - the counts are a convenience; a listing that cannot be kept is still shown
+        log.info("binding listing not kept: %s", type(exc).__name__)
+
+
+def binding_counts(slot_key: str, *, community: Any = None, root: Path | None = None, profile: str | None = None) -> dict[str, Any]:
+    """The counts a folder binding's card shows, **from the last listing already fetched** (``bound_files`` keeps it): how many files the
+    folder held, how many are already pinned (for any slot) and how many of those jason has read, and how many read as this slot's kind
+    (``here``), another slot's (``elsewhere``), or none (``nowhere``). It never calls Drive: a binding not listed yet says so, with the
+    act that lists it. The counts are as old as the listing (``listedAt``); a folder bigger than one page is counted as far as it was
+    listed (``more``)."""
+    from jason.tasks import record_readback
+    from jason.tasks import record_slots as rs
+
+    root = rs._root(root)
+    profile = rs._profile(profile, community)
+    rs._slot(community, slot_key)
+    stored = rs.load_store(profile)
+    pins: dict[str, list[tuple[str, str]]] = {}
+    for row in stored["pins"]:
+        pin = rs._pin_of(row)
+        if pin and pin.active and pin.kind.value == "drive":
+            pins.setdefault(pin.ref, []).append((pin.slot, pin.id))
+    knows = known(community, root, profile)
+    listings = _read_listings(root)
+    out = []
+    for b in stored["bindings"]:
+        if b.get("slot") != slot_key or b.get("unbound"):
+            continue
+        seen = listings.get(f"{slot_key}|{b.get('ref')}")
+        card: dict[str, Any] = {"binding": b.get("id"), "slot": slot_key, "by": b.get("by"), "at": b.get("at"), "listed": seen is not None}
+        if seen is None:
+            card["note"] = "This folder has not been listed yet. Browse it in the chooser (POST /api/write/drive/bound), and the counts appear."
+            out.append(card)
+            continue
+        files = list(seen.get("files") or ())
+        ids = [f["id"] for f in files if f.get("id")]
+        pinned = [i for i in ids if i in pins or i in knows.pinned]
+        read = [i for i in ids if any(record_readback.load(root, profile, pid) is not None for _slot, pid in pins.get(i, ()))]
+        card.update({"listedAt": seen.get("at"), "more": bool(seen.get("more")), "files": len(files),
+                     "here": sum(1 for f in files if f.get("where") == "here"), "elsewhere": sum(1 for f in files if f.get("where") == "elsewhere"),
+                     "nowhere": sum(1 for f in files if f.get("where") == "nowhere"), "pinned": len(pinned), "read": len(read),
+                     "notPinned": len(ids) - len(pinned), "held": len(files) - len(ids)})
+        out.append(card)
+    return {"slot": slot_key, "bindings": out, "caveats": ["Counts come from the folder's last listing, not from Drive now.",
+                                                          "A file in a bound folder is a candidate, never a pin."]}
 
 
 def propose_sync_rule(slot: Any, folder_name: str, folder_id: str) -> dict[str, Any] | None:
@@ -439,5 +529,5 @@ def propose_sync_rule(slot: Any, folder_name: str, folder_id: str) -> dict[str, 
                     "applies it, the folder is only read as candidates for this slot."}
 
 
-__all__ = ["CAVEATS", "DriveUnavailable", "FIELDS", "Knowledge", "bound_files", "item_of", "known", "list_folder", "open_client",
+__all__ = ["CAVEATS", "DriveUnavailable", "FIELDS", "Knowledge", "LISTINGS", "MAX_PAGE", "binding_counts", "bound_files", "item_of", "known", "list_folder", "open_client",
            "propose_sync_rule", "readable", "refusal_words", "resolve", "search", "type_word", "unavailable_answer"]

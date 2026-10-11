@@ -346,17 +346,28 @@ def queue_reads(root: Path, made: list[dict[str, Any]], by: str) -> dict[str, An
     return _queue_reads(root, made, by)
 
 
-def cut_pages(source: Path, ranges: list[tuple[int, int]]) -> bytes:
-    """A new PDF of the pages in ``ranges`` ((first, last) pairs, 1-based, in order). The pages are copied, never changed."""
+TURNS = (90, 180, 270)
+
+
+def cut_pages(source: Path, ranges: list[tuple[int, int]], rotate: dict[int, int] | None = None) -> bytes:
+    """A new PDF of the pages in ``ranges`` ((first, last) pairs, 1-based, in order). The pages are copied, never changed.
+    ``rotate`` turns chosen source pages (1-based number -> degrees clockwise, 90, 180, or 270) **in the new file only**: the source
+    is read, never written, and a page not named keeps the rotation the source gave it."""
     from pypdf import PdfReader, PdfWriter
 
+    for page, degrees in (rotate or {}).items():
+        if degrees not in TURNS:
+            raise ValueError(f"page {page}: a rotation is 90, 180, or 270 degrees clockwise, not {degrees}")
     reader = PdfReader(str(source))
     writer = PdfWriter()
     for first, last in ranges:
         if first < 1 or last > len(reader.pages) or first > last:
             raise ValueError(f"pages {first}-{last} are not in a file of {len(reader.pages)} pages")
         for n in range(first - 1, last):
-            writer.add_page(reader.pages[n])
+            added = writer.add_page(reader.pages[n])
+            if rotate and (n + 1) in rotate:
+                added.rotate(rotate[n + 1])
+                added.rotation = int(added.rotation) % 360                # (a 90 page turned 270 is 0, not 360)
     buf = io.BytesIO()
     writer.write(buf)
     return buf.getvalue()

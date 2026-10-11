@@ -4,7 +4,10 @@
   confidential file's label is masked. Disk only; the board's.
 - ``split_session(args)`` is ``GET /api/split-session?id=``: one session: its source summary (an id, never a file name), boundaries,
   segments, suggestions with reasons, counts, and the version a save must start from. ``?facts=1-200`` adds the page facts for a range
-  (the placeholders). ``?review=1`` adds the review of what an apply would do (a dry run: nothing is written).
+  (the placeholders; each page carries its measured ``turn``, ``sideways``, ``fix``, and ``orientation`` when its text layer was read).
+  ``?review=1`` adds the review of what an apply would do (a dry run: nothing is written). ``?flags=1`` adds the pre-review flags of each
+  segment (blank only, near-duplicate of another segment, sideways pages, over the part limit, slot already filled, may hold more than one
+  document): disk only, it cuts nothing.
 - ``write(key, body)`` is ``POST /api/write/split/<session id>`` (``/api/write/split/new`` for ``open``), behind the write guard's token,
   with ``by`` (the signed-in person; a different name is refused). ``body["act"]`` is one of:
 
@@ -16,9 +19,13 @@
     ``{"id": "g12" | "all"}``: each with ``version``; a draft that moved on answers **409** with the server's copy;
   - ``suggest``: run the cheap rule pass again (off when ``split.suggest_enabled`` is off); the model pass is not built;
   - ``review``: the dry run of an apply;
-  - ``apply`` ``{"dryRun": true (the default), "confirm": false, "parts": [...], "drop": [pages], "keepCopies": false}``: **a dry run
-    unless** ``dryRun`` is false **and** ``confirm`` is true, as the signed-in person; it writes through the record intake's one split
-    writer. The original is never changed;
+  - ``apply`` ``{"dryRun": true (the default), "confirm": false, "parts": [...], "drop": [pages], "keepCopies": false, "filing": "",
+    "rotate": ...}``: **a dry run unless** ``dryRun`` is false **and** ``confirm`` is true, as the signed-in person; it writes through the
+    record intake's one split writer. The original is never changed. ``filing`` is ``held`` (every part kept in jason's store), ``library``
+    (every part given to the library intake; one it cannot file is kept held, with the reason) or ``slots`` (each part into the slot it
+    names); a part's own ``filing`` (``held``, ``library``, ``slot``) overrides it, and with neither a part with a slot fills it and any
+    other is held. ``rotate`` turns pages **in the new files only**: ``{"61": 90, "66": "fix"}`` (degrees clockwise, or ``fix`` for the
+    degrees jason measured the page's text needs), or ``"sideways"`` for every page measured sideways. ``review`` takes the same;
   - ``decline`` ``{"dryRun": false}``.
 
 Nothing here reaches Drive, PayHOA, Google, or the county. A confidential file is masked in every answer, and its pictures need the
@@ -110,6 +117,10 @@ def split_session(args: Args) -> dict[str, Any]:
         out["facts"] = ss.facts_view(root, sid, int(a or 1), int(b or a or 0), lqip=not out["confidential"])["facts"]
     if (args.get("review") or "").strip() in ("1", "true", "yes") and session.status in ("draft", "confirmed"):
         out["review"] = ss.review(sid, community=_community(), root=root)
+    if (args.get("flags") or "").strip() in ("1", "true", "yes"):
+        from jason.tasks import split_flags
+
+        out["flags"] = split_flags.flags(sid, community=_community(), root=root)
     return out
 
 
@@ -140,7 +151,8 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
         if act in ("review", "apply"):
             parts = list(body.get("parts") or ())
             drop = [int(p) for p in body.get("drop") or ()]
-            kw = {"parts": parts, "drop": drop, "keep_copies": bool(body.get("keepCopies")), "community": community, "root": root}
+            kw = {"parts": parts, "drop": drop, "keep_copies": bool(body.get("keepCopies")), "community": community, "root": root,
+                  "filing": str(body.get("filing") or ""), "rotate": body.get("rotate")}
             if act == "review":
                 return {"ok": True, "act": act, "review": ss.review(sid, **kw)}
             dry = body.get("dryRun", True) is not False

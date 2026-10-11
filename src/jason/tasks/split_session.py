@@ -270,17 +270,66 @@ def find(root: Path, *, session: str = "", library: str = "") -> list[SplitSessi
 
 # --- the facts -------------------------------------------------------------------------------------------------------------
 
+FACTS_VERSION = 2                    # 2: turn (the text's measured direction), start_score, phash
+TURN_MIN_CHARS = 40                  # fewer letters than this on a page and its text direction is not read (a stamp is not a page)
+
+
+def _text_turn(page: Any) -> int:
+    """The degrees clockwise the page's text is turned from upright *as displayed*: each text line's direction vector (the text layer's own
+    ``dir``, in the unrotated page) is carried through the page's rotation, and the direction most letters run in wins. -1 when the page
+    holds too little text to say. A measurement of the PDF, not a guess from the picture."""
+    try:
+        blocks = page.get_text("dict", flags=0).get("blocks") or ()
+        matrix = page.rotation_matrix
+    except Exception:  # noqa: BLE001 - a page whose text cannot be read has no measured direction
+        return -1
+    weight: dict[int, int] = {0: 0, 90: 0, 180: 0, 270: 0}
+    for block in blocks:
+        for line in block.get("lines") or ():
+            n = sum(len([c for c in str(sp.get("text") or "") if c.isalnum()]) for sp in line.get("spans") or ())
+            dx, dy = line.get("dir") or (1.0, 0.0)
+            x, y = dx * matrix.a + dy * matrix.c, dx * matrix.b + dy * matrix.d
+            if not n or (abs(x) < 0.5 and abs(y) < 0.5):
+                continue
+            turn = (0 if x > 0 else 180) if abs(x) >= abs(y) else (90 if y > 0 else 270)
+            weight[turn] += n
+    total = sum(weight.values())
+    return max(weight, key=lambda k: weight[k]) if total >= TURN_MIN_CHARS else -1
+
+
+def _page_hash(page: Any, fact: PageFact, tiny: str) -> str:
+    """What the page holds, for finding repeats: a hash of its words when it has a text layer, else the mean-hash of its 16 by 16 picture
+    (256 bits, as hex). A blank page has none: blanks are left out of any comparison."""
+    if fact.blank == "blank":
+        return ""
+    if fact.has_text:
+        try:
+            words = re.sub(r"[^a-z0-9]+", "", page.get_text("text").casefold())
+        except Exception:  # noqa: BLE001
+            words = ""
+        return ("t:" + hashlib.sha1(words.encode("utf-8")).hexdigest()[:20]) if words else ""
+    if len(tiny) == 512:
+        grey = bytes.fromhex(tiny)
+        mean = sum(grey) / len(grey)
+        return "i:" + f"{int(''.join('1' if b > mean else '0' for b in grey), 2):064x}"
+    return ""
+
+
 def scan(path: Path, *, lqip: bool = True, progress: Callable[[int, int], None] | None = None) -> tuple[list[PageFact], list[Any]]:
     """The per-page facts of a PDF and the segmentation's page rows: one pass over the text layer
     (``jason.tasks.segments.read_pages``), then one over the images (``pdf_preflight``'s own image and colour readers; a page with
-    no image is not drawn for its colour). The file is only read."""
+    no image is not drawn for its colour). Each page also gets the direction its text runs (``turn``: the text layer's line directions
+    carried through the PDF's rotation), the segmentation's score that it opens a document (``start_score``), and a hash of what it
+    holds (``phash``). The file is only read."""
     import pymupdf
 
+    from jason.community import document_segments as ds
     from jason.community import pdf_preflight as pf
     from jason.tasks import segments
 
     infos, _toc = segments.read_pages(path)
     facts = split_suggest.facts_from_pages(infos)
+    scores = ds.score_pages(list(infos)) if infos else {}
     out: list[PageFact] = []
     with pymupdf.open(str(path)) as doc:
         for i, fact in enumerate(facts):
@@ -301,8 +350,11 @@ def scan(path: Path, *, lqip: bool = True, progress: Callable[[int, int], None] 
                     tiny = bytes(pix.samples)[:256].hex()
                 except Exception:  # noqa: BLE001
                     tiny = ""
-            out.append(PageFact(**{**fact.__dict__, "rotation": int(page.rotation or 0), "dpi": main.dpi if main else 0, "colour": colour,
-                                   "codec": main.codec if main else "", "lqip": tiny}))
+            score = scores.get(fact.n, (0.0, []))[0]
+            made = PageFact(**{**fact.__dict__, "rotation": int(page.rotation or 0), "dpi": main.dpi if main else 0, "colour": colour,
+                               "codec": main.codec if main else "", "lqip": tiny, "turn": _text_turn(page) if fact.has_text else -1,
+                               "start_score": round(score, 3) if 0 < score < 10 else 0.0})
+            out.append(PageFact(**{**made.__dict__, "phash": _page_hash(page, made, tiny)}))
             if progress:
                 progress(i + 1, len(facts))
     return out, infos
@@ -311,11 +363,18 @@ def scan(path: Path, *, lqip: bool = True, progress: Callable[[int, int], None] 
 def ensure_facts(root: Path, sha256: str, *, progress: Callable[[int, int], None] | None = None) -> list[PageFact]:
     """The page facts of the file with this hash: read from the cache, else measured now and kept. Reads the splitter's copy only."""
     cached = read_facts(root, sha256)
-    if cached:
-        return cached
+    if cached and (_facts_version(root, sha256) >= FACTS_VERSION or not source_file(root, sha256).is_file()):
+        return cached                        # (an older reading with no copy left to measure again is kept as it was)
     facts, _infos = scan(source_file(root, sha256), lqip=True, progress=progress)
-    _write_json(facts_file(root, sha256), {"version": 1, "sha256": sha256, "pages": [f.to_dict() for f in facts]})
+    _write_json(facts_file(root, sha256), {"version": FACTS_VERSION, "sha256": sha256, "pages": [f.to_dict() for f in facts]})
     return facts
+
+
+def _facts_version(root: Path, sha256: str) -> int:
+    try:
+        return int(json.loads(facts_file(root, sha256).read_text(encoding="utf-8")).get("version") or 1)
+    except (OSError, ValueError):
+        return 0
 
 
 def read_facts(root: Path, sha256: str) -> list[PageFact]:
@@ -607,9 +666,38 @@ def _runs(pages: list[int]) -> list[tuple[int, int]]:
     return out
 
 
-def _part_items(session: SplitSession, parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The files the draft would make, in page order: every top-level segment, and each nested segment a person asked to also make a file."""
+FILINGS = ("held", "library", "slots")           # the request's ``filing``; a part's own is held, library, or slot
+
+
+def _filing_word(value: Any, *, part: bool = False) -> str:
+    """A ``filing`` choice as one of ``held``, ``library``, ``slots`` (a part's own: ``slot``); empty is "as each part is labelled"."""
+    word = str(value or "").strip().lower()
+    if word in ("slot", "slots"):
+        return "slot" if part else "slots"
+    if word in ("", "held", "library"):
+        return word
+    raise ValueError(f"filing is one of {', '.join(FILINGS)}, not {value!r}: held (kept in jason's store, no slot yet), "
+                     "library (taken in by the library intake), or slots (each part into the slot it names)")
+
+
+def _part_of(spec: Any) -> dict[str, Any]:
+    """A part a person names: a mapping as given, or the text ``s2=KEY[@PERIOD][#ENTRY]`` (a slot), ``s2=held``, or ``s2=library``."""
+    from jason.tasks import record_upload
+
+    if isinstance(spec, dict):
+        return dict(spec)
+    seg, _, rest = str(spec or "").partition("=")
+    if rest.strip().lower() in ("held", "library"):
+        return {"segment": seg.strip(), "filing": rest.strip().lower()}
+    return record_upload._parse_part(spec)
+
+
+def _part_items(session: SplitSession, parts: list[dict[str, Any]], filing: str = "") -> list[dict[str, Any]]:
+    """The files the draft would make, in page order: every top-level segment, and each nested segment a person asked to also make a file.
+    ``filing`` is the request's choice (held, library, or slots); a part's own overrides it. With neither, a part with a slot fills it and
+    any other is held."""
     given = {str(p.get("segment") or ""): p for p in parts}
+    request = _filing_word(filing)
     items = []
     n = 0
     for seg in session.segments():
@@ -618,11 +706,61 @@ def _part_items(session: SplitSession, parts: list[dict[str, Any]]) -> list[dict
             continue
         n += 1
         over = given.get(seg.key, {})
+        slot = str(over.get("slot") or lab.get("slot") or "")
+        own = _filing_word(over.get("filing"), part=True)
+        want = own or request
+        if own == "slot" and not slot:
+            raise ValueError(f"segment {seg.key} is to be filed into a slot but names none (SEGMENT=SLOT)")
+        how = "held" if want == "held" else "library" if want == "library" else "slot" if slot else "held"
         items.append({"segment": seg.key, "level": seg.level, "start": seg.start, "end": seg.end, "ordinal": n,
-                      "slot": str(over.get("slot") or lab.get("slot") or ""), "period": str(over.get("period") or lab.get("period") or ""),
-                      "entry": str(over.get("entry") or lab.get("entry") or ""),
+                      "slot": slot, "period": str(over.get("period") or lab.get("period") or ""),
+                      "entry": str(over.get("entry") or lab.get("entry") or ""), "filing": how,
                       "title": str(over.get("title") or lab.get("title") or ""), "kind": lab.get("kind") or None})
     return items
+
+
+def rotations(session: SplitSession, facts: list[PageFact], rotate: Any, dropped: list[int] | None = None) -> dict[int, int]:
+    """The turns a person asked for, as source page -> degrees clockwise. ``rotate`` is a mapping of page to 90, 180, 270 (or ``fix``, the
+    degrees the page's measured text needs), a list of ``PAGE=DEGREES`` words, or the word ``sideways`` for every page measured sideways.
+    A page not in the file is refused; a page left out of every file is ignored. Nothing is guessed: ``fix`` and ``sideways`` need a
+    measured page and say so when there is none."""
+    by_page = {f.n: f for f in facts}
+    wanted: dict[int, Any] = {}
+    if isinstance(rotate, str):
+        text = rotate.strip().lower()
+        if text in ("sideways", "all"):
+            wanted = {f.n: "fix" for f in facts if f.sideways}
+        else:
+            rotate = [t for t in re.split(r"[,\s]+", text) if t]
+    if isinstance(rotate, dict):
+        wanted = {int(k): v for k, v in rotate.items()}
+    elif isinstance(rotate, (list, tuple)):
+        for item in rotate:
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                wanted[int(item[0])] = item[1]
+                continue
+            page, _, degrees = str(item).partition("=")
+            wanted[int(page)] = degrees.strip().lower() or "fix"
+    out: dict[int, int] = {}
+    for page, how in wanted.items():
+        session._check_page(page)
+        if page in (dropped or ()):
+            continue
+        if str(how).strip().lower() in ("fix", "sideways"):
+            fact = by_page.get(page)
+            if fact is None or not fact.fix:
+                raise ValueError(f"page {page}: jason measured no sideways text there (a page with no text layer is never measured); "
+                                 "name the degrees (90, 180, or 270) to turn it")
+            out[page] = fact.fix
+            continue
+        try:
+            degrees = int(how)
+        except (TypeError, ValueError):
+            raise ValueError(f"page {page}: a rotation is 90, 180, or 270 degrees clockwise, or fix") from None
+        if degrees not in (90, 180, 270):
+            raise ValueError(f"page {page}: a rotation is 90, 180, or 270 degrees clockwise, not {degrees}")
+        out[page] = degrees
+    return out
 
 
 def _known_hashes(root: Path, profile: str) -> dict[str, str]:
@@ -654,19 +792,28 @@ def _held_in_store(root: Path, profile: str, sha256: str) -> bool:
 
 
 def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop: list[int] | None = None, keep_copies: bool = False,
-           community: Any = None, root: Path | None = None, profile: str | None = None, hashes: bool = True) -> dict[str, Any]:
-    """What applying the draft would do, written nowhere: each file with its pages and slot, the pages left out, the totals, the
-    collisions with slots that hold a file, and the duplicates of files jason already holds. ``hashes`` cuts each part in memory to
-    hash it (a large file takes a while); without it duplicates are not checked."""
-    from jason.tasks import record_upload
+           community: Any = None, root: Path | None = None, profile: str | None = None, hashes: bool = True, filing: str = "",
+           rotate: Any = None) -> dict[str, Any]:
+    """What applying the draft would do, written nowhere: each file with its pages, how it would be filed, and its slot, the pages left
+    out, the totals, the collisions with slots that hold a file, and the duplicates of files jason already holds. ``hashes`` cuts each
+    part in memory to hash it (a large file takes a while); without it duplicates are not checked.
+
+    ``filing`` is ``held`` (every part kept in jason's store, none put in a slot), ``library`` (every part taken in by the library
+    intake), or ``slots`` (each part into the slot it names; a part naming none is held); a part's own ``filing`` overrides it, and with
+    neither a part with a slot fills it and any other is held. ``rotate`` turns pages in the new files only (see ``rotations``); each
+    part says which of its pages are turned, and which it measured sideways and left as they are."""
+    from jason.tasks import record_upload, split_flags
 
     root = _root(root)
     profile = rs._profile(profile, community)
     session = load(root, sid)
-    items = _part_items(session, [dict(p) if isinstance(p, dict) else record_upload._parse_part(p) for p in parts])
+    items = _part_items(session, [_part_of(p) for p in parts], filing)
     dropped = sorted(set(int(p) for p in (drop or ())))
     for p in dropped:
         session._check_page(p)
+    facts = read_facts(root, session.source.sha256)
+    turns = rotations(session, facts, rotate, dropped) if rotate not in (None, "", [], {}) else {}
+    flagged = {r["segment"]: r for r in split_flags.flags(sid, community=community, root=root, profile=profile)["segments"]}
     top = [i for i in items if i["level"] == 0]
     if not top:
         raise ValueError("there are no segments to write")
@@ -678,9 +825,14 @@ def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop
         if not pages:
             raise ValueError(f"segment {it['segment']} would be empty after the pages left out; merge it or keep its pages")
         row = {**it, "pages": _runs(pages), "count": len(pages), "name": f"Part {it['ordinal']} of {len(items)} (pages {it['start']}-{it['end']})",
-               "action": "held" if not it["slot"] else "fill"}
+               "action": "fill" if it["filing"] == "slot" else it["filing"]}
+        turned = {p: d for p, d in turns.items() if it["start"] <= p <= it["end"]}
+        row["rotated"] = [{"page": p, "degrees": d} for p, d in sorted(turned.items())]
+        mine = flagged.get(it["segment"], {})
+        row["sideways"] = [x for x in mine.get("sideways", []) if x["page"] not in turned and x["page"] not in dropped]
+        row["flags"] = {k: mine.get(k) for k in ("blankOnly", "nearDuplicateOf", "repeatedBy", "overPartLimit", "mayHoldMore") if mine.get(k)}
         if hashes:
-            data = record_upload.cut_pages(source, row["pages"])
+            data = record_upload.cut_pages(source, row["pages"], turned)
             row["sha256"] = hashlib.sha256(data).hexdigest()
             row["size"] = len(data)
             twin = known.get(row["sha256"]) or ("a file already held in jason's store" if _held_in_store(root, profile, row["sha256"]) else "")
@@ -704,13 +856,20 @@ def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop
             "collisions": [r["slot"] for r in rows if r["action"] == "collision"],
             "duplicates": [r["segment"] for r in rows if r["action"] == "duplicate"],
             "held": [r["segment"] for r in rows if r["action"] == "held"],
+            "library": [r["segment"] for r in rows if r["action"] == "library"],
+            "filing": {"asked": _filing_word(filing) or "as labelled", **{k: sum(1 for r in rows if r["action"] == a2) for k, a2 in
+                       (("held", "held"), ("library", "library"), ("slots", "fill"), ("collisions", "collision"), ("duplicates", "duplicate"))}},
+            "rotated": [{"page": p, "degrees": d} for p, d in sorted(turns.items()) if p not in dropped],
+            "sidewaysLeft": sum(len(r["sideways"]) for r in rows if r["level"] == 0),
             "result": f"{len(rows)} new files; the original is kept untouched", "caveats": list(CAVEATS)}
 
 
 def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop: list[int] | None = None, keep_copies: bool = False,
           confirm: bool = False, dry_run: bool | None = None, community: Any = None, root: Path | None = None,
-          profile: str | None = None) -> dict[str, Any]:
-    """Write the new files. A **dry run unless a person confirms** (``confirm=True``): it returns the review and writes nothing. On
+          profile: str | None = None, filing: str = "", rotate: Any = None,
+          library_filer: Callable[..., dict[str, dict[str, Any]]] | None = None) -> dict[str, Any]:
+    """Write the new files. ``filing`` (held, library, or slots; see ``review``) and ``rotate`` (pages turned in the new files only) are
+    the person's choices and are shown in the dry run; ``library_filer`` is the library intake (a test passes a fake). A **dry run unless a person confirms** (``confirm=True``): it returns the review and writes nothing. On
     confirm the session becomes ``confirmed`` (who, when, the final boundary list), each part is written through the record
     intake's writer in page order, and the session becomes ``applied``. A part that fails leaves the session ``confirmed`` with the
     parts already written recorded, and the apply can be run again for the rest. Nothing is deleted; the original is not touched."""
@@ -723,7 +882,8 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
         dry_run = True
     elif dry_run is None:
         dry_run = False
-    plan = review(sid, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root, profile=profile)
+    plan = review(sid, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root, profile=profile, filing=filing,
+                  rotate=rotate)
     if dry_run:
         return {"dryRun": True, "would": {"act": "apply", "id": sid, "by": person, "files": plan["files"]}, "review": plan,
                 "note": "A dry run: nothing was written. Confirm as a person (--yes) to write the files."}
@@ -749,6 +909,8 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
         done = {p["segment"]: p for p in (session.applied.get("parts") or ())}
         made: list[dict[str, Any]] = list(done.values())
         failed: list[dict[str, Any]] = []
+        for_library: list[tuple[dict[str, Any], bytes]] = []
+        turns = {r["page"]: r["degrees"] for r in plan["rotated"]}
         source_ref = f"session:{session.id}"
         for row in plan["parts"]:
             if row["segment"] in done:
@@ -758,12 +920,16 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
                              "of": row.get("of", "")})
                 continue
             try:
-                data = record_upload.cut_pages(source, [tuple(r) for r in row["pages"]])
+                data = record_upload.cut_pages(source, [tuple(r) for r in row["pages"]],
+                                               {p: d for p, d in turns.items() if row["start"] <= p <= row["end"]})
                 prov = {"splitSession": session.id, "splitSource": session.source.sha256, "pages": {"ranges": row["pages"], "of": session.pages},
                         "segment": {"key": row["segment"], "level": row["level"], "title": row["title"], "kind": row["kind"],
                                     "kindIsGuess": True}, "confirmedBy": {"name": person, "at": session.confirmed.get("at", "")},
-                        "ordinal": row["ordinal"]}
+                        "ordinal": row["ordinal"], "rotated": row.get("rotated") or []}
                 label = f"Part-{row['ordinal']}-pages-{row['start']}-{row['end']}.pdf"
+                if row["action"] == "library":
+                    for_library.append((row, data))
+                    continue
                 if row["action"] == "fill":
                     why = f"pages {row['start']}-{row['end']} of a scan split in the PDF splitter, confirmed"
                     got = record_upload.write_part(root, profile, community, {**row, "pages": (row["start"], row["end"])}, data, by=person,
@@ -777,8 +943,14 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
                 break
             session.applied = {"parts": made, "partial": True, "by": person}
             save(root, session)
+        if for_library:
+            made.extend(_into_library(root, profile, community, for_library, person, library_filer))
+            session.applied = {"parts": made, "partial": True, "by": person}
+            save(root, session)
         out: dict[str, Any] = {"dryRun": False, "ok": not failed, "id": sid, "filled": [m for m in made if m.get("action") == "filled"],
                                "held": [m for m in made if m.get("action") == "held"],
+                               "library": [m for m in made if m.get("action") == "library"],
+                               "rotated": plan["rotated"],
                                "skipped": [m for m in made if m.get("action") in ("collision", "duplicate")], "failed": failed,
                                "dropped": plan["dropped"], "caveats": list(CAVEATS)}
         if failed:
@@ -802,7 +974,55 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
         save(root, session)
     _history(root, {"profile": profile, "act": "split-apply", "session": sid, "by": person, "files": len(made), "dropped": len(plan["dropped"]),
                     "slots": sorted({m["slot"] for m in made if m.get("slot")}), "pins": [m["pin"] for m in made if m.get("pin")],
+                    "filing": _filing_word(filing) or "as labelled", "library": len(out["library"]), "rotatedPages": len(plan["rotated"]),
                     "boundaries": session.confirmed.get("boundaries", "")})
+    return out
+
+
+def _into_library(root: Path, profile: str, community: Any, parts: list[tuple[dict[str, Any], bytes]], person: str,
+                  filer: Callable[..., dict[str, dict[str, Any]]] | None) -> list[dict[str, Any]]:
+    """Give the parts to the library intake and report each. A part the intake files is ``library``; one it cannot (no kind read, no
+    folder for the kind, a question open, already in the library, or the intake could not run) is kept ``held`` in jason's store with the
+    reason, never lost. The intake is jason's own (``jason ingest``); nothing here reaches Drive or PayHOA."""
+    from jason.tasks import record_upload
+
+    labels = {f"Part-{r['ordinal']}-pages-{r['start']}-{r['end']}.pdf": (r, data) for r, data in parts}
+    answers = (filer or _file_to_library)(root, community, [(label, data) for label, (_r, data) in labels.items()], person)
+    out: list[dict[str, Any]] = []
+    for label, (row, data) in labels.items():
+        got = answers.get(label) or {"filed": False, "why": "the library intake gave no answer for this part"}
+        if got.get("filed"):
+            out.append({"segment": row["segment"], "action": "library", "ordinal": row["ordinal"], "sha256": row.get("sha256", ""),
+                        "libraryId": got.get("id", ""), "kind": got.get("kind", ""), "size": len(data)})
+            continue
+        kept = record_upload.keep_held(root, profile, data, label)
+        out.append({"segment": row["segment"], "action": "held", "ordinal": row["ordinal"], **kept,
+                    "why": "not taken in by the library: " + str(got.get("why") or "no reason given")})
+    return out
+
+
+def _file_to_library(root: Path, community: Any, files: list[tuple[str, bytes]], by: str) -> dict[str, dict[str, Any]]:
+    """The library intake over staged copies of the parts (``jason.tasks.ingest.run`` with ``apply_files``): the text layer is read (no
+    OCR, so a request never waits on it), the kind by the library's chain, the folder by where the library files that kind. The staged
+    files live in a temporary folder and are removed; the intake keeps its own report."""
+    from jason.tasks import ingest
+
+    out: dict[str, dict[str, Any]] = {}
+    with tempfile.TemporaryDirectory(prefix="jason-split-") as tmp:
+        stage = Path(tmp) / "parts"
+        stage.mkdir()
+        for label, data in files:
+            (stage / label).write_bytes(data)
+        try:
+            result = ingest.run(community, Path(root), [str(stage)], apply_files=True, ocr=False)
+        except Exception as exc:  # noqa: BLE001 - the parts are kept held; the reason is the exception's type only
+            return {label: {"filed": False, "why": f"the library intake could not run ({type(exc).__name__})"} for label, _ in files}
+        for item in result.items:
+            label = item.local.name
+            if item.filed:
+                out[label] = {"filed": True, "id": item.library_doc_id, "kind": item.kind}
+            else:
+                out[label] = {"filed": False, "why": item.status + (f" ({item.library_path})" if item.library_path else "")}
     return out
 
 

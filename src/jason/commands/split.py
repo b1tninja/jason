@@ -6,7 +6,8 @@
     jason split SESSION --boundaries 1,15,23,40 --by NAME --yes     set the boundaries (the whole set; page 1 is always one)
     jason split SESSION --accept all|g12,g20 | --reject g12 | --mark 30 | --unmark 30 | --undo | --redo   (each: --by NAME --yes)
     jason split SESSION --review [--part s2=SLOT[@PERIOD][#ENTRY] ...] [--drop 7,29]     counts, collisions, duplicates; writes nothing
-    jason split SESSION --apply --yes --by NAME [--part ...] [--drop ...]    write the files (the only command that writes PDFs)
+    jason split SESSION --flags                           per-segment flags before the review (disk only)
+    jason split SESSION --apply --yes --by NAME [--part ...] [--drop ...] [--filing held|library|slots] [--rotate 61=90,66=fix|sideways]    write the files (the only command that writes PDFs)
     jason split SESSION --decline --yes --by NAME
     jason split --purge [SESSION | --all-drafts] --yes --by NAME     drop drafts with their copy and page pictures (never an original)
     jason split --sweep [--yes]                           the retention sweep (split.draft_days)
@@ -46,12 +47,43 @@ def _print_review(r: dict[str, Any]) -> None:
           f"{'' if r['totalsOk'] else '  (THE PAGES DO NOT ADD UP)'}")
     for p in r["parts"]:
         runs = ",".join(f"{a}-{b}" if a != b else str(a) for a, b in p["pages"])
-        slot = f" -> {p['slot']}" if p.get("slot") else " (held, no slot yet)"
-        note = f"  [{p['action']}{': ' + p['why'] if p.get('why') else ''}]" if p["action"] not in ("fill", "held") else ""
-        print(f"  {p['segment']:<6} pages {runs} ({p['count']}){slot}{note}")
+        slot = (f" -> {p['slot']}" if p["action"] in ("fill", "collision") else " (to the library intake)" if p["action"] == "library"
+                else " (held, no slot yet)")
+        note = f"  [{p['action']}{': ' + p['why'] if p.get('why') else ''}]" if p["action"] not in ("fill", "held", "library") else ""
+        turned = f"  turn {', '.join(str(x['page']) + ' by ' + str(x['degrees']) for x in p.get('rotated') or ())}" if p.get("rotated") else ""
+        side = f"  sideways, left as is: {', '.join(str(x['page']) for x in p['sideways'])}" if p.get("sideways") else ""
+        print(f"  {p['segment']:<6} pages {runs} ({p['count']}){slot}{note}{turned}{side}")
     for problem in r["problems"]:
         print(f"  problem: {problem}")
     print(f"  {r['result']}")
+
+
+def _print_flags(f: dict[str, Any]) -> None:
+    c = f["counts"]
+    print(f"flags for {f['id']}: {f['measured']['pages']} of {f['measured']['of']} pages measured; {c['blankOnly']} blank only, "
+          f"{c['nearDuplicate']} near-duplicate, {c['sideways']} sideways pages, {c['overPartLimit']} over the part limit, "
+          f"{c['mayHoldMore']} may hold more than one document, {c['slotFilled']} for a slot that holds a file")
+    for r in f["segments"]:
+        if not r["flagged"]:
+            continue
+        bits = []
+        if r["blankOnly"]:
+            bits.append("blank only")
+        if r["nearDuplicateOf"]:
+            bits.append(f"near-duplicate of {r['nearDuplicateOf']}")
+        if r["repeatedBy"]:
+            bits.append(f"repeated by {', '.join(r['repeatedBy'])}")
+        if r["sideways"]:
+            bits.append("sideways: " + ", ".join(f"{x['page']} (turn {x['fix']})" for x in r["sideways"]))
+        if r["overPartLimit"]:
+            bits.append(f"about {r['estimatedBytes']:,} bytes, over the {r['partLimit']:,} limit")
+        if r["mayHoldMore"]:
+            bits.append("may hold more than one: pages " + ", ".join(str(m["page"]) for m in r["mayHoldMore"]))
+        if r["slotFilled"]:
+            bits.append(f"{r['slot']} already holds a file")
+        print(f"  {r['segment']:<6} pages {r['start']}-{r['end']}: " + "; ".join(bits))
+    if f["parts"]["over"]:
+        print(f"  {f['parts']['count']} segments is over the {f['parts']['limit']} files one split writes")
 
 
 def _target(raw: str, root: Path) -> tuple[str, dict[str, Any] | str]:
@@ -184,10 +216,16 @@ def cmd_split(args: argparse.Namespace) -> int:
         parts = list(args.part or ())
         drop = _numbers(args.drop)
         if args.review or (args.apply and not yes):
-            rev = ss.review(sid, parts=parts, drop=drop, keep_copies=args.keep_copies, community=community, root=root)
+            rev = ss.review(sid, parts=parts, drop=drop, keep_copies=args.keep_copies, community=community, root=root,
+                            filing=args.filing or '', rotate=args.rotate or None)
             final["review"] = rev
+        if args.flags:
+            from jason.tasks import split_flags
+
+            final["flags"] = split_flags.flags(sid, community=community, root=root)
         if args.apply:
-            res = ss.apply(sid, by=who, parts=parts, drop=drop, keep_copies=args.keep_copies, confirm=yes, community=community, root=root)
+            res = ss.apply(sid, by=who, parts=parts, drop=drop, keep_copies=args.keep_copies, confirm=yes, community=community, root=root,
+                           filing=args.filing or '', rotate=args.rotate or None)
             final["apply"] = res
         if args.json:
             from jason.tasks import split_session as _s
@@ -198,6 +236,8 @@ def cmd_split(args: argparse.Namespace) -> int:
         for name in ("decline",):
             if name in final:
                 print(final[name].get("note") or "declined")
+        if "flags" in final:
+            _print_flags(final["flags"])
         if "review" in final:
             _print_review(final["review"])
         if "apply" in final:
@@ -205,7 +245,9 @@ def cmd_split(args: argparse.Namespace) -> int:
             if a.get("dryRun"):
                 print(a["note"])
             else:
-                print(f"wrote {len(a['filled'])} files into slots and held {len(a['held'])}; skipped {len(a['skipped'])}"
+                print(f"wrote {len(a['filled'])} files into slots"
+                      f"{', ' + str(len(a['library'])) + ' into the library,' if a['library'] else ''} and held {len(a['held'])}; "
+                      f"skipped {len(a['skipped'])}{'; turned ' + str(len(a['rotated'])) + ' pages' if a['rotated'] else ''}"
                       f"{'; ' + str(len(a['failed'])) + ' failed' if a['failed'] else ''}")
                 for f in a["failed"]:
                     print(f"  failed {f['segment']}: {f['why']}")
@@ -255,6 +297,12 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--review", action="store_true", help="the review of what an apply would do (counts, collisions, duplicates); writes nothing")
     p.add_argument("--apply", action="store_true", help="write the files (only with --yes --by NAME; the only command that writes PDFs)")
     p.add_argument("--part", action="append", metavar="SEGMENT=SLOT[@PERIOD][#ENTRY]", help="assign a segment to a record slot, as `jason records --split`")
+    p.add_argument("--filing", choices=("held", "library", "slots"), help="how the parts are filed: held in jason's store, taken in by the library "
+                   "intake, or each into the slot it names (without it, a part with a slot fills it and any other is held)")
+    p.add_argument("--rotate", metavar="PAGE=DEGREES,...|sideways", help="turn pages in the new files only: 61=90,66=fix (degrees clockwise, or fix for "
+                   "the measured turn), or `sideways` for every page measured sideways; the original is never changed")
+    p.add_argument("--flags", action="store_true", help="the flags of each segment before the review (blank only, near-duplicate, sideways, over the "
+                   "part limit, may hold more than one document); reads disk, writes nothing")
     p.add_argument("--drop", help="pages to leave out of every file: 7,29 (the totals are checked)")
     p.add_argument("--keep-copies", action="store_true", help="write a part even if jason already holds an identical file")
     p.add_argument("--decline", action="store_true", help="record that a person wants none of this split")
