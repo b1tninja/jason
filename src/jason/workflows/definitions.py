@@ -167,7 +167,6 @@ def drift(workflows: Iterable[Workflow], find: ProcedureFinder | None = None) ->
 
 _registered: dict[str, Workflow] = {}
 _providers: list[tuple[Callable[[], Iterable[Workflow]], dict]] = []
-_rejected: list[Problem] = []
 
 
 def register(workflow: Workflow, *, check: bool = True, plan_kinds: Collection[str] | None = None,
@@ -200,24 +199,30 @@ def reset() -> None:
     """Forget everything registered and every provider (for a test)."""
     _registered.clear()
     _providers.clear()
-    _rejected.clear()
 
 
-def all_definitions() -> tuple[Workflow, ...]:
+def _evaluate() -> tuple[dict[str, Workflow], list[Problem]]:
+    """The registered rows with each provider's valid rows, and the problems of the rows left out. Nothing is kept
+    between calls: what a provider offers can depend on the community asked, so no answer is held at module level."""
     merged = dict(_registered)
-    _rejected.clear()
+    rejected: list[Problem] = []
     for provider, checks in list(_providers):
         for w in provider() or ():
             problems = validate(w, **checks)
             if problems:
-                _rejected.extend(problems)
+                rejected.extend(problems)
                 continue
             merged[w.key] = w
-    return tuple(merged.values())
+    return merged, rejected
+
+
+def all_definitions() -> tuple[Workflow, ...]:
+    return tuple(_evaluate()[0].values())
 
 
 def rejected() -> tuple[Problem, ...]:
-    return tuple(_rejected)
+    """The problems of the provider rows ``all_definitions`` leaves out, read fresh."""
+    return tuple(_evaluate()[1])
 
 
 def find(key: str) -> Workflow | None:
