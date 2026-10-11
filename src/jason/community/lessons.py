@@ -3582,6 +3582,30 @@ LESSONS: tuple[Lesson, ...] = (
                    "tests/test_decisions.py::test_rule_links_never_carry_an_executive_decisions_id",
                    "tests/test_meeting_room_executive.py::test_an_old_slugged_executive_row_is_served_under_a_handle_and_its_real_id_only_in_the_private_view"),
            docs=("docs/console/screens/decisions.md",)),
+    Lesson("records-fee-had-no-check", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "A design review of the records-request screen found that the writer accepted any non-negative fee, so nothing "
+           "compared a redaction charge with Civil Code 5205(g); the screen did not recite 5205(f) or (g); the membership "
+           "list's computed date was labeled \"CIV 5210(b)\" as if the statute stated it; and a decision body with no `by` "
+           "left the previous name on the record, a typed `by` was taken when sign-in was set up and nobody was signed in, "
+           "and the decision route had no P2 gate.",
+           "The store validated shape only. The statute's figures (a dollar rate per hour and a dollar total, for redacting "
+           "an enhanced association record) were stated in the stored words and used nowhere. A writer that takes the actor "
+           "from the body leaves attribution to the browser.",
+           "`jason.tasks.records_fee` reads the rate and the total out of the stored 5205(g) (none in code) and compares a "
+           "request's own figures with them: a redaction charge above either is refused with jason's finding and the "
+           "statute's words; what the figures cannot settle (no time recorded, no enhanced record asked, parts that do not "
+           "add up, a shelf without 5205(g)) is accepted, noted in the request's history, and shown as a warning for "
+           "counsel. The loader carries the stored words of 5205(f), (g), 5200(b), 5210(b)(6), and CORP 8330 with jason's "
+           "reading labeled, and the screen recites them beside the fee and the membership-list date. The five-business-day "
+           "count is unchanged and labeled jason's computed date, for a person to check; the reading stays with counsel. A "
+           "decision is recorded under the signed-in account's name and needs offices that open P2.",
+           Status.FIXED,
+           guards=("tests/test_records_fee.py::test_a_redaction_charge_above_the_stated_total_is_over_the_cap",
+                   "tests/test_records_fee.py::test_a_redaction_charge_above_the_stated_hourly_rate_is_over_the_cap",
+                   "tests/test_records_fee.py::test_the_store_refuses_a_redaction_charge_above_the_bound_and_keeps_the_words_in_the_error",
+                   "tests/test_records_fee.py::test_a_decision_is_the_signed_in_persons_even_when_the_body_carries_no_by",
+                   "tests/test_records_fee.py::test_a_decision_needs_a_sign_in_and_the_offices_that_open_p2_where_sign_in_is_set_up"),
+           docs=("docs/workflows/documents-records.md", "docs/console/design-brief-records-and-reading.md")),
 )
 
 
