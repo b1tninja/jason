@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findScreen, SCREENS } from "../App";
 import owned from "../ownerScreens.json";
-import { LimitsView, nearestIn, type LimitRow, type LimitsPage } from "./LimitsView";
+import { LimitsView, nearestIn, takesEffect, type LimitRow, type LimitsPage } from "./LimitsView";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -186,5 +186,15 @@ describe("Limits in the console", () => {
   it("reads the nearest allowed value out of a refusal", () => {
     expect(nearestIn("x is above 500 MB. The nearest allowed value is 500 MB. Nothing was changed.")).toBe("500 MB");
     expect(nearestIn("There is no nearest value.")).toBe("");
+  });
+});
+
+describe("takesEffect", () => {
+  it("says when a change takes effect in the server's words, not 'after a restart' for every row", () => {
+    expect(takesEffect("none")).toBe("Takes effect at once.");
+    expect(takesEffect("next_job")).toBe("Takes effect from the next job.");
+    expect(takesEffect("next_start")).toBe("Takes effect after the next start.");
+    expect(takesEffect(undefined)).toBe("");
+    expect(takesEffect("sometime")).toBe("");
   });
 });

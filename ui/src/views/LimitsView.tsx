@@ -21,9 +21,14 @@ export interface LimitRow {
   rangeWords: string; scopes: string[];
   clamped?: boolean; note?: string; unreadable?: string[];
   set?: { by?: string; at?: string; reason?: string };
-  lastChange: LimitChange; why: string; whenHit: string; restart?: boolean;
+  lastChange: LimitChange; why: string; whenHit: string; restart?: "none" | "next_job" | "next_start";
   override?: boolean; overrideMaxWords?: string;
   editable: boolean; readOnlyWhy: string;
+}
+/** When a change takes effect, in the server's words (`restart`: none, next_job, next_start; src/jason/limits.py `_effects`). */
+export function takesEffect(restart?: string): string {
+  const when = { none: "at once", next_job: "from the next job", next_start: "after the next start" }[restart ?? ""];
+  return when ? `Takes effect ${when}.` : "";
 }
 export interface LimitGroup { kind: string; name: string; keys: string[]; open: boolean }
 export interface LimitsPage {
@@ -115,7 +120,7 @@ function Editor({ row, mode, scope, by, onDone, onCancel }: {
   return (
     <section className="limit-editor" aria-label={`${mode === "reset" ? "Reset" : "Change"} ${row.description}`}>
       <h3>{mode === "reset" ? "Reset to default" : "Change this limit"}</h3>
-      <p className="muted" id={`${id}-range`}>Allowed: {row.rangeWords}.{row.restart ? " Takes effect after a restart." : ""}</p>
+      <p className="muted" id={`${id}-range`}>Allowed: {row.rangeWords}. {takesEffect(row.restart)}</p>
       {mode === "set" && (
         <div className="limit-field">
           <label htmlFor={`${id}-value`}>{isSwitch ? "Switch" : "New value"}</label>
