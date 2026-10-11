@@ -47,11 +47,12 @@ def test_the_package_has_the_planned_modules():
 
 
 # The edge reads jason's stores; it may import these (lazily, inside the reads) and nothing else of jason. Each is a reader of
-# a store on disk: none sends, files, or writes. The queue is imported to look at it, never to add to it.
+# a store on disk: none sends, files, or writes. The queue is imported to look at it, never to add to it. The controls' record
+# and the decisions store are read for control-adoption (only ``load``, ``get``, ``in_force``, and ``roster_problem`` are called).
 EDGE_ALLOWED = ("jason.workflows", "jason.locks", "jason.tasks.followups", "jason.tasks.campaigns", "jason.tasks.response_inbox",
                 "jason.tasks.notice_ledger", "jason.community.response_inbox", "jason.community.law_text",
                 "jason.community.procedures", "jason.community", "jason.approvals.registry", "jason.approvals.store",
-                "jason.approvals.model", "jason.jobs")
+                "jason.approvals.model", "jason.jobs", "jason.controls", "jason.tasks.decisions")
 
 
 def test_the_edge_imports_only_the_stores_it_reads_and_no_client():

@@ -400,6 +400,42 @@ class RunView:
         return s.state if s else None
 
 
+# --- the gates a caller may add to a step ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class StepAsk:
+    """What a gate is asked before a person's attestation or skip is recorded: the run, the step, the act, who, the offices
+    that person holds, who made the first of two (when a second person is pending), and the words the act and the run
+    carry (a record, the subject, the records of the done steps), so a gate can look for a citation. Plain data."""
+
+    data_dir: Any
+    run_id: str
+    workflow: str
+    family: str
+    step: str
+    role: str
+    act: str                                # "attest" or "skip"
+    by: str
+    roles: tuple[str, ...] = ()
+    first_by: str = ""
+    texts: tuple[str, ...] = ()
+    today: date | None = None
+
+
+@dataclass(frozen=True)
+class GateVerdict:
+    """A gate's answer: the reasons the act is refused (each a sentence), and whether a second, different person must
+    confirm (so this act is the first of two, or the confirmation)."""
+
+    refusals: tuple[str, ...] = ()
+    second: bool = False
+
+
+Gates = Callable[[StepAsk], GateVerdict]
+"""A gate: ``gates(ask) -> GateVerdict``. The engine knows no control; ``jason.controls.effective.workflow_gate`` is the one
+it is given by default, loaded only when an act is made."""
+
+
 # --- helpers --------------------------------------------------------------------------------------------------------
 
 _SOP = re.compile(r"^(?P<key>[^#\s]+)#(?P<index>\d+)$")

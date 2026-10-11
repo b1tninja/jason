@@ -116,6 +116,16 @@ export interface ControlNotices {
   controls: NoticeControl[]; waiting: NoticeControl[]; refusals: string[]; caveats: string[];
 }
 
+/** One gate a control adds to a workflow step (`jason.controls.view.step_controls`), on `RunStep.controls`: the control, the
+ * gate (`resolution`: a board resolution on record first; `second`: a second, different person confirms; `roles`: only these
+ * offices record it), and `why`, the sentence the engine refuses with. `state`: in force, waiting (adopted, the date not
+ * reached: binds nothing yet), or refused (in force, and the roster cannot satisfy it). `firstBy` on a `second` gate: who
+ * made the first of two. */
+export interface StepControl {
+  key: string; title: string; why: string; gate: "resolution" | "second" | "roles" | string;
+  state: "in force" | "waiting" | "refused" | string; effective: string; roles?: string[]; firstBy?: string;
+}
+
 /** `POST /api/write/controls/<key>` with `{act: "propose"}`: the board item made or refreshed, and the control as it now stands. */
 export interface ProposeAnswer {
   key: string; item: string; state: ControlState; refreshed: boolean; board: unknown; by: string; control: ControlRowData;

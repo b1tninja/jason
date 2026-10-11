@@ -356,5 +356,41 @@ def notices(community: Any, data_dir: Path, subject: str, *, today: date | None 
             "caveats": ["The server refuses the same act whatever the page shows."]}
 
 
+def step_controls(data_dir: Path, workflow_key: str, family: str, steps: Iterable[tuple[str, str]], *,
+                  today: date | None = None, pending: Mapping[str, str] | None = None,
+                  community: Any = None) -> dict[str, list[dict[str, Any]]]:
+    """The controls that bite on a run's steps, for the run page: ``{step id: [{key, title, why, gate, state, effective}]}``,
+    one row for each gate a control adds. ``steps`` are (step id, the role its definition names). ``why`` is the sentence the
+    engine refuses with. ``state``: ``in force``, ``waiting`` (adopted, the date not reached: binds nothing yet), or
+    ``refused`` (in force, and the roster cannot satisfy it). A second-person row carries ``firstBy`` when a first of two is
+    waiting (``pending``: step id to the person). Empty, reading no store but the controls', when none is configured or none
+    governs a step: a run page with no controls is as it was."""
+    root = Path(data_dir)
+    if not store.configured(root):
+        return {}
+    controls = [c for c in store.load(root, "", community) if c.state is ControlState.ADOPTED]
+    wanted = [(sid, role) for sid, role in steps if any(effective.step_applies(c, workflow_key, sid, family) for c in controls)]
+    if not wanted:
+        return {}
+    roster = roster_of(community) if community is not None else effective._community_roster()
+    today = today or date.today()
+    out: dict[str, list[dict[str, Any]]] = {}
+    for sid, role in wanted:
+        got = effective.step_gates(workflow_key, sid, role, controls=controls, roster=roster, today=today, family=family)
+        rows = []
+        for g in got.gates:
+            state = "waiting" if g.future else ("refused" if g.lacks else "in force")
+            row = {"key": g.control.key, "title": g.control.type.title, "why": g.reason + (f"; {g.lacks}" if g.lacks else ""),
+                   "gate": g.gate, "state": state, "effective": g.control.effective.isoformat() if g.control.effective else ""}
+            if g.gate == "roles":
+                row["roles"] = [r.value for r in g.roles]
+            if g.gate == "second" and not g.future and (pending or {}).get(sid):
+                row["firstBy"] = pending[sid]
+            rows.append(row)
+        if rows:
+            out[sid] = rows
+    return out
+
+
 __all__ = ["CAVEATS", "EMPTY", "FAMILIES", "LABEL", "READING_LABEL", "STATES", "compose", "counts_of", "describe",
-           "heading", "notices", "one", "roster_check", "roster_of", "row", "standing"]
+           "heading", "notices", "one", "roster_check", "roster_of", "row", "standing", "step_controls"]

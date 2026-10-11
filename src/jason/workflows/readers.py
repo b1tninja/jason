@@ -425,8 +425,158 @@ def delivery_read(readers: StoreReaders, view: RunView, item: str = "") -> Check
     return CheckResult(True, (), message)
 
 
+# --- the reads of control-adoption (docs/controls.md, section 4) ----------------------------------------------------
+# One run is about one control: its subject is ``control:KEY``. Each read loads the controls from the act log and the
+# profile's facts (``jason.controls.store``) and writes nothing; a control that cannot be read fails the check with the
+# reason. None of them turns a control on, adopts it, or declines it: the board decides, the secretary records, and the
+# date and ``in_force`` do the rest.
+
+def _control_of(readers: StoreReaders, view: RunView) -> tuple[Any, str]:
+    """(the run's control, "") or (None, why not)."""
+    kind, _, key = str(view.subject).partition(":")
+    key = key.strip()
+    if kind != "control" or not key:
+        return None, "the run's subject is not a control (control:KEY)"
+    from jason.controls import store
+
+    try:
+        community = readers.community
+    except Exception:  # noqa: BLE001 - no community chosen: the act log and the facts alone are read
+        community = None
+    try:
+        controls = store.load(readers.data_dir, "", community if hasattr(community, "controls") else None)
+    except Exception as exc:  # noqa: BLE001 - a record that cannot be read fails the check with the reason
+        return None, f"the controls cannot be read: {exc}"
+    found = next((c for c in controls if c.key == key), None)
+    if found is None:
+        return None, f"no control {key}: jason records a suggestion (jason controls --suggest --record --by jason) before this run"
+    return found, ""
+
+
+def _roster_of(readers: StoreReaders) -> Any:
+    """The offices people hold, or None when the profile's roster cannot be read (the roster check is then said skipped)."""
+    try:
+        return tuple(readers.community.officers())
+    except Exception:  # noqa: BLE001 - a roster that cannot be read leaves the roster check out
+        return None
+
+
+def control_suggested(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The control exists in the record: jason read the provision and recorded it as a suggestion (or the profile holds it)."""
+    control, why = _control_of(readers, view)
+    if control is None:
+        return CheckResult(False, (), why)
+    from jason.controls.types import ControlAct
+
+    first = next((h for h in control.history if h.act is ControlAct.SUGGEST), None)
+    return CheckResult(True, (), f"{control.type.title}: {control.state.value}"
+                       + (f"; suggested {first.at[:10]} by {first.by}" if first else "")
+                       + (f"; {control.basis.citation}" if control.basis.citation else ""))
+
+
+_POSITIVE = frozenset({"approved", "adopted"})
+_NEGATIVE = frozenset({"denied", "rejected", "withdrawn"})
+
+
+def control_outcome(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The control's act log shows what the board decided, with the decision id the secretary recorded, and that decision is
+    in the decisions store with the matching outcome. The branch's choice is ``adopted`` or ``declined``. A deferral is the
+    board not deciding: the check fails and says when it may be asked again."""
+    control, why = _control_of(readers, view)
+    if control is None:
+        return CheckResult(False, (), why)
+    from jason.controls.types import ControlAct, ControlState
+    from jason.tasks import decisions
+
+    state = control.state
+    if state in (ControlState.ADOPTED, ControlState.RETIRED):
+        act, choice, wanted = ControlAct.ADOPT, "adopted", ("approved",)
+    elif state is ControlState.DECLINED:
+        act, choice, wanted = ControlAct.DECLINE, "declined", ("denied",)
+    elif state is ControlState.DEFERRED:
+        last = next((h for h in reversed(control.history) if h.act is ControlAct.DEFER), None)
+        again = f"; it may be asked again on {last.again_on}" if last and last.again_on else ""
+        return CheckResult(False, (), f"the board deferred it{again}: nothing is decided yet")
+    else:
+        return CheckResult(False, (), f"the control is still {state.value}: the secretary records what the board decided "
+                                      "(jason.controls.store.record with the decision id)")
+    entry = next((h for h in reversed(control.history) if h.act is act), None)
+    ident = (entry.decision if entry else "") or (control.decision if choice == "adopted" else "")
+    if not ident:
+        return CheckResult(False, (), f"the {act.value} on record names no decision: a {choice} control carries the id of the "
+                                      "decision the secretary recorded")
+    try:
+        found = next((d for d in decisions.load(readers.data_dir) if d.id == ident), None)
+    except Exception as exc:  # noqa: BLE001 - a decisions store that cannot be read fails the check
+        return CheckResult(False, (), f"the decisions store cannot be read: {exc}")
+    if found is None:
+        return CheckResult(False, (), f"decision {ident} is not in the decisions store: the secretary records it there first")
+    if found.outcome.lower() not in wanted:
+        return CheckResult(False, (), f"the control is {choice}, but decision {ident} is recorded as "
+                                      f"{found.outcome or 'open'}, not {' or '.join(wanted)}")
+    step = next((s for s in view.steps if s.kind.value == "decision"), None)
+    said = str(step.detail.get("outcome", "")).lower() if step is not None else ""
+    if (choice == "adopted" and said in _NEGATIVE) or (choice == "declined" and said in _POSITIVE):
+        return CheckResult(False, (), f"the control is {choice}, but this run's decision step was recorded as {said}")
+    when = f", {found.meeting}" if found.meeting else ""
+    effective = f"; effective {control.effective.isoformat()}" if choice == "adopted" and control.effective else ""
+    return CheckResult(True, (), f"{choice} by decision {ident}{when}{effective}", choice=choice)
+
+
+def control_roster(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """Whether the roster can satisfy the adopted control. It warns and never blocks: the control binds from its date whether
+    or not the roster can satisfy it, and then the act it governs is refused with the reason (docs/controls.md, section 5)."""
+    control, why = _control_of(readers, view)
+    if control is None:
+        return CheckResult(False, (), why)
+    from jason.controls import effective
+    from jason.controls.types import ControlState
+
+    if control.state is not ControlState.ADOPTED:
+        return CheckResult(False, (), f"the control is {control.state.value}, not adopted")
+    roster = _roster_of(readers)
+    if roster is None:
+        return CheckResult(True, (), "the roster could not be read, so it was not checked; the control binds from its date")
+    lacks = effective.roster_problem(control, roster)
+    when = control.effective.isoformat() if control.effective else "its date"
+    if lacks:
+        return CheckResult(True, (), f"Warning: {lacks}. The control is adopted and binds from {when}; from then the acts it "
+                                     "governs are refused until the roster can satisfy it, or the board modifies or retires the "
+                                     "control. This blocks nothing")
+    return CheckResult(True, (), f"the roster can satisfy it; it binds from {when}")
+
+
+def control_in_force(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The control binds today: adopted and its effective date reached. jason turns nothing on; the date and this check do."""
+    control, why = _control_of(readers, view)
+    if control is None:
+        return CheckResult(False, (), why)
+    from jason.controls import effective
+
+    now = effective.in_force(control, readers.today, _roster_of(readers))
+    if not now.ok:
+        return CheckResult(False, (), now.reason)
+    since = control.effective.isoformat() if control.effective else ""
+    note = f"; the roster cannot satisfy it ({now.lacks}), so the acts it governs are refused" if now.lacks else ""
+    return CheckResult(True, (), f"in force since {since}; jason turned nothing on, the date and the check did{note}")
+
+
+def control_retired(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """The board retired the control (a decision of its own), so there is no yearly review left to hold."""
+    control, why = _control_of(readers, view)
+    if control is None:
+        return CheckResult(False, (), why)
+    from jason.controls.types import ControlState
+
+    if control.state is not ControlState.RETIRED:
+        return CheckResult(False, (), f"the control is {control.state.value}")
+    return CheckResult(True, (), "the board retired it")
+
+
 CHECKS: dict[str, Callable[[StoreReaders, RunView, str], CheckResult]] = {
     "dates-room": dates_room, "outstanding-read": outstanding_read, "entry-day-gap": entry_day_gap, "delivery-read": delivery_read,
+    "control-suggested": control_suggested, "control-outcome": control_outcome, "control-roster": control_roster,
+    "control-in-force": control_in_force, "control-retired": control_retired,
 }
 """The reads a definition may name with ``named_check``: each takes the readers, the run's view, and the item."""
 

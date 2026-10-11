@@ -2,6 +2,7 @@ import { forwardRef, useState, type ReactNode } from "react";
 import { BasisPill } from "./BasisPill";
 import { Command } from "./Command";
 import { Confirm } from "./Confirm";
+import { ControlStepNotice } from "./ControlNotice";
 import { Doc } from "./Doc";
 import { Glyph } from "./Glyph";
 import { Pill } from "./Pill";
@@ -213,6 +214,7 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
           <Glyph name="triangle-alert" size="1em" /> {WORDS.changedSince}: {step.changed.map((c) => `${safeAddress(c.address)} (was ${shortHash(c.was)}, now ${shortHash(c.now)})`).join("; ")}.
         </p>
       )}
+      <ControlStepNotice controls={step.controls} />
       {step.why && (
         <Section title="Why"><p>{step.why}</p>{step.sop && <p className="muted">Procedure: {step.sop}</p>}</Section>
       )}

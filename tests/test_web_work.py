@@ -457,8 +457,8 @@ def test_the_catalog_filters_by_family_role_and_my_office(app, world):
     c = as_(app, TREASURER)
     members = c.get("/api/work-definitions?family=members").json
     assert [d["key"] for d in members["definitions"]] == ["owner-info-cycle"]
-    mine = c.get("/api/work-definitions?mine=1").json                    # the treasurer holds a step of none of them
-    assert mine["definitions"] == []
+    mine = c.get("/api/work-definitions?mine=1").json                    # the treasurer holds only an `anyone` step: putting a control before the board
+    assert [d["key"] for d in mine["definitions"]] == ["control-adoption"]
     sec = as_(app, SECRETARY).get("/api/work-definitions?mine=1").json
     assert {"example-cycle", "owner-info-cycle"} <= {d["key"] for d in sec["definitions"]}
     assert as_(app, SECRETARY).get("/api/work-definitions?role=administrator&family=members").json["definitions"][0]["key"] == "owner-info-cycle"

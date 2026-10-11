@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getJson, postJson, serverSession, signInRefusal } from "./api";
 import type { GlyphName } from "../components/Glyph";
+import type { StepControl } from "./controls";
 
 // The Work screens' data (docs/console/screens/work.md, docs/console/design-brief-work.md). The shapes are the loaders':
 // `jason.web.extra.work` behind `GET /api/work`, `GET /api/work-run?definition=&id=`, `GET /api/work-definitions`, and
@@ -160,6 +161,8 @@ export interface RunStep {
   evidence: StepEvidence[]; links: RunLink[]; changed: StepChange[]; waitingOn: WaitingOn | null; yours: boolean;
   acts: string[]; notOffered: Record<string, string>;
   decision?: DecisionRead; plan?: PlanRead; job?: JobRead;
+  /** The gates adopted controls add to this step: present only where a control bites, and only when controls are configured. */
+  controls?: StepControl[];
 }
 
 /** The statute's words as the authorities shelf holds them (`_recite`), and jason's reading of the clock, labeled. */

@@ -92,6 +92,8 @@ Six bands, always in this order, so the card reads from the document to its effe
 
 Wherever a control changes what a person must do, the screen says so, with a link: a plan ("Two signers required: a control the board adopted on Oct 3"), a workflow step ("A resolution must be on record before this step"), a send ("First class: a control the board adopted"). It is a one-line component shown at the point of the act. It is read-only, never hides a control, and names the control by title. It appears only to a viewer who may read the control (every board member). The server refuses the act whatever the page shows.
 
+On a workflow step it is `ControlStepNotice`, one line for each gate on the step's `controls` (the work-run loader adds them only when controls are configured, and only to a step a control bites): the control's title links to `#/controls?key=KEY`, and the sentence is the one the engine refuses with, so the page and the refusal say the same words. A control adopted but not yet in force is muted ("Takes effect DATE; not yet required"); one in force that the roster cannot satisfy reads as a refusal. A second-person gate also says who made the first. The run step shows the writer's refusal as it already shows the engine's sentences.
+
 ## Onboarding: "Controls jason suggests from your documents"
 
 One step in the onboarding session ([onboarding.md](onboarding.md)), after the governing documents are ingested and their duties read: a card per family with the same rows as the list, "Take these to the board" (creates one board item that lists every suggestion with its provision) and "Not now". The step is never required; closing it records that the suggestions were seen, not that anything was adopted.

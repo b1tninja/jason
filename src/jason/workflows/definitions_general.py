@@ -10,6 +10,10 @@ board decision and its recording plan are ``owner-info-cycle.17.6`` and ``owner-
 ``owner-info-cycle.17`` stands for the rest of the group (IN-01 to IN-05, IN-08, IN-09). Where the table names an approvals kind
 or a child definition that is not built, the step is a ``person`` step with the command shown (the step's ``why`` says which
 kind it becomes); it is never a plan that nothing can make.
+
+``control-adoption`` is one control's way from jason's suggestion to the day it binds (docs/controls.md, section 4). Its ids are
+``control-adoption.N`` for N from 1 to 8, the run's subject is ``control:KEY``, and it asks no date at start: the board names the
+effective date, and the control's own record holds it.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from typing import Any, Callable
 from jason.workflows import definitions
 from jason.workflows.readers import JOBS, named_check
 from jason.workflows.types import (
-    ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Role, SkipRule, StepDef, StepKind, Workflow,
+    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Role, SkipRule, StepDef, StepKind, Workflow,
 )
 
 OI = "owner-info-cycle"
@@ -148,7 +152,63 @@ def owner_info_cycle() -> Workflow:
         phases=phases, procedure=OI)
 
 
-GENERAL: tuple[Callable[[], Workflow], ...] = (owner_info_cycle,)
+CA = "control-adoption"
+
+
+def cid(n: str) -> str:
+    return f"{CA}.{n}"
+
+
+def control_adoption() -> Workflow:
+    """One control, from jason's suggestion to the day it binds (docs/controls.md, section 4). One run a control: its subject
+    is ``control:KEY``. No procedure covers it (``procedure`` is empty), no date is asked at start (the board names the
+    effective date, and the control's own record holds it), and no statute sets a clock: the effective date is the board's
+    (a ``person`` basis). jason suggests; the board decides at a meeting; the secretary records the decision; the date and
+    the checks do the rest. A declined control closes the run: the steps after the outcome belong to the ``adopted`` path."""
+    P, C, D, W, B = StepKind.PERSON, StepKind.CHECK, StepKind.DECISION, StepKind.WAIT, StepKind.BRANCH
+    J, S, ANY = Role.JASON, Role.SECRETARY, Role.ANYONE
+    date_named = ClockDef(ClockBasis.PERSON, label="the effective date the board names")
+
+    def step(n: str, title: str, kind: StepKind, role: Role, needs: tuple[str, ...] = (), **more: Any) -> StepDef:
+        return StepDef(cid(n), title, kind, role=role, needs=tuple(cid(x) for x in needs), **more)
+
+    steps = (
+        step("1", "Suggest: jason read a provision and recorded the control as suggested", C, J, check=named_check("control-suggested"),
+             command="jason controls --show KEY",
+             why="A suggestion is jason's reading of a provision, labeled as a reading; it adopts nothing (docs/controls.md, section 1)."),
+        step("2", "Put it before the board: a board item with the provision as its evidence", P, ANY, ("1",),
+             command="jason controls --propose KEY --by NAME", record="the board item id (control-KEY)",
+             why="Any board member may put a suggestion before the board; this is all a person does with it here, and it adopts nothing."),
+        step("3", "The board decides at a meeting; the secretary records the decision", D, S, ("2",),
+             record="the decision id in the decisions store",
+             why="The board adopts, declines, or defers; jason never decides. Tabled or continued is recorded and leaves this step open."),
+        step("4", "Record the outcome: the control's act log shows adopted or declined, with the decision id", B, J, ("3",),
+             check=named_check("control-outcome"),
+             choices=(Choice("adopted", tuple(cid(n) for n in ("5", "6", "7", "8"))), Choice("declined", ())),
+             why="No command records it yet: the secretary records it with jason.controls.store.record (the decision id and, "
+                 "for an adoption, the effective date). A declined control ends the run here."),
+        step("5", "Set the effective date the board named", P, S, ("4",), record="the effective date, YYYY-MM-DD", clock=date_named,
+             why="The board names the date (docs/controls.md, section 8); it is in the adoption act, and the secretary confirms it is the one named."),
+        step("6", "Check the roster can satisfy it (a warning; nothing is blocked)", C, J, ("5",), check=named_check("control-roster"),
+             command="jason controls --roster-check KEY", skip=SkipRule((S,)),
+             why="If the roster lacks an office the control needs, the board is warned before the date; the control still binds from it."),
+        step("7", "In force: wait for the effective date", W, J, ("6",), check=named_check("control-in-force"), clock=date_named,
+             why="jason turns nothing on; the date and the check do. From the date the control binds, and an act the roster cannot satisfy is refused."),
+        step("8", "Review it each year with the board's other standing decisions", W, S, ("7",), check=named_check("control-retired"),
+             clock=ClockDef(ClockBasis.PERSON, label="a year after it takes effect, and each year (the duty schedule keeps the cadence)"),
+             why="Ends when the secretary notes the first yearly review held, or the board retires the control (a decision of its own)."),
+    )
+    phases = (
+        Phase("suggest", "Suggest and propose", tuple(cid(n) for n in ("1", "2"))),
+        Phase("decide", "The board decides", tuple(cid(n) for n in ("3", "4"))),
+        Phase("effect", "Take effect", tuple(cid(n) for n in ("5", "6", "7"))),
+        Phase("review", "Review", (cid("8"),)),
+    )
+    return Workflow(key=CA, title="Adopt a control", family="board", subject="control", steps=steps, dates=(), phases=phases,
+                    procedure="")
+
+
+GENERAL: tuple[Callable[[], Workflow], ...] = (owner_info_cycle, control_adoption)
 
 
 def shelf_resolver(data_dir: Path | str | None) -> Callable[[str], "bool | None"] | None:
@@ -182,4 +242,4 @@ def register_general(data_dir: Path | str | None = None, *, plan_kinds: Any = No
                                       resolve_law=resolver) for build in GENERAL)
 
 
-__all__ = ["GENERAL", "OI", "owner_info_cycle", "register_general", "shelf_resolver"]
+__all__ = ["CA", "GENERAL", "OI", "cid", "control_adoption", "owner_info_cycle", "register_general", "shelf_resolver"]

@@ -163,8 +163,8 @@ def test_register_general_is_explicit_idempotent_and_loads_no_profile():
     assert definitions.find("owner-info-cycle") is None                          # importing the module registered nothing
     first = general.register_general()
     again = general.register_general()
-    assert [w.key for w in first] == [w.key for w in again] == ["owner-info-cycle"]
-    assert [w.key for w in definitions.all_definitions()] == ["owner-info-cycle"]
+    assert [w.key for w in first] == [w.key for w in again] == ["owner-info-cycle", "control-adoption"]
+    assert [w.key for w in definitions.all_definitions()] == ["owner-info-cycle", "control-adoption"]
     code = (
         "import sys, json\n"
         "from jason.workflows import definitions_general as g, definitions\n"
@@ -174,7 +174,7 @@ def test_register_general_is_explicit_idempotent_and_loads_no_profile():
     )
     out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr
-    assert json.loads(out.stdout.strip().splitlines()[-1]) == {"profile": [], "n": 1}
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == {"profile": [], "n": 2}
 
 
 def test_the_shelf_resolver_is_true_false_or_cannot_tell(tmp_path):

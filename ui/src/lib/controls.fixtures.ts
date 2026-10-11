@@ -168,3 +168,33 @@ export const KIND_NOTICES: ControlNotices = {
   refusals: ["Monthly review requires a treasurer and a vice president; the roster has no vice president"],
   caveats: ["The server refuses the same act whatever the page shows."],
 };
+
+// -- the onboarding step: `GET /api/controls?state=suggested` ----------------------------------------------------------------
+
+/** A third suggestion, in a family of its own, so the step has three families to group. */
+export const CONTRACT_LIMIT = row({
+  key: "contract-limit", title: "Contract limit check", family: "contracts", state: "suggested", standing: "suggested", stateWord: "suggested",
+  summary: "a warning when a contract passes the limit the documents set",
+  basis: { citation: "Example Bylaws, 99.9(d)", words: "No contract of the Association shall run longer than one year without a vote of the Board.", floor: null },
+  history: [{ act: "suggest", by: "jason", at: "2099-10-01T09:00:00+00:00" }],
+});
+
+/** The loader with `state=suggested`: only the suggestions, grouped by family; the questions are left out when a state is asked
+ * for (`view.compose`), and the counts are still of every control. */
+export const SUGGESTED_PAGE: ControlsPage = {
+  ...PAGE, heading: "2 suggested", questions: [], controls: [RESERVE, CONTRACT_LIMIT, SECOND_PERSON],
+  families: [
+    group("money", "Money", [RESERVE]),
+    group("contracts", "Contracts", [CONTRACT_LIMIT]),
+    group("onboarding", "Onboarding", [SECOND_PERSON]),
+  ],
+};
+
+/** After every suggestion is before the board: nothing is `suggested` any more, and the documents were read. */
+export const NONE_SUGGESTED_PAGE: ControlsPage = { ...SUGGESTED_PAGE, heading: "no controls yet", controls: [], families: [] };
+
+/** A propose answer for any suggestion (the writer's shape), made from its row. */
+export const proposedAnswer = (r: ControlRowData, refreshed = false): ProposeAnswer => ({
+  key: r.key, item: `control-${r.key}`, state: "proposed", refreshed, board: { added: 1 }, by: "A. Secretary",
+  control: { ...r, state: "proposed", standing: "proposed", stateWord: "proposed to the board", proposedAs: `control-${r.key}`, proposedStatus: "open" },
+});

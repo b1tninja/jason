@@ -47,7 +47,8 @@ DECISION_ELSEWHERE = ("A decision is recorded in Decisions by the secretary; thi
                       "reads done once the decision is on record.")
 PLAN_ELSEWHERE = "A plan is decided and applied in Approvals; the run reads the result."
 NO_RUN = "no run {rid} of {definition}"
-ROLE_REFUSALS = (" role that ", "may not skip", "may not cancel", "engine's own name")
+ROLE_REFUSALS = (" role that ", "may not skip", "may not cancel", "engine's own name", " allows only ",
+                 "made the first, so a different person")
 KEPT = ("what", "reason", "record", "outcome", "motion", "choice", "item", "ok", "message", "text", "status", "job", "approval",
         "child", "definition", "until", "found", "activated", "legal_clock", "draft", "subject", "label", "dates")
 TEXTS = frozenset({"what", "reason", "record", "outcome", "motion", "message", "text", "label", "subject"})
@@ -653,7 +654,8 @@ def _sentence(e: Any, titles: dict[str, str], order: dict[str, int]) -> str:
     if k == "note":
         return f"{who} noted on {step}: {note('text')}"
     if k == "attested":
-        return f"{who} attested {step}" + (f" ({note('record')})" if note("record") else "")
+        return (f"{who} attested {step}" + (f" ({note('record')})" if note("record") else "")
+                + (f", confirming {d['confirms']}" if d.get("confirms") else ""))
     if k == "decided":
         return f"{who} recorded the decision on {step}: {note('outcome')}" + (f" ({note('record')})" if note("record") else "")
     if k == "arrived":
@@ -727,6 +729,35 @@ def _changed_rows(view: Any, events: list[Any], titles: dict[str, str], order: d
     return out
 
 
+def _step_controls(root: Path, wf: Any, steps: list[dict[str, Any]], events: list[Any], day: date) -> list[dict[str, str]]:
+    """Put ``controls`` on each step an adopted control bites on (docs/console/screens/controls.md, "The required-by-a-control
+    line"): one row for each gate, with the sentence the engine refuses with. Nothing is added when no controls source is
+    configured, so a run page with no controls is as it was. A control store that cannot be read is a problem on the page, not
+    a reason to hide the run (the writer refuses the act in that case)."""
+    from jason.workflows import api
+    from jason.workflows.types import StepKind
+
+    try:
+        from jason.controls import store, view
+
+        if not store.configured(root):
+            return []
+        attestable = []
+        for sd in wf.steps:
+            if sd.kind in (StepKind.PERSON, StepKind.DECISION) or (sd.kind is StepKind.BRANCH and sd.check is None) or (
+                    sd.skip is not None and not sd.is_legal):
+                attestable.append((sd.id, sd.role.value))
+        pending = {sid: api.pending_first(events, sid, "attest") or api.pending_first(events, sid, "skip")
+                   for sid, _ in attestable}
+        rows = view.step_controls(root, wf.key, wf.family, attestable, today=day, pending=pending, community=_community())
+    except Exception as exc:  # noqa: BLE001 - the page says what it could not read
+        return [{"what": "The controls the board adopted", "why": f"could not be read here ({type(exc).__name__}); the server still refuses an act a control forbids"}]
+    for step in steps:
+        if step["id"] in rows:
+            step["controls"] = rows[step["id"]]
+    return []
+
+
 def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, acting_as: str = "",
                 readers: Any = None) -> dict[str, Any]:
     """One run, read now: the stored events folded with what opening the run would append (``pending``), each step with whose
@@ -791,6 +822,7 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
             made = next((l for l in mine if l["kind"] == "job"), None)
             step["job"] = {"job": made["id"] if made else None, "state": made["state"] if made else "", "name": sd.job}
         steps.append(step)
+    control_problems = _step_controls(root, wf, steps, events, day)
     cache: dict[str, dict[str, Any]] = {}
     clocks = []
     for c in view.clocks:
@@ -803,7 +835,7 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
         clocks.append(row)
     virtual_n = {e.n for e in virtual}
     history = [_event(e, titles, order, virtual=e.n in virtual_n) for e in reversed(events)]
-    problems = []
+    problems = list(control_problems)
     for row in clocks:
         if row.get("law", {}).get("missing"):
             problems.append({"what": f"The words of {row['cite']}", "why": row["law"]["missing"]})

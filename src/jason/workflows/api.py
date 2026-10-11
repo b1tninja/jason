@@ -7,6 +7,13 @@ and appends one event; ``expect`` is the ``n`` the caller last saw, and a run th
 (the web layer from the sign-in, a test from a table) supplies it, and none supplied means no roles, so every act that
 needs one is refused. ``readers`` is the injectable world a resume and a ``show`` read (see ``jason.workflows.resume``).
 
+``gates`` is the one place a caller adds a requirement to a person's attestation or skip (an adopted control, say):
+``gates(StepAsk) -> GateVerdict``. None means the default, which is looked up when an act is made and not before
+(``_default_gates``), so importing the engine loads no control and no profile; a gate that adds nothing leaves the act as
+it was. A gate may refuse (the act is refused with its sentence and nothing is written) or ask for a second, different
+person: the first person's act is then recorded as a note (``first_of_two``), the step stays open, and the act of a
+different person completes it with ``confirms`` naming the first.
+
 Nothing here sends, files, or writes outside ``data_dir``.
 """
 
@@ -19,7 +26,8 @@ from typing import Any, Callable, Iterable, Mapping
 from jason.workflows import definitions, fold, resume as resume_mod, steps, store
 from jason.workflows.resume import Readers
 from jason.workflows.types import (
-    ClockView, EventKind, Link, RunChanged, RunState, RunView, StepRefused, StepView, Workflow,
+    ClockView, EventKind, Gates, GateVerdict, Link, RunChanged, RunState, RunView, StepAsk, StepRefused, StepView,
+    Workflow, WorkflowError,
 )
 
 OPEN_STATES = frozenset({"draft", "active", "paused", "waiting", "failed"})
@@ -101,8 +109,9 @@ def _person(by: str) -> str:
 
 # --- a write --------------------------------------------------------------------------------------------------------
 
-def _do(data_dir: Path | str, run_id: str, by: str, make: Callable[[Workflow, RunView], steps.Act], *, expect: int | None,
-        today: date | None, at: str | None, readers: Readers | None = None, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _do(data_dir: Path | str, run_id: str, by: str, make: Callable[..., steps.Act], *, expect: int | None,
+        today: date | None, at: str | None, readers: Readers | None = None, extra: Mapping[str, Any] | None = None,
+        needs_run: bool = False) -> dict[str, Any]:
     day = _today(today)
     definition = store.locate(data_dir, run_id)
     wf = _workflow(definition)
@@ -113,7 +122,7 @@ def _do(data_dir: Path | str, run_id: str, by: str, make: Callable[[Workflow, Ru
             raise RunChanged(f"run {run_id} changed: you saw n={expect}, it is now n={run.n} "
                              f"({last.kind.value} by {last.by or '?'} at {last.at}); read it again", expected=expect, actual=run.n)
         view = _view(run, wf, day, readers)
-        act = make(wf, view)
+        act = make(wf, view, run) if needs_run else make(wf, view)
         detail = dict(act.detail)
         detail.update(extra or {})
         event = store.append(data_dir, definition, run_id, act.kind, by=by, step=act.step, detail=detail, at=at or "", n=run.n + 1)
@@ -132,6 +141,65 @@ def _evidence_for(wf: Workflow, readers: Readers | None, step_id: str) -> list[s
         if digest:
             out.append(f"{address}@{digest}")
     return out
+
+
+# --- gates ----------------------------------------------------------------------------------------------------------
+
+def _default_gates() -> Gates | None:
+    """The gate the controls module gives, found when an act is made. It is looked up by name, not imported at the top, so the
+    engine's import loads no control and no profile (tests/test_workflows_boundaries.py); a build without it has none."""
+    import importlib
+
+    try:
+        return importlib.import_module("jason.controls.effective").workflow_gate
+    except ImportError:
+        return None
+
+
+def pending_first(events: Iterable[Any], step_id: str, act: str, item: str = "") -> str:
+    """Who made the first of two on this step for this act and item, "" when no first is waiting: the latest ``first_of_two``
+    note of the same act, not followed by an event that finished, skipped, or reopened the step."""
+    for e in reversed(list(events)):
+        if e.step != step_id or (item and str(e.detail.get("item", "")) != item):
+            continue
+        if e.kind in (EventKind.ATTESTED, EventKind.DECIDED, EventKind.SKIPPED, EventKind.REOPENED):
+            return ""
+        if e.kind is EventKind.NOTE and e.detail.get("first_of_two"):
+            return e.by if e.detail["first_of_two"] == act else ""
+    return ""
+
+
+def _gated(act: steps.Act, wf: Workflow, view: RunView, run: store.Run, step_id: str, name: str, by: str, *,
+           roles_of: Callable[[str], Iterable[Any]] | None, gates: Gates | None, data_dir: Path | str, run_id: str,
+           day: date, item: str, words: Iterable[str]) -> steps.Act:
+    """The act the step contract accepted, after the gates: refused with their sentences, the first of two (a note), the
+    confirming act (naming the first), or the act unchanged."""
+    gate = gates if gates is not None else _default_gates()
+    if gate is None:
+        return act
+    sd = wf.step(step_id)
+    first = pending_first(run.events, step_id, name, item)
+    texts = tuple(t for t in (*words, view.subject, view.label, *(s.record for s in view.steps)) if t)
+    ask = StepAsk(data_dir, run_id, wf.key, wf.family, step_id, sd.role.value if sd else "", name, by,
+                  tuple(sorted(r.value for r in steps.roles_held(by, roles_of))), first, texts, day)
+    try:
+        verdict = gate(ask)
+    except WorkflowError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - a gate that cannot be read refuses; it never lets the act through
+        raise StepRefused(f"the controls could not be read, so nothing was recorded: {type(exc).__name__}: {exc}") from exc
+    if not isinstance(verdict, GateVerdict):
+        return act
+    if verdict.refusals:
+        raise StepRefused("; ".join(dict.fromkeys(verdict.refusals)))
+    if not verdict.second:
+        return act
+    if first:
+        return steps.Act(act.kind, act.step, {**act.detail, "confirms": first})
+    kept = {k: v for k, v in act.detail.items() if k in ("item", "record", "reason")}
+    return steps.Act(EventKind.NOTE, act.step, {
+        **kept, "first_of_two": name,
+        "text": f"{'attested' if name == 'attest' else 'skipped'} as the first of two; a second, different person confirms"})
 
 
 # --- start, open, show, list ----------------------------------------------------------------------------------------
@@ -217,13 +285,18 @@ def runs(data_dir: Path | str, *, definition: str = "", state: str = "open") -> 
 def attest(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
            record: str = "", what: str = "", item: str = "", outcome: str = "", motion: str = "", choice: str = "",
            readers: Readers | None = None, expect: int | None = None, at: str | None = None,
-           today: date | None = None) -> dict[str, Any]:
+           today: date | None = None, gates: Gates | None = None) -> dict[str, Any]:
     """Record a person's attestation (a ``person`` step), the board's decision (a ``decision`` step, ``outcome`` given),
-    or a person's answer on a ``branch`` with no fact to read (``choice``). Refused for a name without the step's role."""
-    def make(wf: Workflow, view: RunView) -> steps.Act:
-        return steps.attest_act(wf, view, step_id, by=by, roles_of=roles_of, record=record, what=what, item=item,
-                                outcome=outcome, motion=motion, choice=choice, evidence=_evidence_for(wf, readers, step_id))
-    return _do(data_dir, run_id, by, make, expect=expect, today=today, at=at, readers=readers)
+    or a person's answer on a ``branch`` with no fact to read (``choice``). Refused for a name without the step's role,
+    and for a gate that is not met (``gates``; see the module note)."""
+    day = _today(today)
+
+    def make(wf: Workflow, view: RunView, run: store.Run) -> steps.Act:
+        act = steps.attest_act(wf, view, step_id, by=by, roles_of=roles_of, record=record, what=what, item=item,
+                               outcome=outcome, motion=motion, choice=choice, evidence=_evidence_for(wf, readers, step_id))
+        return _gated(act, wf, view, run, step_id, "attest", by, roles_of=roles_of, gates=gates, data_dir=data_dir,
+                      run_id=run_id, day=day, item=item, words=(record,))
+    return _do(data_dir, run_id, by, make, expect=expect, today=today, at=at, readers=readers, needs_run=True)
 
 
 def arrived(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
@@ -235,9 +308,14 @@ def arrived(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_o
 
 def skip(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
          reason: str = "", item: str = "", readers: Readers | None = None, expect: int | None = None, at: str | None = None,
-         today: date | None = None) -> dict[str, Any]:
-    return _do(data_dir, run_id, by, lambda wf, v: steps.skip_act(wf, v, step_id, by=by, roles_of=roles_of, reason=reason, item=item),
-               expect=expect, today=today, at=at, readers=readers)
+         today: date | None = None, gates: Gates | None = None) -> dict[str, Any]:
+    day = _today(today)
+
+    def make(wf: Workflow, view: RunView, run: store.Run) -> steps.Act:
+        act = steps.skip_act(wf, view, step_id, by=by, roles_of=roles_of, reason=reason, item=item)
+        return _gated(act, wf, view, run, step_id, "skip", by, roles_of=roles_of, gates=gates, data_dir=data_dir,
+                      run_id=run_id, day=day, item=item, words=(reason,))
+    return _do(data_dir, run_id, by, make, expect=expect, today=today, at=at, readers=readers, needs_run=True)
 
 
 def reopen(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
@@ -307,5 +385,5 @@ def reindex(data_dir: Path | str, *, today: date | None = None) -> dict[str, Any
     return {"ok": True, "runs": len(rows), "rows": rows}
 
 
-__all__ = ["arrived", "attest", "cancel", "note", "open_run", "pause", "reindex", "reopen", "resume_run", "runs", "show",
-          "skip", "spawned", "start", "verify", "view_dict"]
+__all__ = ["arrived", "attest", "cancel", "note", "open_run", "pause", "pending_first", "reindex", "reopen", "resume_run",
+           "runs", "show", "skip", "spawned", "start", "verify", "view_dict"]

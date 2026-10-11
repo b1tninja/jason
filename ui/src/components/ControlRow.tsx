@@ -23,8 +23,9 @@ function Closing({ row }: { row: ControlRowData }) {
 
 /** One control in the list: its title, its standing in a word and a glyph, the provision's citation, a line of what it
  * requires (the loader's), and "Propose" when it is a suggestion. The title is the link to the card and covers the row's
- * width; "Propose" stays its own control above it. A suggestion never says it is in force. */
-export function ControlRow({ row, as = {} }: { row: ControlRowData; as?: ProposeAs }) {
+ * width; "Propose" stays its own control above it. A suggestion never says it is in force. `inStep` is the onboarding step's
+ * row: the provision's words under a disclosure, and no per-row Propose (the step's one button does it for every row). */
+export function ControlRow({ row, as = {}, inStep = false }: { row: ControlRowData; as?: ProposeAs; inStep?: boolean }) {
   const effective = row.effective;
   return (
     <li className="control-row" data-key={row.key} data-standing={row.standing}>
@@ -41,7 +42,13 @@ export function ControlRow({ row, as = {} }: { row: ControlRowData; as?: Propose
         </p>
       )}
       <Closing row={row} />
-      {isSuggestion(row) && (
+      {inStep && row.basis.words && (
+        <details className="control-row-provision">
+          <summary>The provision, whole</summary>
+          <Recitation citation={{ found: true, citation: row.basis.citation, text: row.basis.words }} />
+        </details>
+      )}
+      {isSuggestion(row) && !inStep && (
         <div className="control-row-act">
           <ControlProposeConfirm controlKey={row.key} title={row.title} by={as.by} actingAs={as.actingAs} compact onProposed={as.onProposed} />
         </div>

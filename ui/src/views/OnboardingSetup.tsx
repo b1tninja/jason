@@ -4,6 +4,7 @@ import { postJson } from "../lib/api";
 import { sameName } from "../lib/approvals";
 import { useSignIn } from "../lib/session";
 import { useApi } from "../lib/useApi";
+import { OnboardingControlsStep } from "./OnboardingControls";
 
 /** How a connection is made: the terminal commands; the console never takes a secret. */
 export interface Connect { commands: string[]; note: string }
@@ -329,6 +330,7 @@ export function SetupTab() {
               )}
               <Command cmd={d.apply?.command ?? "jason onboard --apply"} note={d.apply?.note ?? "Run by a person in a terminal."} />
             </Card>
+            <OnboardingControlsStep />
             <Card title="The checklist">
               <Groups d={d} queued={queued} shown={shown} />
             </Card>

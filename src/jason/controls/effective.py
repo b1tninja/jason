@@ -19,8 +19,10 @@ checked against the roster when a person signs and again before apply). They rea
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -83,7 +85,9 @@ def validate(control: Control, *, kinds: Iterable[Any] | None = None) -> list[st
         for k in list(known.values()):
             known.update({a: k for a in getattr(k, "aliases", ())})
         kind = known.get(control.scope.value)
-        if kind is None:
+        if kind is None and ctype.categories(GovernsKind.WORKFLOW_STEP):
+            pass                      # a type that also governs workflow steps: the scope may name a step pattern
+        elif kind is None:
             out.append(f"no action kind {control.scope.value}: a control names a kind the engine has")
         elif kind.approver is Approver.TWO_PERSON and _weaker_than_two(control):
             out.append(f"{kind.key} is a two-person kind: a control cannot ask for less than two, "
@@ -462,6 +466,244 @@ def _community_roster() -> tuple[Any, ...] | None:
         return None
 
 
-__all__ = ["BOARD_ROLES", "Effective", "InForce", "Waiting", "applies", "effective_approver", "ensure_valid", "in_force",
-           "refusals", "requires_second", "roster_problem", "signature_problems", "signer_refusals", "touches",
-           "validate"]
+# --- workflow steps ------------------------------------------------------------------------------------------------------
+#
+# A workflow step's role and its own gates come from its definition. An adopted control can add to them (docs/controls.md,
+# section 5): a board resolution on record before the step, a second and different person to confirm it, and a narrower set
+# of offices that may record it. It only adds: nothing here lets a step be done by fewer or by anyone the definition refuses.
+#
+# What a type governs is ``Governs(WORKFLOW_STEP, what)``, where ``what`` is a pattern (``fnmatch``, case sensitive) for a
+# step id ("example-cycle.2", "example-cycle.*") or for a workflow key ("example-cycle": every step of it), or "*" for any. A
+# control scoped to a kind names the pattern itself, and one scoped to a family names a workflow family: the board's own choice
+# always applies. The gates bind from the control's effective date, like the approvals' (``in_force``).
+
+APPROVING = frozenset({"approved", "adopted"})
+"""The outcomes of a decision that count as a resolution on record."""
+
+
+@dataclass(frozen=True)
+class StepGate:
+    """One gate one control adds to one step. ``gate``: ``resolution``, ``second``, or ``roles`` (with the offices in
+    ``roles``). ``reason`` is the sentence the run page shows and the refusal says. ``lacks``: what the roster lacks to
+    satisfy it, "" when it can. ``future``: the control is adopted but its date has not come, so it binds nothing yet."""
+
+    control: Control
+    gate: str
+    reason: str
+    roles: tuple[OfficerRole, ...] = ()
+    lacks: str = ""
+    future: bool = False
+
+
+@dataclass(frozen=True)
+class StepGates:
+    """The extra gates the controls in force add to one step. ``resolution``/``second``: some control asks. ``roles``: the
+    offices that may record it, narrowed (empty: the definition's own role alone). ``gates``: every gate with the control it
+    comes from, those not yet in force marked ``future``. ``controls``: the ones that bind; ``waiting``: adopted, date not
+    reached. ``refusals``: why the step cannot proceed, one for each binding gate the roster cannot satisfy."""
+
+    workflow: str
+    step: str
+    role: str = ""
+    resolution: bool = False
+    second: bool = False
+    roles: tuple[OfficerRole, ...] = ()
+    gates: tuple[StepGate, ...] = ()
+    controls: tuple[Control, ...] = ()
+    waiting: tuple[Waiting, ...] = ()
+    refusals: tuple[str, ...] = ()
+    clash: str = ""
+
+    @property
+    def any(self) -> bool:
+        return bool(self.gates)
+
+
+def _step_matches(pattern: str, workflow_key: str, step_id: str) -> bool:
+    return pattern == "*" or fnmatchcase(step_id, pattern) or fnmatchcase(workflow_key, pattern)
+
+
+def step_applies(control: Control, workflow_key: str, step_id: str, family: str = "") -> bool:
+    """Whether the control governs this workflow step: its type governs steps, and its scope (a step pattern, a workflow
+    family) or, scoped to all, one of the type's step patterns names the step."""
+    patterns = control.type.categories(GovernsKind.WORKFLOW_STEP)
+    if not patterns:
+        return False
+    s = control.scope
+    if s.kind is ScopeKind.KIND:
+        return _step_matches(s.value, workflow_key, step_id)
+    if s.kind is ScopeKind.FAMILY:
+        return bool(family) and s.value == family
+    if s.kind is ScopeKind.ACCOUNT:
+        return False
+    return any(_step_matches(p, workflow_key, step_id) for p in patterns)
+
+
+def _step_asks(c: Control) -> tuple[bool, bool, tuple[OfficerRole, ...]]:
+    """What one control asks of a step: (a resolution first, a second person, the offices that may record it)."""
+    resolution = bool(c.value("resolution_first")) if _has(c, "resolution_first") else False
+    second = _asks(c)[0]
+    roles: set[OfficerRole] = set(c.value("roles") or ()) if _has(c, "roles") else set()
+    if _has(c, "recorded_by"):
+        roles |= set(c.value("recorded_by") or ())
+    return resolution, second, tuple(sorted(roles, key=lambda r: r.value))
+
+
+def _gate_sentence(c: Control, gate: str, roles: tuple[OfficerRole, ...], future: bool) -> str:
+    """The sentence a gate is shown and refused with. A control not yet in force says it will, and from when."""
+    on = c.adopted_at or (c.effective.isoformat() if c.effective else "")
+    who = f"a control the board adopted{' on ' + on if on else ''}"
+    when = f", from {c.effective.isoformat() if c.effective else 'a date not set'}," if future else ""
+    require = f"will require{when}" if future else "requires"
+    if gate == "resolution":
+        return (f"{who} {require} a board resolution on record before this step: cite the id of the decision recorded in "
+                "Decisions in the record")
+    if gate == "second":
+        return f"{who} {require} a second, different person to confirm this step"
+    names = " or ".join(f"the {r.value}" for r in roles)
+    return f"{who} {'will allow' + when if future else 'allows'} only {names} to record this step"
+
+
+def _step_lack(gate: str, roles: tuple[OfficerRole, ...], role: str, roster: Iterable[Any] | None) -> str:
+    """What the roster lacks to satisfy a gate on a step whose definition names ``role``; "" when it can or when the roster
+    was not read. A second person holds the step's role too (the engine asks it of each person who acts)."""
+    if roster is None:
+        return ""
+    held = _holders(roster)
+    if gate == "roles":
+        if not any(held.get(r) for r in roles):
+            return "the roster has no " + " or ".join(r.value for r in roles)
+        return ""
+    if gate == "second":
+        try:
+            office = OfficerRole(role)
+        except ValueError:
+            return ""
+        people = held.get(office, set())
+        if len(people) < 2:
+            return f"the roster has no {office.value}" if not people else f"the roster lacks a second {office.value}"
+    return ""
+
+
+def step_gates(workflow_key: str, step_id: str, role: str = "", *, controls: Iterable[Control] = (),
+               roster: Iterable[Any] | None = None, today: date | None = None, family: str = "") -> StepGates:
+    """The gates the adopted controls add to one step: those in force bind from their date (the roster that cannot satisfy
+    one refuses the act, never weakens it), those adopted but not yet in force are listed as ``waiting`` and as ``future``
+    gates and bind nothing. A control that is not adopted is never here. Pure: no store is read."""
+    today = today or date.today()
+    role = role.value if hasattr(role, "value") else str(role or "")
+    gates: list[StepGate] = []
+    bound: list[Control] = []
+    waiting: list[Waiting] = []
+    refused: list[str] = []
+    roles: tuple[OfficerRole, ...] = ()
+    clash = ""
+    resolution = second = False
+    for c in sorted(controls, key=lambda c: (-c.scope.specificity, c.key)):
+        if c.state is not ControlState.ADOPTED or not step_applies(c, workflow_key, step_id, family):
+            continue
+        asks_resolution, asks_second, c_roles = _step_asks(c)
+        if not (asks_resolution or asks_second or c_roles):
+            continue
+        now = in_force(c, today, roster)
+        future = not now.ok
+        if future:
+            waiting.append(Waiting(c, now.reason))
+        else:
+            bound.append(c)
+        for gate, asked, offices in (("resolution", asks_resolution, ()), ("second", asks_second, ()),
+                                     ("roles", bool(c_roles), c_roles)):
+            if not asked:
+                continue
+            lack = "" if future else _step_lack(gate, offices, role, roster)
+            row = StepGate(c, gate, _gate_sentence(c, gate, offices, future), offices, lack, future)
+            gates.append(row)
+            if lack:
+                refused.append(f"{row.reason}; {lack}")
+            if not future:
+                resolution = resolution or gate == "resolution"
+                second = second or gate == "second"
+                if gate == "roles":
+                    common = tuple(r for r in roles if r in offices) if roles else offices
+                    if common:
+                        roles = common
+                    else:
+                        clash = f"{c.key} and an earlier control name offices with no one in common"
+    return StepGates(workflow_key, step_id, role, resolution, second, roles, tuple(gates), tuple(bound), tuple(waiting),
+                     tuple(dict.fromkeys(refused)), clash)
+
+
+def _decided(text: str, ids: Iterable[str]) -> bool:
+    return any(re.search(rf"(?<![\w-]){re.escape(i)}(?![\w-])", text, re.IGNORECASE) for i in ids)
+
+
+def approved_decisions(data_dir: Path | str | None) -> frozenset[str]:
+    """The ids of the decisions on record with an approving outcome (``APPROVING``). Reads the decisions store and writes
+    nothing; a store that cannot be read has none."""
+    if data_dir is None:
+        return frozenset()
+    try:
+        from jason.tasks import decisions
+
+        return frozenset(d.id for d in decisions.load(Path(data_dir)) if (d.outcome or "").lower() in APPROVING and d.id)
+    except Exception:  # noqa: BLE001 - a decision store that cannot be read counts as no resolution on record
+        return frozenset()
+
+
+def step_unmet(gates: StepGates, *, by: str, held: Iterable[str] = (), first_by: str = "", texts: Iterable[str] = (),
+               data_dir: Path | str | None = None, approved: Iterable[str] | None = None) -> list[str]:
+    """Why this person's attestation or skip may not be recorded now, each reason the sentence the run page shows; empty
+    when every gate in force is met. ``held``: the offices ``by`` holds. ``first_by``: who made the first of two, when one is
+    waiting. ``texts``: the words the act and the run carry, where a resolution is cited by the id of a decision that is on
+    record with an approving outcome. Date reached, from the control's day: a gate not yet in force is never asked."""
+    out: list[str] = []
+    mine = {h.strip().casefold() for h in held}
+    texts = tuple(texts)
+    ids: frozenset[str] | None = None if approved is None else frozenset(approved)
+    for g in gates.gates:
+        if g.future:
+            continue
+        if g.lacks:
+            out.append(f"{g.reason}; {g.lacks}")
+            continue
+        if g.gate == "roles":
+            if not mine & {r.value for r in g.roles}:
+                out.append(g.reason)
+        elif g.gate == "resolution":
+            if ids is None:
+                ids = approved_decisions(data_dir)
+            if not any(_decided(t, ids) for t in texts):
+                out.append(g.reason)
+        elif g.gate == "second" and first_by and first_by.strip().casefold() == by.strip().casefold():
+            out.append(f"{g.reason}; {first_by} made the first, so a different person confirms")
+    if gates.clash:
+        out.append(gates.clash)
+    return list(dict.fromkeys(out))
+
+
+def workflow_gate(ask: Any) -> Any:
+    """The gate the workflow engine is given by default (``jason.workflows.api``): the controls the board adopted, read when a
+    person attests or skips a step. Reads nothing, and so adds nothing, when no controls source is configured, or none
+    governs this step. Returns the engine's ``GateVerdict``: the refusals (each a sentence), and whether a second person
+    must confirm."""
+    from jason.controls import store
+    from jason.workflows.types import GateVerdict
+
+    root = Path(ask.data_dir)
+    if not store.configured(root):
+        return GateVerdict()
+    controls = store.load(data_dir=root)
+    if not any(c.state is ControlState.ADOPTED and step_applies(c, ask.workflow, ask.step, ask.family) for c in controls):
+        return GateVerdict()
+    got = step_gates(ask.workflow, ask.step, ask.role, controls=controls, roster=_community_roster(), today=ask.today,
+                     family=ask.family)
+    if not got.any:
+        return GateVerdict()
+    unmet = step_unmet(got, by=ask.by, held=ask.roles, first_by=ask.first_by, texts=ask.texts, data_dir=root)
+    return GateVerdict(tuple(unmet), got.second)
+
+
+__all__ = ["APPROVING", "BOARD_ROLES", "Effective", "InForce", "StepGate", "StepGates", "Waiting", "applies",
+           "approved_decisions", "effective_approver", "ensure_valid", "in_force", "refusals", "requires_second",
+           "roster_problem", "signature_problems", "signer_refusals", "step_applies", "step_gates", "step_unmet",
+           "touches", "validate", "workflow_gate"]
