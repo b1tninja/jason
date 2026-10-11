@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Badge, Caveats, RemoteView, ScreenHeader } from "../components";
+import { Badge, Caveats, Recitation, RemoteView, ScreenHeader } from "../components";
 import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
 import { useSession } from "../lib/session";
@@ -35,6 +35,14 @@ function nextStep(r: SlotRow): string {
   }
 }
 
+/** "N of M held or answered": the slots with a file or a person's answer, of those the profile has not hidden. */
+function groupCount(g: SlotsPage["groups"][number]): string {
+  const hidden = g.counts.hidden ?? 0;
+  const of = g.counts.total - hidden;
+  const n = g.counts.inHand ?? g.counts.answered;
+  return `${n} of ${of} held or answered${hidden > 0 ? `, ${hidden} hidden by the profile` : ""}`;
+}
+
 function groupOpen(g: SlotsPage["groups"][number], filtering: boolean, first: boolean): boolean {
   return filtering || first || g.slots.some((s) => s.state === "problem");
 }
@@ -45,6 +53,7 @@ function ChecklistScreen({ query }: { query: URLSearchParams }) {
   const r = useApi<SlotsPage>("/api/record-slots");
   const [state, setState] = useState(query.get("state") ?? "");
   const [group, setGroup] = useState(query.get("group") ?? "");
+  const [confidential, setConfidential] = useState(query.get("confidential") === "1");
   return (
     <div className="stack records-view">
       <ScreenHeader
@@ -53,14 +62,22 @@ function ChecklistScreen({ query }: { query: URLSearchParams }) {
       />
       <RemoteView r={r}>
         {(d) => {
-          const filtering = !!state || !!group;
+          const filtering = !!state || !!group || confidential;
           const shown = d.groups.filter((g) => !group || g.key === group)
-            .map((g) => ({ ...g, slots: g.slots.filter((s) => !state || s.state === state) })).filter((g) => g.slots.length > 0);
+            .map((g) => ({ ...g, slots: g.slots.filter((s) => (!state || s.state === state) && (!confidential || s.confidential)) })).filter((g) => g.slots.length > 0);
+          const confidentialSlots = d.groups.reduce((n, g) => n + g.slots.filter((s) => s.confidential).length, 0);
           const allEmpty = d.counts.total > 0 && (d.counts.byState.empty ?? 0) === d.counts.total;
           const word = (v: string) => d.states.find((s) => s.value === v)?.word ?? words(v);
           return (
             <>
               <p className="muted">As of {d.asOf}. {d.driveCatalog ? `jason's Drive catalog holds ${d.driveCatalog.files} files${d.driveCatalog.syncedAt ? `, synced ${String(d.driveCatalog.syncedAt).slice(0, 10)}` : ""}.` : ""}</p>
+              {d.driveConnected === false && (
+                <div className="notice notice-warn" role="alert">
+                  <p>{d.driveWhy ?? "jason cannot read Drive, so a file cannot be chosen from it here."} A file can still be uploaded from this computer, and an answer can still be recorded.</p>
+                  {d.driveCommand && <p>A person runs <code>{d.driveCommand}</code> in a terminal.</p>}
+                </div>
+              )}
+              {d.allInHand && <p className="notice" role="note">Every slot is held or answered. That counts files and answers; it does not check that each file is the right one. Read each state as jason's reading.</p>}
               {allEmpty && <p className="notice" role="note">Nothing has been picked yet. Start with the biggest unknowns below, or choose a Drive folder that holds a group of records.</p>}
               <section aria-label="Slots by state" className="record-counts">
                 <ul>
@@ -86,7 +103,10 @@ function ChecklistScreen({ query }: { query: URLSearchParams }) {
                   <option value="">All groups</option>
                   {d.groups.map((g) => <option key={g.key} value={g.key}>{g.title}</option>)}
                 </select>
-                {filtering && <button type="button" onClick={() => { setState(""); setGroup(""); }}>Show every slot</button>}
+                <button type="button" aria-pressed={confidential} onClick={() => setConfidential(!confidential)} title="Slots whose files are held back outside the private view">
+                  Confidential ({confidentialSlots})
+                </button>
+                {filtering && <button type="button" onClick={() => { setState(""); setGroup(""); setConfidential(false); }}>Show every slot</button>}
               </div>
               {!filtering && d.biggestUnknowns.length > 0 && (
                 <section aria-labelledby="records-unknowns" className="record-unknowns">
@@ -98,10 +118,10 @@ function ChecklistScreen({ query }: { query: URLSearchParams }) {
                   </ol>
                 </section>
               )}
-              {shown.length === 0 && <p className="muted" role="status">No slot is {state ? word(state) : "in that group"}.</p>}
+              {shown.length === 0 && <p className="muted" role="status">No {confidential ? "confidential " : ""}slot is {state ? word(state) : "in that group"}.</p>}
               {shown.map((g, i) => (
                 <details key={g.key} className="record-group" open={groupOpen(g, filtering, i === 0)}>
-                  <summary><h2>{g.title}</h2> <span className="muted">{g.slots.length} {g.slots.length === 1 ? "slot" : "slots"}{g.law ? `, ${g.law}` : ""}; {g.counts.held} held back, {g.counts.answered} answered</span></summary>
+                  <summary><h2>{g.title}</h2> <span className="muted">{groupCount(g)}{g.law ? `, ${g.law}` : ""}{g.opensGate ? `; opens the ${g.opensGate} gate` : ""}{g.counts.held > 0 ? `; ${g.counts.held} ${g.counts.held === 1 ? "file" : "files"} held back as confidential` : ""}</span></summary>
                   <div className="record-scroll">
                     <table className="record-table">
                       <caption className="sr-only">{g.title}: {g.slots.length} slots, by state</caption>
@@ -258,7 +278,6 @@ function HolderCard({ holder, slot, open }: { holder: Holder; slot: SlotPageData
       {holder.problem && <p className="record-problem" role="note">{holder.problem}</p>}
       {holder.kept && <p>Kept here by {holder.kept.by}, {holder.kept.at}{holder.kept.reason ? `: ${holder.kept.reason}` : ""}. jason still reads it as {holder.kept.readsAs.replace(/_/g, " ")}.</p>}
       {holder.note && <p className="muted">Note: {holder.note}</p>}
-      <WrongSlotNotice holder={holder} slot={slot} open={open} />
       <Reading holder={holder} slot={slot} />
       <div className="row wrap record-holder-acts">
         {slot.acts.read && holder.kind !== "folder" && <button type="button" onClick={() => open({ kind: "read", pin: holder.pin })} aria-label={`${rb ? "Read again" : "Read"}: ${holder.name}`}>{rb ? "Read again" : "Read"}</button>}
@@ -355,11 +374,18 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
           return (
             <>
               <ScreenHeader title={d.title} summary={<><SlotWord state={d.state} word={d.stateWord} /> {CARDINALITY[d.cardinality]}{d.shelf.length ? `; shelf: ${d.shelf.join(", ")}` : ""}</>} />
+              {holders.filter((h) => h.wrongSlot).map((h) => <WrongSlotNotice key={h.pin} holder={h} slot={d} open={open} />)}
               {d.hidden && <p className="notice notice-warn" role="note">Hidden by the profile: {d.hidden}</p>}
               <Section title="What requires it">
                 {d.requires.length > 0 ? <p>{d.requires.map((c) => <code key={c} className="chip">{c}</code>)}</p> : <p className="muted">No law is named. jason's own design needs this record.</p>}
                 {d.why && <p>{d.why}</p>}
-                <p className="muted">The words of a statute come from <code>jason cite</code>, not from this page.</p>
+                {(d.recitals ?? []).map((c) => (
+                  <div key={c.requires} className="record-recital">
+                    {c.note && <p className="muted">{c.note}</p>}
+                    <Recitation citation={c} />
+                  </div>
+                ))}
+                <p className="muted">The words come from <code>jason cite</code>, not from this page. They are the stored copy, never a paraphrase; a reading of them is a person's, labeled as one.</p>
                 {d.problem && <p className="record-problem">{d.problem}</p>}
               </Section>
               {d.collisions.map((c) => (

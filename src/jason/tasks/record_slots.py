@@ -604,7 +604,10 @@ def view(community: Any = None, root: Path | None = None, profile: str | None = 
             "key": key, "title": GROUP_TITLES[Group(key)] if key in order else key, "law": ", ".join(laws[:3]),
             "opensGate": next((r["gate"] for r in by_group[key] if r["gate"]), ""),
             "counts": {"total": len(mine), "held": sum(r["held"] for r in mine),
-                       "answered": sum(1 for r in mine if r["state"] in ("notApplicable", "doesNotExist", "waiting"))},
+                       "answered": sum(1 for r in mine if r["state"] in ("notApplicable", "doesNotExist", "waiting")),
+                       # a slot with a file or a person's answer, whatever the file's reading: "N of M held or answered"
+                       "inHand": sum(1 for r in mine if r["state"] != "empty"),
+                       "hidden": sum(1 for r in mine if r["hidden"])},
             "slots": by_group[key],
         })
     five = [r for r in rows if r["key"].startswith("records/5200/")]
@@ -615,7 +618,10 @@ def view(community: Any = None, root: Path | None = None, profile: str | None = 
     return {
         "found": True, "asOf": datetime.now(timezone.utc).date().isoformat(), "profile": profile,
         "driveConnected": None, "driveCatalog": drive,
-        "counts": counts(rows), "law": {"civil code 5200": {"slots": len(five), "answered_or_held": sum(1 for r in five if r["state"] != "empty")}},
+        "counts": counts(rows),
+        # every slot the profile has not hidden holds a file or has a person's answer (and there is at least one)
+        "allInHand": any(not r["hidden"] for r in rows) and all(r["state"] != "empty" for r in rows if not r["hidden"]),
+        "law": {"civil code 5200": {"slots": len(five), "answered_or_held": sum(1 for r in five if r["state"] != "empty")}},
         "states": [{"value": s.value, "word": STATE_WORDS[s], "meaning": STATE_MEANING[s]} for s in SlotState],
         "groups": groups,
         "biggestUnknowns": [{"key": r["key"], "title": r["title"],
@@ -649,6 +655,52 @@ def _holder_dict(st: PinStatus, slot: Slot, others: dict[str, list[tuple[str, st
                        "fits": [{"key": k, "title": t} for k, t in others.get(st.reads_as, [])],
                        "acts": ["repin", "keep", "unpin"]} if st.wrong_slot else None),
     }
+
+
+def recitals(requires: tuple[str, ...], community: Any = None, root: Path | None = None) -> list[dict[str, Any]]:
+    """The stored words of each citation a slot requires, one row per citation, in the slot's order. Each row is what
+    ``jason cite`` answers (``found``, ``citation``, ``text`` whole, ``inForce``, ``version``, ``caveat``) or, where the
+    authorities shelf does not hold the words, ``found`` false with its ``reason``. Nothing is written from memory, and a
+    miss recites nothing. A statute's words are public, so no restricted book is read."""
+    if not requires:
+        return []
+    from jason.tasks.cite import Shelf, resolve
+
+    root = _root(root)
+    try:
+        shelf: Shelf | None = Shelf(community, root, private=False)
+    except Exception:  # noqa: BLE001 - a shelf that cannot be opened is a miss for each citation
+        shelf = None
+    out: list[dict[str, Any]] = []
+    for citation in requires:
+        try:
+            got = resolve(citation, text=True, community=community, data_dir=root, shelf=shelf) if shelf else                 {"found": False, "reason": "unreadable", "detail": "the authorities shelf could not be opened"}
+        except Exception as exc:  # noqa: BLE001
+            got = {"found": False, "reason": "unreadable", "detail": f"{type(exc).__name__}: {exc}"}
+        note = ""
+        base = citation.split("(", 1)[0].strip()
+        if not got.get("found") and got.get("reason") == "label_not_found" and base and base != citation and shelf:
+            # The section is on disk but the shelf cannot isolate the subdivision: recite the section whole, and say so.
+            whole = resolve(base, text=True, community=community, data_dir=root, shelf=shelf)
+            if whole.get("found") and whole.get("text"):
+                got, note = whole, f"jason could not isolate {citation} in the stored words, so the whole of {base} is recited; the words that answer are within it."
+        row = {k: v for k, v in got.items() if k in ("kind", "found", "citation", "text", "inForce", "caveat", "address",
+                                                     "title", "reason", "detail", "version")}
+        row["found"] = bool(row.get("found")) and bool(row.get("text"))
+        row["citation"] = str(row.get("citation") or citation)
+        row["requires"] = citation
+        if row["found"] and not row.get("caveat"):
+            from jason.community import law_text
+
+            row["caveat"] = law_text.NOT_RESTATEMENT
+        row["note"] = note
+        if not row["found"]:
+            row.pop("text", None)
+            row.setdefault("reason", "not_on_shelf")
+            row["detail"] = row.get("detail") or ("jason holds no stored words for this citation; "
+                                                  "`jason export-authorities` brings a statute's words onto the shelf")
+        out.append(row)
+    return out
 
 
 def slot_view(key: str, community: Any = None, root: Path | None = None, profile: str | None = None, *, private: bool = False,
@@ -690,7 +742,7 @@ def slot_view(key: str, community: Any = None, root: Path | None = None, profile
         **row,
         "found": True, "why": s.why, "existence": {"possible": s.existence, "answer": answer},
         "shelf": sorted({_category(k) for k in s.kinds}), "record": s.record, "delivery": s.delivery,
-        "holders": holders,
+        "holders": holders, "recitals": recitals(s.requires, community, root),
         "bindings": [{"id": b.get("id"), "name": b.get("name") or "a folder", "by": b.get("by"), "at": str(b.get("at") or "")[:10]}
                      for b in found.bindings],
         "more": None if more is None else {"id": more.get("id"), "answer": more.get("value"), "by": more.get("by"),

@@ -22,12 +22,12 @@ const LIST: SlotsPage = {
   states: [{ value: "empty", word: "empty", meaning: "nobody has spoken for this slot (not: the record does not exist)" }, { value: "read", word: "read", meaning: "jason's readers ran" },
            { value: "problem", word: "problem", meaning: "reads as another kind" }, { value: "picked", word: "picked", meaning: "" }],
   groups: [
-    { key: "records", title: "Association records", law: "CIV 9999", opensGate: "ingest", counts: { total: 3, held: 1, answered: 0 }, slots: [
+    { key: "records", title: "Association records", law: "CIV 9999", opensGate: "ingest", counts: { total: 3, held: 1, answered: 0, inHand: 2, hidden: 0 }, slots: [
       row({}), row({ key: "records/9999/minutes", title: "Meeting minutes", cardinality: "series", state: "read", stateWord: "read", pins: 2, held: 1,
-                     periods: [{ period: "2099", state: "read" }, { period: "2098", state: "empty" }], cells: 2 }),
+                     periods: [{ period: "2099", state: "read" }, { period: "2098", state: "empty" }], cells: 2, confidential: true }),
       row({ key: "example/map", title: "Example map", state: "problem", stateWord: "problem", problem: "reads as a deed, not a map", pins: 1, collision: true }),
     ] },
-    { key: "delivery", title: "Developer deliveries", law: "", opensGate: "", counts: { total: 1, held: 0, answered: 0 }, slots: [
+    { key: "delivery", title: "Developer deliveries", law: "", opensGate: "", counts: { total: 1, held: 0, answered: 0, inHand: 0, hidden: 1 }, slots: [
       row({ key: "example/plan", title: "Example plan set", group: "delivery", requires: [], hidden: "no plan set for a conversion" }),
     ] },
   ],
@@ -139,6 +139,52 @@ describe("the checklist", () => {
     expect(screen.getByText("jason's own design")).toBeInTheDocument();
   });
 
+  it("counts each group as N of M held or answered, names the gate it opens, and keeps the server's order", async () => {
+    page();
+    window.location.hash = "#/setup/records";
+    render(<RecordsView />);
+    const group = (await screen.findByRole("heading", { name: "Association records" })).closest("summary")!;
+    expect(group).toHaveTextContent("2 of 3 held or answered, CIV 9999; opens the ingest gate; 1 file held back as confidential");
+    expect(group).not.toHaveTextContent("answered, 1 held back");
+    expect(screen.getByRole("heading", { name: "Developer deliveries" }).closest("summary")).toHaveTextContent("0 of 0 held or answered, 1 hidden by the profile");
+    const rows = within(screen.getByRole("table", { name: /Association records/ })).getAllByRole("row").slice(1).map((r) => r.getAttribute("data-slot"));
+    expect(rows).toEqual(["example/policy", "records/9999/minutes", "example/map"]);
+  });
+
+  it("filters to the confidential slots and puts the whole list back", async () => {
+    page();
+    window.location.hash = "#/setup/records";
+    const user = userEvent.setup();
+    render(<RecordsView />);
+    const chip = await screen.findByRole("button", { name: "Confidential (1)" });
+    expect(chip).toHaveAttribute("aria-pressed", "false");
+    await user.click(chip);
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("table", { name: "Association records: 1 slots, by state" })).toBeInTheDocument();
+    expect(screen.queryByText("Example map")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Show every slot" }));
+    expect(await screen.findByText("Example map")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confidential (1)" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("warns above the list when Drive is not connected, and says when every slot is held or answered", async () => {
+    serve((c) => (c.url.startsWith("/api/record-slots") ? { ...LIST, driveConnected: false, driveWhy: "jason has no Drive sign-in.", driveCommand: "jason sign-in --name example", allInHand: true } : undefined));
+    window.location.hash = "#/setup/records";
+    render(<RecordsView />);
+    const banner = await screen.findByText(/jason has no Drive sign-in/);
+    expect(banner.closest("[role=alert]")).toHaveTextContent("jason sign-in --name example");
+    expect(screen.getByText(/Every slot is held or answered/)).toBeInTheDocument();
+  });
+
+  it("says neither when Drive is unknown and slots remain empty", async () => {
+    page();
+    window.location.hash = "#/setup/records";
+    render(<RecordsView />);
+    await screen.findByRole("table", { name: /Association records/ });
+    expect(screen.queryByText(/Every slot is held or answered/)).toBeNull();
+    expect(screen.queryByText(/jason cannot read Drive/)).toBeNull();
+  });
+
   it("filters by a state chip and puts the whole list back", async () => {
     page();
     window.location.hash = "#/setup/records";
@@ -178,6 +224,7 @@ describe("a slot", () => {
     render(<RecordsView />);
     expect(await screen.findByRole("heading", { level: 1, name: "Example policy" })).toBeInTheDocument();
     expect(screen.getByText("CIV 9999", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByText(/stored copy, never a paraphrase/)).toBeInTheDocument();
     const card = screen.getByText("Policy 2099.pdf", { selector: "strong.record-holder-name" }).closest("li")!;
     expect(card).toHaveTextContent("Pinned by Jane Example, 2099-10-03");
     expect(card).toHaveTextContent("jason read it as policy (likely; name rule: policy; phrase rule: policy)");
@@ -192,6 +239,30 @@ describe("a slot", () => {
     const log = screen.getByRole("table", { name: "Acts on this slot" });
     expect(within(log).getByText("2099-10-03")).toBeInTheDocument();
     expect(calls).toHaveLength(0);                                   // reading a slot writes nothing
+  });
+
+  it("recites the stored words of what requires it, and says in words what is not on the shelf", async () => {
+    open(SLOT({ requires: ["CIV 9999(a)", "CIV 8888"], recitals: [
+      { requires: "CIV 9999(a)", found: true, citation: "CIV 9999", text: "(a) Made-up operative words.", inForce: "the 2099 publication", caveat: "jason's consolidated text is not an official restatement.",
+        note: "jason could not isolate CIV 9999(a) in the stored words, so the whole of CIV 9999 is recited." },
+      { requires: "CIV 8888", found: false, citation: "CIV 8888", reason: "not_on_shelf", detail: "jason holds no stored words for this citation" },
+    ] }));
+    render(<RecordsView />);
+    const section = (await screen.findByRole("heading", { name: "What requires it" })).closest("section")!;
+    expect(within(section).getByText("(a) Made-up operative words.")).toBeInTheDocument();
+    expect(section).toHaveTextContent("jason's consolidated text is not an official restatement.");
+    expect(section).toHaveTextContent("so the whole of CIV 9999 is recited");
+    expect(section).toHaveTextContent("Not found: CIV 8888");
+    expect(section).toHaveTextContent("Nothing is quoted.");
+  });
+
+  it("puts a wrong-slot alert above everything else on the slot page, not inside the holder", async () => {
+    open(SLOT({ holders: [holder({ wrongSlot: { readsAs: "deed", expects: ["policy"], fits: [], acts: ["keep"] } })] }));
+    render(<RecordsView />);
+    const alert = await screen.findByRole("alert");
+    const requires = screen.getByRole("heading", { name: "What requires it" });
+    expect(alert.compareDocumentPosition(requires) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(alert.closest(".record-holder")).toBeNull();
   });
 
   it("shows a confidential file masked, with no id and a way to open it", async () => {

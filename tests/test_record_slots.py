@@ -561,3 +561,20 @@ def test_the_command_is_registered_and_its_name_was_free():
     assert "record_slots" in MODULES
     choices = cli.build_parser()._subparsers._group_actions[0].choices
     assert list(choices).count("records") == 1 and "records-request" in choices
+
+
+def test_a_slot_recites_the_stored_words_of_what_requires_it(world):
+    miss = rs.slot_view("records/5200/minutes", world.community, world.root, "example")["recitals"]
+    assert [r["citation"] for r in miss] == ["CIV 5200(a)(8)"] and miss[0]["found"] is False
+    assert "text" not in miss[0] and miss[0]["detail"]                      # a citation not on the shelf says so, quotes nothing
+    law = world.root / "authorities" / "CIV"
+    law.mkdir(parents=True)
+    (law / "CIV-5200-5205.md").write_text("# Records\n\n## CIV 5200\n(a) The association shall keep, and make available, the following:\n"
+                                          "(8) Minutes of meetings (made-up words for a test).\n", encoding="utf-8")
+    (world.root / "authorities" / "manifest.json").write_text(json.dumps({"pages": [{
+        "file": "authorities/CIV/CIV-5200-5205.md", "citation": "CIV 5200-5205", "title": "Records", "code": "CIV",
+        "start": "5200", "end": "5205", "sections": ["5200"], "basis": "duty", "why": [], "session": "2099"}]}), encoding="utf-8")
+    got = rs.slot_view("records/5200/minutes", world.community, world.root, "example")["recitals"]
+    assert got[0]["requires"] == "CIV 5200(a)(8)"
+    assert got[0]["found"] and "Minutes of meetings" in got[0]["text"] and "not an official restatement" in got[0]["caveat"]
+    assert rs.slot_view("records/5200/minutes", world.community, world.root, "example")["requires"] == ["CIV 5200(a)(8)"]

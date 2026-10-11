@@ -1,4 +1,4 @@
-import type { Tone } from "../components";
+import type { Citation, Tone } from "../components";
 import type { GlyphName } from "../components/Glyph";
 
 /** The shapes of the record checklist's loaders and acts (`jason.web.extra.record_slots`, `jason.web.extra.drive_choose`).
@@ -15,10 +15,13 @@ export interface SlotRow {
 }
 export interface SlotGroup {
   key: string; title: string; law: string; opensGate: string;
-  counts: { total: number; held: number; answered: number }; slots: SlotRow[];
+  /** `inHand` is the slots with a file or a person's answer; `hidden` the ones the profile hides (left out of "N of M"). */
+  counts: { total: number; held: number; answered: number; inHand?: number; hidden?: number }; slots: SlotRow[];
 }
 export interface SlotsPage {
-  found?: boolean; note?: string; asOf: string; profile: string; driveConnected: boolean | null;
+  found?: boolean; note?: string; asOf: string; profile: string; driveConnected: boolean | null; driveWhy?: string; driveCommand?: string;
+  /** Every slot the profile has not hidden holds a file or has a person's answer. */
+  allInHand?: boolean;
   driveCatalog?: { syncedAt?: string | null; files: number };
   counts: { total: number; byState: Record<string, number>; held: number; hidden: number };
   states: { value: string; word: string; meaning: string }[];
@@ -66,6 +69,8 @@ export interface SlotAnswer { id: string; answer: string; word: string; by: stri
 export interface SlotPageData extends Omit<SlotRow, "candidates" | "bindings"> {
   found?: boolean; note?: string; reason?: string; why: string; existence: { possible: boolean; answer: SlotAnswer | null };
   shelf: string[]; record: string; delivery: string; holders: Holder[];
+  /** The stored words of each citation in `requires`, as `jason cite` gives them; `note` says when the section is recited whole. */
+  recitals?: (Citation & { requires: string; note?: string })[];
   bindings: { id: string; name: string; by: string; at: string }[];
   more: { id: string; answer: string; by: string; at: string; complete: boolean } | null;
   specificationFolders: { pin: string; folder: string; source: string }[]; holding: string | null;

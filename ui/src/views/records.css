@@ -89,3 +89,5 @@
   .record-counts ul { gap: .4rem; }
 }
 @media (prefers-reduced-motion: reduce) { .records-view *, .record-dialog * { transition: none !important; animation: none !important; } }
+.record-recital { display: grid; gap: .3rem; }
+.record-recital > * { margin: 0; }
