@@ -1523,11 +1523,19 @@ LESSONS: tuple[Lesson, ...] = (
            "The first-two-words rule was written for builder tract names that carry a phase or a neighborhood after the "
            "community's words, and it was applied to every name.",
            "A name of three own words or more is tried whole first, and `key` folds those spellings (the directory rekeyed "
-           "from 3,024 associations to 2,983). Subdivision names now tie 802 associations, 51 newly, and 7 ties changed to "
-           "the more specific association. Found while tracing lien owners to their parcels.",
+           "from 3,024 associations to 2,983). Found while tracing lien owners to their parcels. The tie scorecard "
+           "(`asspy.ties.score`, against land held by deed) then measured each way a name ties: two words 87%, three or more "
+           "whole 81%, three or more by their first two 55%. A subdivision name no longer falls back to its first two words "
+           "(805 name ties to 698). A name is also refused where another association holds the subdivision by deed, unless "
+           "the two are one community's master and neighborhood (40 names), and, beside a tied plan, counts only on the "
+           "plan's units' map pages (a condominium had taken 630 houses across town by name). Pages list what was left out.",
            Status.FIXED,
            guards=("asspy tests/test_associations.py::test_a_three_word_name_ties_whole_before_its_first_two",
-                   "asspy tests/test_associations.py::test_a_projects_plural_its_street_and_the_short_forms_share_a_key"),
+                   "asspy tests/test_associations.py::test_a_subdivision_name_of_three_words_does_not_fall_back_to_its_first_two",
+                   "asspy tests/test_associations.py::test_a_projects_plural_its_street_and_the_short_forms_share_a_key",
+                   "asspy tests/test_land.py::test_a_name_pointing_into_another_associations_deeded_land_is_refused",
+                   "asspy tests/test_land.py::test_a_name_counts_beside_its_plans_units_and_not_across_town",
+                   "tests/test_hoa_reports.py::test_a_name_into_another_associations_deeded_land_is_left_out_and_said"),
            docs=("docs/county-land.md",)),
     Lesson("parcel-legal-description-unread", date(2026, 10, 10), (Area.ONBOARDING,),
            "Through all the work on association footprints, the parcels layer was read for 15 of its 70 fields. Its long "
@@ -2364,6 +2372,36 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("library-intake-reads-the-text-layer-only", date(2026, 10, 10), (Area.ONBOARDING,),
+           "A part filed to the library from the splitter is invisible to text search until its scan is read, and a request "
+           "must never wait on OCR.",
+           "Library intake reads the text layer only.",
+           "Each filed part queues one local-lane OCR job (idempotent by file hash, capped by split.ocr_queue_max); the "
+           "apply names every part it did not queue.",
+           Status.FIXED, guards=("tasks.library_ocr.plan", "tests/test_split_ocr.py"), docs=("docs/pdf-splitter.md",),
+           notes=("Open: the vision-model reading is not in the automatic job; whether a later pass queues it on the GPU "
+                  "lane under preflight is a person's decision.",)),
+    Lesson("a-current-choice-with-a-specification-pin-is-not-settled", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Choosing which holder is current does not remove a holder that the specification itself pins, so a person could "
+           "think it was done.",
+           "The act edits jason's store, never the profile.",
+           "The page says two holders remain and shows the proposed patch text until a person applies it.",
+           Status.FIXED, guards=("tests/test_record_acts_many.py", "ui/src/views/records.test.tsx (the stillTwo test)"),
+           docs=("docs/record-intake.md",)),
+    Lesson("a-default-prop-object-remounts-the-effect", date(2026, 10, 10), (Area.REPOSITORY,),
+           "A default prop of {} in a component whose callback depended on it made a new identity each render and re-ran "
+           "the review, resetting the preview.",
+           "An object literal as a default is a new object every render.",
+           "A module-level constant is the default, and a fixed-height windowed list reserves any new line in its row height "
+           "up front.",
+           Status.FIXED, guards=("ui/src/views/splitflags.test.tsx",), docs=("docs/console/screens/split.md",)),
+    Lesson("a-split-records-test-fails-once-in-a-while", date(2026, 10, 10), (Area.REPOSITORY,),
+           "test_the_undo_stack_is_capped_and_a_change_that_changes_nothing_is_not_a_step failed once in a clean-checkout "
+           "run and once in an agent's run, and passed on rerun.",
+           "Not known; the code under test is deterministic, so the suspect is the environment (temp drive, shared state).",
+           "Nothing yet; the full rerun was green each time.",
+           Status.OPEN, guards=("tests/test_split_records.py",), docs=("docs/pdf-splitter.md",),
+           notes=("Open: run the test in a loop to find what varies before trusting a green run as proof.",)),
     Lesson("a-sideways-page-is-measured-not-read-from-rotate", date(2026, 10, 10), (Area.ONBOARDING,),
            "A page's /Rotate entry says how it is displayed, not which way its text runs, so it was a poor sideways fact.",
            "The fact was taken from the PDF's rotation entry.",
