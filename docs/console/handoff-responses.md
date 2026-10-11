@@ -9,7 +9,7 @@ An owner can answer a request four ways (PayHOA's form, a Google Form, a reply e
 ## Who and where
 
 - **Route:** `#/responses` (`?id=` one arrival; `?request=` and `?state=` filter), in the Overview group beside Inbox. The dock and the digest carry a count (below).
-- **Sees readings and scans:** the manager, the Secretary, and an administrator. An owner's answers are private (level P3): a director sees the list's counts and states but not a scan or a reading, unless the board decides otherwise (a design decision below). An owner never sees this screen.
+- **Sees readings and scans:** the manager, the Secretary, and an administrator. An owner's answers are private (level P3): a director reads what an officer reads (the board's decision of 2026-10-11: directors and officers have the same access to information). An owner never sees this screen.
 - **Acts:** the person who confirms or dismisses is named, and is the signed-in person when the console requires sign-in. Until console writes exist, each act shows its `Command` (`jason responses --confirm ID --by NAME`).
 - **Never:** approve, deny, or assign a request; send an owner anything; mark a PayHOA request complete.
 
@@ -337,7 +337,7 @@ Never "the owner said …" for a reading: "the form says …" until it is confir
 2. Whether the page and the reading are tied by highlight alone, or also by a numbered pin on the page.
 3. How a low-confidence field is surfaced: a band of "Check these" above the form, or a mark in the form's order.
 4. The glyph for email, and whether the four channel marks share a frame.
-5. Whether directors see the list's counts and states without the scan (the proposal), or nothing.
+5. Answered 2026-10-11: directors read what the officers read; there is no director-only view.
 6. Whether `NewResponsesCount` lives on the dock, the digest, or both.
 
 ## Open (the build's or a person's)

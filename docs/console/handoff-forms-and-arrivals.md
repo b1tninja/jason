@@ -12,7 +12,7 @@ Everything that arrives (an email, a scan, a PayHOA request, a form response) is
 |---|---|---|---|
 | **Arrivals** | `#/arrivals` (the Inbox becomes its lanes) | manager, Secretary, administrator | Everything that came in, by lane: act now, forms, requests, invoices, notices, questions, needs a person |
 | **Responses** | `#/responses` | as in [handoff-responses.md](handoff-responses.md) | The forms lane in detail: one arrival's scan beside its reading |
-| **Cycle board** | `#/cycle` (a tab of Owner information, `#/owner-info`) | manager, Secretary, board (counts only for directors) | One row per owner: asked, delivered, responded, reviewed, reachable, and what the law asks next |
+| **Cycle board** | `#/cycle` (a tab of Owner information, `#/owner-info`) | manager, Secretary, board | One row per owner: asked, delivered, responded, reviewed, reachable, and what the law asks next |
 | **Forms** | `#/forms` | administrator; board read-only | Each known form: its authority, procedure, handler, campaigns, copies sent and returned |
 | **Needs development** | a band on Status (`#/status`) and a page `#/instance/gaps` | administrator only | Kinds of arrival and forms with no handler; what the manager did by hand |
 | **Form candidates** | `#/forms/candidates` | administrator; board read-only | What the discovery pass found in the law and the documents, for a person to confirm, hold, or drop |
@@ -73,7 +73,7 @@ The answer to "who has responded, who has not, whose response awaits review, and
 - **Lenses** are the working lists; a row can be in more than one. Counts carry the age of their source, and a lens with an old source says so in its tab, not only on hover.
 - **Open obligation** reads from the follow-up rules: "Resend the notice by first-class mail and ask for a working email — CIV 4041(e), 4040(a)(2) — required" or "… — policy". The citation is the recited authority (a link to the words), never a paraphrase; required and policy are marked differently so a board can see which is the law's and which is its own.
 - **Deadlines** are the strip above: asked-by, entered-by, reports-mailed-by, each with days left and, once passed, days over. A row past a date shows it.
-- **Directors** see the counts and the states, not a scan, an answer, or an address. Owners never see it.
+- **Directors** see what the officers see (no director-only view, 2026-10-11). Owners never see it.
 - **Never:** a send, a resend, or a completion from this screen. A row offers the command; resending is a person's `--yes`.
 
 ## Forms
@@ -224,8 +224,7 @@ Loaders over what the CLI and the MCP tools read, so the console and a terminal 
 
 - **Who.** A signed-in person whose office opens owners' names and units (P2); anyone else gets the sentence `access.may_see` gives (403), and the owner view never reads them.
 - **An arrival's own words are held.** `response` returns the arrival (who, unit, channel, state, attachments' names) to P2, but its reading, keyed answers, and acts only where the viewer may see an owner's private material (P3, in the private view); otherwise `held: true` with the reason. Each opening is logged to `access/served.jsonl`, never its contents; an opening that cannot be logged is not served.
-- **A director sees counts only, decided on the server (2026-10-10).** For a viewer whose only office is director (`access.counts_only`), or an admin viewing as one: `responses` returns `count`, `inbox`, `byChannel`, and the channel checks with no arrival; `response` is refused (403); `outstanding-responses` and `campaign-status` return the counts (`outstandingCount`, `neverAskedCount`, unreachable `count`) with no owner list; `followups` keeps each item's count, state, basis, and date with no `names`, a generic `what` where it would name an owner, and no unit in a resend command. Each carries `countsOnly: true` and `countsOnlyWhy`, and a last scrub (`OWNER_KEYS`) drops any owner key. A director who is also president, secretary, treasurer, or manager sees the names. `form-library` is not private.
-- **Read only.** No write route: marking a follow-up done, confirming a reading, and applying an answer stay terminal steps (`Command`) until a sign-in-guarded writer exists. Not built: `/api/cycle` (the per-owner join of asked, delivered, responded, reachable), `/api/instance/gaps`, and `/api/form-candidates`.
+- **Read only.** No write route: marking a follow-up done, confirming a reading, and applying an answer stay terminal steps (`Command`) until a sign-in-guarded writer exists. Not built: `/api/cycle` (the per-owner join of asked, delivered, responded, reachable), `/api/instance/gaps`, `/api/form-candidates`, and a counts-only variant for directors.
 
 ### Drawn on this page, not yet producible (proposed, not built)
 
@@ -261,7 +260,7 @@ Loaders over what the CLI and the MCP tools read, so the console and a terminal 
 - A recognition is a reading with its rung; only a person's attach or correction changes it, and the change is recorded.
 - No count without its age; no zero without the time it was true.
 - No screen sends, resends, files, replies, or completes a request. A required follow-up shows its command.
-- Gaps and candidates show no content of any arrival and no owner's private facts; directors see counts and states, not readings.
+- Gaps and candidates show no content of any arrival and no owner's private facts.
 - Confidence and attention are never color alone.
 
 ## Decisions that are the design's

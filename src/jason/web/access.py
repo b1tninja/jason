@@ -163,18 +163,6 @@ def may_see(viewer: Viewer, level: Level, *, private: bool = False) -> tuple[boo
     return False, f"{_office_words(viewer.offices)} open {WORDS[level]}."
 
 
-COUNTS_ONLY_OFFICES: frozenset[str] = frozenset({"director"})
-
-
-def counts_only(viewer: Viewer) -> bool:
-    """Whether ``viewer`` sees counts and states, never an owner's name or unit, on the requests area. The board decided
-    (2026-10-10) that a director who holds no other office reads the counts; the offices that act on a request (president,
-    secretary, treasurer, manager) read the names. A person who is a director and also holds one of those offices is judged
-    by that office, and an admin viewing the console as a director alone (``Viewer.acting``) is counts only too. The server
-    decides this; the page never hides names on its own."""
-    return bool(viewer.offices) and viewer.offices <= COUNTS_ONLY_OFFICES
-
-
 # --- what a path is -----------------------------------------------------------------------------------------------------
 
 Ask = Callable[[str, Path], "Level | None"]
@@ -1005,5 +993,5 @@ def install(app: Flask, loaders: dict[str, Callable[[dict[str, str]], dict[str, 
 
 __all__ = ["HELD_BACK", "Level", "NOT_SET_UP", "PATH_RULES", "PRIVATE_DEFAULT", "PRIVATE_LOG", "PRIVATE_MINUTES",
            "PRIVATE_ROUTE", "PathRule", "ROSTER", "SEE_RULES", "SERVED_LOG", "SIGN_IN", "SeeRule", "Viewer", "allow",
-           "check", "clean_reason", "close_private", "counts_only", "current_viewer", "install", "level_of_library", "level_of_path", "log_or_refuse", "may_see", "now",
+           "check", "clean_reason", "close_private", "current_viewer", "install", "level_of_library", "level_of_path", "log_or_refuse", "may_see", "now",
            "placed", "private_info", "private_open", "private_window", "refusal", "require", "served", "signed_in"]

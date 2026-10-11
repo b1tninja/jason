@@ -11,7 +11,7 @@ A request to members has two lives. The first is the thing itself: a form, sent 
 | Viewer | Sees |
 |---|---|
 | A manager, the Secretary, an administrator | both views in full: names (units and names, never addresses or answers) |
-| A director | both views with counts and dates; the lists of names are held back |
+| A director | both views, as the officers see them (directors and officers have the same access to information) |
 | An owner | nothing here; their own requests are in the request center ([handoff-form-library.md](handoff-form-library.md)) |
 
 ## View 1: Forms and campaigns
@@ -79,7 +79,7 @@ Outstanding 41      Unreachable 2 (apart)
 - **Basis is always shown.** "Required" (the law's) and "proposed" (not yet the board's) look different at a glance; the colors are not the only mark. A proposed number says so in words ("proposed: 7 days before"), and the board's adoption moves it to "the board's rule".
 - **Acts on a row:** done, defer to a date (with a reason), drop (with a reason), each by name; until console writes exist each is a `TerminalStep`. A done row says who and when and stays visible for a day, then goes to the log.
 - **Add one:** "call the printer on Thursday" with a date, by name; it appears among the others, labeled "yours".
-- **The outstanding count on a row** opens the list of owners it is about (units and names). For a director it is a number only.
+- **The outstanding count on a row** opens the list of owners it is about (units and names).
 - **The calendar strip** (`FollowUpStrip`): the next 30 days as a line of dots by date with the kinds; the same items appear in the dock's Deadlines.
 - **Filters:** by campaign, by kind, "mine". The default is everything in the next 14 days plus what is overdue.
 - **States:** nothing due ("Nothing due in the next 14 days as of …"); a source not read ("The delivery sync has not run since Oct 2, so bounced notices are not shown": shown on the band, never silent); an item deferred (its new date and reason); an item dropped (the reason).
@@ -97,7 +97,7 @@ The channels have one set of marks used everywhere, defined once as `ChannelMark
 | Component | On | Job |
 |---|---|---|
 | `CampaignCard`, `CampaignFunnel`, `CampaignCopies` | View 1 | A campaign, its funnel by how asked and how answered, and its sent copies. `CampaignCopies` is defined here once; [handoff-forms-and-arrivals.md](handoff-forms-and-arrivals.md) points to it |
-| `OutstandingList` | both | The owners still outstanding, units and names; counts only for a director |
+| `OutstandingList` | both | The owners still outstanding, units and names |
 | `UnreachablePanel` | View 1, the dock | Owners no ask has reached, with the follow-up the law asks |
 | `FollowUpRow`, `FollowUpBand`, `FollowUpStrip` | View 2 | A dated action, the bands by date, and the 30-day strip |
 | `BasisChip` | View 2 | Law (with citation), documents (with section), the board's rule, proposed, or a person's |
@@ -178,7 +178,7 @@ The tool's envelope: `{"found": true, "asOf", "within", "count", "counts": {"ove
 - **A frozen funnel at close,** and the funnel stages "complete" and "past return-by with outstanding": derived by the screen from `outstanding.count`, `returnBy`, and `status`.
 - **"Not opened":** a form with no campaign is not a campaign row; it is a `ready` or `adjusted` form in the library with no open campaign for it (the library table's join). `jason campaigns --open FORM --channel C --cycle-year Y --by NAME [--handler KEY] [--option NAME=VALUE] [--return-by DATE]` is the step the card offers.
 - **"Asked 107 owners":** not countable. `asked.total` counts emailed copies; a mailed letter's marker names the mailing, so its recipients are not listed, and the owners the law mails appear as `neverAsked` (a count and a list on `jason responses --outstanding`) until they answer. PayHOA's own form carries no marker jason stamps, so nobody is "asked by PayHOA" in the catalog.
-- **A role-aware read:** every tool lists names. The director's counts-only view is the loader's work, **built server-side** (2026-10-10, `access.counts_only`, applied in `request_views`): a director alone gets `outstanding` and `neverAskedCount` as numbers, no `names`, no owner or unreachable list, a generic `what` for per-owner items, and `countsOnly: true`; the screen only has to say so (`countsOnlyWhy`).
+- **A role-aware read:** every tool lists names. A director reads what an officer reads (the board's decision of 2026-10-11: no director-only view).
 
 ### Where the first draft's shape or word differed (the code wins; the text above is corrected)
 
@@ -209,7 +209,7 @@ The tool's envelope: `{"found": true, "asOf", "within", "count", "counts": {"ove
 - Outstanding is by owner, whichever way they answered; an unreachable owner is never counted as outstanding and never hidden.
 - No count without its age; no zero without the time it was true; a dash for a source never read.
 - A proposed policy is labeled proposed, in words; the board's adoption is shown as the board's.
-- Names and units only; never an address or an answer; directors see counts.
+- Names and units only; never an address or an answer.
 - Attention is never color alone; the bands and chips are readable in print.
 
 ## Decisions that are the design's

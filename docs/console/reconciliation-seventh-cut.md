@@ -59,7 +59,7 @@ The cut flags that its sample counts outstanding as owners less answered less un
 | Deferred rows sit at the new date with "moved from …" | adopt; the build keeps `due` and puts the new day in `deferredTo`, hidden until then, so the loader must include them |
 | Kind glyphs (bell, calendar, printer, eye, flag; user-x for unreachable) | adopt; the build also uses `resend` for "ask the member for an address", which the printer mislabels |
 | Card "Next:" opens Follow-ups for its campaign | matches |
-| Director sees counts only | decide: it is client-side in the design; the build must enforce it on the server |
+| Director sees counts only | **dropped (2026-10-11):** directors and officers have the same access to information; no director-only view |
 | Done, Defer, Drop, Add through `Confirm` | the build has no writer; each is a `TerminalStep` (`jason followups --done/--defer/--drop/--add … --by NAME`) until one exists; "leaves the list tomorrow" is false (it leaves at once) |
 
 **Faults.**
@@ -162,7 +162,7 @@ The cut flags that its sample counts outstanding as owners less answered less un
 ## 8. Decisions for you
 
 1. **The vault's names: decided.** The vault (Keeper) is the development environment's store, so the console asks it only under `jason-web --dev`; elsewhere the vault panel says it was not asked and why, and a production installation reads its credentials from its own secret store, chosen when it is hosted ([integrations-design.md](../integrations-design.md)). The design draws three states: asked and answered, asked and could not be answered, and not asked (not in dev).
-2. **A director's view of follow-ups:** counts only, enforced on the server (the build's loaders return names to an office that opens P2)?
+2. **A director's view of follow-ups:** answered 2026-10-11: none; a director reads what an officer reads.
 3. **Draft an email: decided (October 10, 2026): yes, through an approvals kind, never sent.** The console may create a Gmail draft, only as the approvals kind `gmail-drafts` ([approval-workflow.md](approval-workflow.md)): a person approves one planned email, and the applier saves it as a draft in the signed-in Gmail account. The kind covers the three cases `jason draft` composes (a proposal request, a hearing notice, a meeting notice) with the recipient the person chooses; jason has no send method, and the person sends the draft from Gmail. The free-text composer in [handoff-draft-from-item.md](handoff-draft-from-item.md) (purposes, `cc` and thread support, regenerate) is still unbuilt, and the prototype's "Save" stays a `TerminalStep` until it is.
 4. **Which glyphs** break one-glyph-one-meaning in Limits and the admin page: keep the build's set, or give the new meanings new glyphs?
 5. **Owner sign-in** for "My requests" and the reference lookup (still the board's decision).

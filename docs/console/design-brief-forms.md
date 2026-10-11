@@ -19,7 +19,7 @@ The design project may use the association's real details. What comes back into 
 
 - **Nothing here sends, resends, replies, files, or completes.** Every act is a person's command, shown as a `Command` or `TerminalStep` with "A person runs this", until a console write exists, and then a `Confirm` recorded by name. No `Stamp`: nothing here is a decision.
 - **Counts carry ages.** No count without the time it was true; no zero without it; a source never read is a dash with its reason, never a bare zero (the code returns `null` for a count it cannot make).
-- **Names and units only.** Never an address, a phone number, an email address, or an owner's answer in a list. A scan and a reading are private (level P3); a director sees counts and states.
+- **Names and units only.** Never an address, a phone number, an email address, or an owner's answer in a list. A scan and a reading are private (level P3); a director reads what an officer reads.
 - **A reading is evidence.** "The form says ...", never "the owner said ..." until a person confirms. Confidence is a word and a mark, never color alone.
 - **A proposed number is labeled proposed,** in words ("proposed: 7 days before"). The law's number is the law's, with its citation; the board's adoption is the board's. jason proposes; the board adopts.
 - **No secret on a screen.** A credential is `set` or `not set` with its vault path; no value is shown, copied, logged, or put in a URL.
@@ -43,16 +43,16 @@ The design project may use the association's real details. What comes back into 
 
 | Screen | Route (handoff) | Who sees it | Owner view | Data today | Console route to add | Data |
 |---|---|---|---|---|---|---|
-| Responses (list and one arrival) | `#/responses`, `?id=`, `?request=`, `?state=` | manager, Secretary, administrator; a director sees counts and states only | no | `jason responses --list --json`, `--show ID --json`; tools `new_responses`, `response` | `GET /api/responses`, `/api/responses/<id>` | built; page geometry per field, `ChangesPreview`, "stale" proposed |
+| Responses (list and one arrival) | `#/responses`, `?id=`, `?request=`, `?state=` | manager, Secretary, board, administrator | no | `jason responses --list --json`, `--show ID --json`; tools `new_responses`, `response` | `GET /api/responses`, `/api/responses/<id>` | built; page geometry per field, `ChangesPreview`, "stale" proposed |
 | Responses: the acts (seen, confirm, dismiss) | in the screen | the same | no | `jason responses --seen`, `--confirm ID --by NAME [--set F=V]`, `--dismiss ID --by NAME --why TEXT` | writes behind the sign-in guard | built as commands; no console write |
 | New-responses count | the dock, the digest, the nav | the same | no | `inbox` and `checked` of `new_responses` | in the dock and digest loaders | proposed (no loader) |
 | Arrivals (lanes) | `#/arrivals` (the Inbox becomes lanes) | manager, Secretary, administrator | no | none beyond the forms lane (the inbox) | `GET /api/arrivals`, `/api/arrivals/<id>` | proposed (no catalog, triage, or route) |
-| Cycle board | `#/cycle`, a tab of `#/owner-info` | manager, Secretary, board (directors: counts) | no | pieces only: `jason responses --outstanding --json` (`outstanding_responses`), `/api/owner-info`, `jason followups --json` | `GET /api/cycle` | the join is proposed; each piece is built |
+| Cycle board | `#/cycle`, a tab of `#/owner-info` | manager, Secretary, board | no | pieces only: `jason responses --outstanding --json` (`outstanding_responses`), `/api/owner-info`, `jason followups --json` | `GET /api/cycle` | the join is proposed; each piece is built |
 | Forms register and the form library | `#/forms` (the register and the library are one table) | administrator; board read-only | no (the library is never in it) | `jason form-library --json`, `--show KEY --json`, `--check --json`; `jason campaigns --json` for the campaigns column | `GET /api/forms`, `/api/forms/<key>`, `/api/form-library` | built; the diff, the stale amendment's words, "unknown references seen" proposed |
 | Form candidates | `#/forms/candidates` | administrator; board read-only | no | `jason discover-forms --list --json`, `--show ID --json`; `--confirm`, `--hold`, `--drop` (each `--by`) | `GET /api/form-candidates` | built |
 | Needs development | a band on `#/status`, and `#/instance/gaps` | administrator only | no | none | `GET /api/instance/gaps` | proposed (no handler registry, no gap record) |
-| Forms and campaigns | no route named; `#/campaigns` proposed | manager, Secretary, administrator; directors: counts | no | `jason campaigns --json`, `--show CODE --json`; tool `campaign_status` | `GET /api/campaigns`, `/api/campaigns/<code>` | built |
-| Follow-ups | no route named; `#/followups` proposed | manager, Secretary, administrator; directors: counts | no | `jason followups --json`; tool `followups`; acts `--done`, `--defer`, `--drop`, `--add` | `GET /api/followups` | built; "mine", "done stays a day", the strip proposed |
+| Forms and campaigns | no route named; `#/campaigns` proposed | manager, Secretary, board, administrator | no | `jason campaigns --json`, `--show CODE --json`; tool `campaign_status` | `GET /api/campaigns`, `/api/campaigns/<code>` | built |
+| Follow-ups | no route named; `#/followups` proposed | manager, Secretary, board, administrator | no | `jason followups --json`; tool `followups`; acts `--done`, `--defer`, `--drop`, `--add` | `GET /api/followups` | built; "mine", "done stays a day", the strip proposed |
 | The form page (paper, PDF, email, PayHOA, portal) | every channel | the member | the portal form | `jason form-library --show KEY --json`: recitals' words, required content, clocks; the questions, `member_clock`, and `acknowledgment` are in Python, not in the JSON | a loader for the viewer | partly built; recitals are not yet rendered into a printed form |
 | Request center and My requests | proposed `#/requests`, which is taken (the manager's Requests screen); the design names the owner's route | an owner | yes | none (records requests only: `/api/records-requests`) | `GET /api/my-requests` | proposed |
 | Instance overview | `#/instance` | administrator | no | `jason daemon status --json`, `jason integrations list --instance --json`, `GET /api/status` (built) | `GET /api/instance/*` | partly built |
@@ -143,7 +143,7 @@ Each handoff's list, kept in its own words, numbered by screen. Answer them in o
 1.2 Whether the page and the reading are tied by highlight alone, or also by a numbered pin on the page. (The reading carries no per-field page position today; the link needs one built.)
 1.3 How a low-confidence field is surfaced: a band of "Check these" above the form, or a mark in the form's order. (Confidence is a number from 0 to 1; the design chooses the three words' thresholds.)
 1.4 The glyph for email, and whether the four (now five) channel marks share a frame.
-1.5 Whether directors see the list's counts and states without the scan (the proposal), or nothing.
+1.5 Answered 2026-10-11: directors read what the officers read; there is no director-only view.
 1.6 Whether `NewResponsesCount` lives on the dock, the digest, or both.
 
 **2. Arrivals, the cycle board, the forms register, needs development, form candidates** (handoff-forms-and-arrivals)
@@ -191,7 +191,7 @@ Each handoff's list, kept in its own words, numbered by screen. Answer them in o
 7.5 The funnel's "asked" counts emailed copies and lists no mailed recipients; "asked 107 owners" cannot be drawn. Draw asked as copies sent plus mailings, with owners "never sent a copy" as its own count.
 7.6 A closed campaign's funnel is read live from disk and is not frozen; say so, or ask for it to be frozen at close.
 7.7 `AgeStamp` against the built `Freshness` of `CitedSections`: keep two components or fold one into the other.
-7.8 A director's counts-only view is the same list with names withheld, not a held item: name that state of `OutstandingList`, `ArrivalRow`, and `FollowUpRow`.
+7.8 Dropped 2026-10-11 (no director-only view); `OutstandingList`, `ArrivalRow`, and `FollowUpRow` need no counts-only state.
 
 That is 33 decisions from the handoffs (6 + 6 + 6 + 6 + 5 + 4) and 8 more raised here.
 
