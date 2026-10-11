@@ -1,6 +1,6 @@
 # Durable workflows: the engine
 
-The engine behind [workflows-design.md](workflows-design.md): the types, the store, the fold, the resume check, the contract of each step kind, the terminal commands, and the tests. **Design only; nothing here is built.** Section 6 of the design page puts it first in the build order, with no UI. It is general: it names no association, and a definition names its subject, roles, and statutes as data.
+The engine behind [workflows-design.md](workflows-design.md): the types, the store, the fold, the resume check, the contract of each step kind, the terminal commands, and the tests. **Step 1 is built** (the pure library, section 10); the terminal, the readers, and the screens are not. Section 6 of the design page puts it first in the build order, with no UI. It is general: it names no association, and a definition names its subject, roles, and statutes as data.
 
 ## 1. Where it lives and what it may import
 
@@ -42,7 +42,7 @@ class Workflow:
     procedure: str = ""                               # the Procedure key it was built from
 ```
 
-A definition is **checked when registered** (`validate`): every `needs` names a step; no cycle; every `plan` step names a registered kind; every `job` names a job; every `spawns` names a definition; every `law` clock cites a section that resolves on the authorities shelf (a missing shelf is a skip, as in the tests); no id repeats; a legal step has no skip rule. A definition that fails does not register, and the failure names the row.
+A definition is **checked when registered** (`validate`): every `needs` names a step; no cycle; every `plan` step names a registered kind; every `job` names a job; every `spawns` names a definition; every `law` clock cites a section that resolves on the authorities shelf (a missing shelf is a skip, as in the tests); no id repeats; a **legal step** (one with a `law` clock, or marked `legal`) has no skip rule; a step with no skip rule is unskippable, legal or not. A definition that fails does not register, and the failure names the row.
 
 Where a definition is built over a `Procedure`, `StepDef.sop` records the step's address (`key#index`), `person=True` becomes a `person` or `decision` step, a `command` becomes a `job` or `plan`, and a `check` becomes a `check`. `jason workflow --from-sop KEY` prints the draft definition for a person to finish; the draft is never registered by itself. A procedure and its workflow must not drift: a test fails if a registered workflow's `sop` addresses a step that no longer exists.
 
@@ -51,7 +51,7 @@ Where a definition is built over a `Procedure`, `StepDef.sop` records the step's
 - `data/workflows/<definition>/<run-id>.jsonl`: the events, one JSON object a line, append only. A run id is opaque (`run-` and ten hex characters from the hash of the definition, the subject key, and the open time), never an address or a name.
 - `data/workflows/index.json`: a rebuildable summary (`id`, `definition`, `label`, `state`, `current`, `due`, `owner`, `updated`) so the list needs no replay of every run. It is a cache: deleting it loses nothing, and `jason workflow --reindex` rebuilds it from the events.
 - Every append holds `locks.hold(Resource.STORE, "workflows-<run-id>")` and writes the line with a flush and fsync; a partial last line (a crash) is dropped on read and reported as `torn`, never repaired by guessing. The index is written to a temporary file and replaced, as the approvals store does.
-- **An event:** `{n, kind, step, by, at, detail, prev}`. `n` is the run's sequence number (an append whose `n` is not the last plus one is refused, which is the compare-and-swap across processes); `prev` is the first 12 hex of the sha256 of the previous line, so an edited line breaks the chain and `jason workflow --verify` says where. `by` is a signed-in name, `jason`, or `scheduler`. A correction is a later event.
+- **An event:** `{n, kind, step, by, at, detail, prev}`. `n` is the run's sequence number (an append whose `n` is not the last plus one is refused, which is the compare-and-swap across processes); `prev` is the first 12 hex of the sha256 of the previous line, so an edited line breaks the chain at the next line's `prev`, and `jason workflow --verify` reports the first event whose `prev` no longer matches. The last line has no successor, so the index also keeps the chain's tip and its `n`, and `--verify` compares them. `by` is a signed-in name, `jason`, or `scheduler`. A correction is a later event.
 - A run's folder holds nothing else; evidence stays where it came from and is linked by address (`links`), never copied.
 
 ### A made-up run, on disk
@@ -76,7 +76,7 @@ Where a definition is built over a `Procedure`, `StepDef.sop` records the step's
 | `job` | queues the named job (the queue holds the GPU and the store locks), reads its result | runs the terminal command if the job is not queued by the engine | the job finished and its result matches the step's evidence | run unqueued, or a model job without `local_ai.preflight` |
 | `plan` | asks `approvals.engine.plan(kind, scope)` for a plan, links it | decides, submits, and applies it in `#/approvals` (two persons where the kind says so) | the approval is applied (or withdrawn with a reason, which the definition says is a skip or a failure) | decide, submit, or apply an approval; a `plan` step is never done by the run's owner clicking on the run page |
 | `person` | shows the instruction, the evidence to look at, and the command | attests, in their own name, with the record the step asks for | an `attested` event by the role with its record | attest for someone; mark done without the required record |
-| `decision` | shows the motion and links the decision | the secretary records the board's decision in the decisions store | a decision with a final outcome is on record for the motion | vote, adopt, approve, or let the run's owner record it |
+| `decision` | shows the motion and links the decision | the secretary records the board's decision in the decisions store | a decision with a final outcome is on record for the motion | vote, adopt, or approve; owning the run gives no standing to record (the role alone does, so a person who is both owner and secretary records as the secretary) |
 | `wait` | folds arrivals and the clock | nothing (an arrival, a date, or a person's `arrived` note ends it) | the arrival is on record, or the clock passed and the definition says what then | hide an overdue clock: a past `law` clock opens a follow-up and says so in the law's words |
 | `branch` | evaluates a fact the definition names against the stores, or reads a person's answer | answers, when the fact is a person's | the fact is read; the unchosen path's steps become `skipped` by `jason` with the reason | pick a path from a guess |
 
@@ -122,7 +122,19 @@ Every write needs `--by`; `--cancel` and `--start`/`--open` of a run with a lega
 9. **Procedure drift:** every registered definition's `sop` addresses exist.
 10. **The first family end to end** on made-up data: the owner-information run, from `--start` to the last step, with a fake approvals plan and a fake job, in a temporary data folder.
 
-## 10. Decisions for you
+## 10. As built (step 1, 2026-10-11)
+
+The pure library is in `src/jason/workflows/` with 65 tests (`tests/test_workflows_*.py`). Differences from, and additions to, the sections above:
+- `StepDef` also has `record` (what an attestation must point to), `legal`, `elapsed` (a wait's clock ends it, or only flags it overdue), `on_withdrawn` (fail or skip), and `choices` (a branch's paths); `Workflow` has `clocks` for the whole run's deadlines.
+- `EventKind.SPAWNED` records a child run. A draft run is `opened` with `detail.draft`; `open_run` appends `resumed` with `activated`. Resume appends `waited` once, when a wait begins, and never writes `step-ready` (the fold derives readiness). A branch's unchosen path reads skipped by `jason` in the fold, with no event; the branch check returns its choice in `CheckResult.choice`.
+- A `superseded` step does not satisfy a `needs`: the replacement must be a step the later steps also need.
+- Past `law` clocks are reported (`RunView.past_law`); opening the follow-up is the caller's write, not the engine's.
+- `Role` is a string enum in `types.py`; every holder in `jason.web.access.SEE_RULES` is a value (a test pins it), and it adds `administrator`, `jason`, `scheduler`, and `anyone`.
+- `definitions.extra(provider, **checks)` is the hook for a profile's rows; `Community.workflows()`, a `Readers` backed by the approvals engine and job queue, a job-name registry, and the overdue-law follow-up are not built.
+- SOP addresses are `key#N` counted from 1, as `jason sop` numbers them. `--start` and `--open` both need `--yes` when the run has a legal clock.
+- Cancel is the secretary or the manager with a reason and `yes` (`CANCEL_ROLES`, one constant).
+
+## 11. Decisions for you
 
 - **One file per run or one folder per definition** (recommended above: a file per run, a folder per definition).
 - **The hash chain** is cheap and makes an edited record visible; it is not a signature. Keep it, or drop it as more than a local store needs?
