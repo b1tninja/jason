@@ -1514,6 +1514,45 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED,
            guards=("asspy tests/test_land.py (the first read is the baseline; a later plan or map is an event)",),
            docs=("docs/county-land.md",)),
+    Lesson("name-tie-read-two-words", date(2026, 10, 10), (Area.ONBOARDING,),
+           "The name tie compared only a subdivision name's first two words with the directory. A three-word name that is an "
+           "association's own (\"SAMPLE STREET OAKS\") tied nothing, and one tied the wrong association (a \"SAN JUAN "
+           "TERRACE\" map went to another \"SAN JUAN\" association). Spellings of one association the key did not read "
+           "alike (\"ST\" and \"STREET\", \"CONDOMINIUMS\" and \"CONDOMINIUM\", \"HO\", \"OA\", \"HMOWERS\") split it in "
+           "two, so a name found two candidates and tied neither.",
+           "The first-two-words rule was written for builder tract names that carry a phase or a neighborhood after the "
+           "community's words, and it was applied to every name.",
+           "A name of three own words or more is tried whole first, and `key` folds those spellings (the directory rekeyed "
+           "from 3,024 associations to 2,983). Subdivision names now tie 802 associations, 51 newly, and 7 ties changed to "
+           "the more specific association. Found while tracing lien owners to their parcels.",
+           Status.FIXED,
+           guards=("asspy tests/test_associations.py::test_a_three_word_name_ties_whole_before_its_first_two",
+                   "asspy tests/test_associations.py::test_a_projects_plural_its_street_and_the_short_forms_share_a_key"),
+           docs=("docs/county-land.md",)),
+    Lesson("parcel-legal-description-unread", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Through all the work on association footprints, the parcels layer was read for 15 of its 70 fields. Its long "
+           "legal description, which names a condominium unit's plan by the recorder's book and page and a share of a lot "
+           "held in common, went unread, while plans were tied by polygon and by name. Read at last, it tied 25 plans "
+           "(about 1,470 units) that nothing had tied, and 63 of the cited plans are not drawn on the map at all.",
+           "The fields were chosen for the first question asked of the layer, and the catalog page that should have shown "
+           "the rest cut each layer's field list at 220 characters, which hid it.",
+           "The catalog page lists every field unless a width is asked for, and the parcel reader keeps the long legal "
+           "description (`asspy.legal`, `LandStore.cited_by`, `tie_cited_plans`). Before choosing a layer's fields, read "
+           "its whole field list.",
+           Status.FIXED,
+           guards=("asspy tests/test_gis_catalog.py::test_a_layers_every_field_is_listed_however_many",
+                   "asspy tests/test_land.py (a unit's legal description ties it to its plan; a cited plan ties by name)"),
+           docs=("docs/county-land.md",)),
+    Lesson("report-index-forgot-pages", date(2026, 10, 10), (Area.ONBOARDING,),
+           "After a `hoa-reports --tied-only` run the county index listed only the 564 tied pages of 1,314, and 20 folders "
+           "stayed on disk for names the directory had retired (a 'keyed in error' marker or a second spelling, read alike "
+           "since), each a page a reader could still open.",
+           "The index was written from the pages one run wrote, and nothing compared the folders with the directory's keys.",
+           "The index lists every page on disk the directory still names, whichever run wrote it, and names the folders it "
+           "no longer does; `--prune` removes those. The 20 were moved aside.",
+           Status.FIXED,
+           guards=("tests/test_hoa_reports.py::test_the_index_keeps_earlier_pages_and_lists_retired_names",),
+           docs=("docs/county-land.md",)),
     Lesson("utility-screen-wrong-shape", date(2026, 10, 3), (Area.DOCUMENTS,),
            "The utility payments screen read fields its loader never had, so its bills showed no document when it moved "
            "to Doc.",
@@ -2325,6 +2364,45 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-sideways-page-is-measured-not-read-from-rotate", date(2026, 10, 10), (Area.ONBOARDING,),
+           "A page's /Rotate entry says how it is displayed, not which way its text runs, so it was a poor sideways fact.",
+           "The fact was taken from the PDF's rotation entry.",
+           "Sideways is measured from each text line's direction through the PDF rotation; a page with no text layer has "
+           "no such fact.",
+           Status.FIXED, guards=("tests/test_split_filing.py",), docs=("docs/pdf-splitter.md",)),
+    Lesson("a-multi-file-pick-checks-each-file", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Picking several files in one act could have written the clear ones and silently dropped or overwritten the rest.",
+           "The act was written for one file.",
+           "Each file is collision-checked on its own and only clear rows are written; each row says pin, already, "
+           "collision, duplicate or refused.",
+           Status.FIXED, guards=("record_acts.pick_many", "tests/test_record_acts_many.py"), docs=("docs/record-intake.md",)),
+    Lesson("a-folder-count-comes-from-the-stored-listing", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Counts for a bound folder could have called Drive on every page view.",
+           "The count was computed from a live listing.",
+           "The listing is kept (ids and readings, no names) and counts come from it; the test asserts no Drive call.",
+           Status.FIXED, guards=("drive_choose.binding_counts", "tests/test_record_acts_many.py"),
+           docs=("docs/record-intake.md",)),
+    Lesson("a-regrid-drops-the-focus", date(2026, 10, 10), (Area.REPOSITORY,),
+           "Marking a start in the banded album moved the pages below it to other rows, so their cells remounted and the "
+           "page that had the focus lost it.",
+           "A re-layout that changes a cell's parent remounts it.",
+           "The grid remembers the focused page before the commit and restores it after; key steps go through rowDelta.",
+           Status.FIXED, guards=("ui/src/views/PageGrid.tsx", "the undo-with-z test"), docs=("docs/console/screens/split.md",)),
+    Lesson("a-subdivision-citation-may-not-be-on-the-shelf", date(2026, 10, 10), (Area.ONBOARDING,),
+           "The shelf returns label_not_found for a nested subdivision such as (a)(8) even when the section is on disk.",
+           "The shelf isolates one level of label.",
+           "A slot's recital falls back to the whole section with a note saying so; nothing is invented.",
+           Status.OPEN, guards=("tests/test_record_slots.py (the recital test)",), docs=("docs/record-intake.md",),
+           notes=("Open: have the shelf isolate nested labels. The Drive-not-connected banner on the checklist is dormant "
+                  "until the list loader may report the sign-in state from the token file.",)),
+    Lesson("a-design-bundle-carries-real-facts", date(2026, 10, 10), (Area.REPOSITORY,),
+           "The design project's export contained the association's real name and domain, invented figures, statute text "
+           "that is not verbatim, and a Zoom action jason may not take.",
+           "The design project may hold real details (it is private), and the agent drew from samples.",
+           "A returned bundle stays out of the repo until audited and sanitised; the figures, quotes and actions are "
+           "reconciled against the rules before anything is adopted.",
+           Status.OPEN, guards=("docs/console/reconciliation-sixth-cut.md",), docs=("docs/console/reconciliation-sixth-cut.md",),
+           notes=("Open: the figures, quotes, and the Zoom actions need a person's decision; the audit report is local only.",)),
     Lesson("the-splitter-has-no-second-writer", date(2026, 10, 10), (Area.ONBOARDING,),
            "A splitter that wrote its own part files would have had its own collision and lock rules.",
            "Splitting existed only inside the record intake.",
