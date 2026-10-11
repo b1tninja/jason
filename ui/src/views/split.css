@@ -13,7 +13,9 @@
 /* ==== the screen's layout (docs/pdf-splitter.md, 5.9): one column that fills the room; the panels are drawers ====
    The shell is as tall as the window under the console's header (all of it in focus mode); the toolbar, the segment strip, and the bottom bar
    take what they need and the stage, the pages, takes the rest. A drawer overlays the stage from an edge, or docks beside the pages when pinned. */
-.console-body:has(.split-shell) { max-width: none; }
+.console-body:has(.split-shell),
+.console-body[data-screen^="setup/split"] { max-width: none; }   /* every splitter screen, loading and start page included, uses the whole width */
+.console-body[data-screen^="setup/split"] .split-view:not(.split-shell) { max-width: 1400px; }   /* the start page's forms stay readable, beside the nav and not centred */
 .split-shell { display: flex; flex-direction: column; gap: .4rem; position: relative; margin: 0; min-height: 30rem;
   height: calc(100vh - var(--console-bar-h, 0px) - 3rem); height: calc(100dvh - var(--console-bar-h, 0px) - 3rem); }
 .split-shell > * { flex: none; min-width: 0; }

@@ -222,7 +222,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
         {/* under the header's row and inside the sticky bar, so it stays in sight while the page scrolls */}
         {priv?.view.open && <PrivateBand view={priv.view} onClose={priv.onClose} onExpired={priv.onExpired} focus={priv.focus} />}
       </header>
-      <div className="console-body">
+      <div className="console-body" data-screen={current}>
         {narrow ? (
           <label className="console-goto">
             Go to

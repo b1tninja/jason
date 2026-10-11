@@ -129,3 +129,23 @@ test.describe("desktop grid", () => {
     await expect(page.getByRole("navigation", { name: "Segments, as numbered chips" })).toBeVisible();
   });
 });
+
+// On a wide window the splitter's own screens use the whole width: the nav sits at the window's left edge and the content follows it,
+// not centred under the console's 1280 px cap. This was seen on the start page, where the cap was only lifted once an editor existed.
+test.describe("a wide window (2400 px)", () => {
+  test.use({ viewport: { width: 2400, height: 1100 } });
+
+  for (const route of ["setup/split", "setup/split/demo"]) {
+    test(`#/${route} keeps the nav at the left edge and the content beside it`, async ({ page }) => {
+      await signIn(page, "A Manager", route);
+      await expect(page.locator(".console-body")).toHaveAttribute("data-screen", "setup/split");
+      const box = await page.evaluate(() => {
+        const rect = (s: string) => { const e = document.querySelector(s); const r = e?.getBoundingClientRect(); return r ? { x: r.x, w: r.width } : null; };
+        return { body: rect(".console-body"), nav: rect("nav"), main: rect("main.console-main") };
+      });
+      expect(box.body!.w, "the console body is capped").toBeGreaterThan(2300);
+      expect(box.nav!.x, "the nav floats toward the middle").toBeLessThan(80);
+      expect(box.main!.x, "a margin between the nav and the content").toBeLessThan(320);
+    });
+  }
+});
