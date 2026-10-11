@@ -118,6 +118,8 @@ Each family page in [workflows/](workflows/README.md) is written to one template
 
 ## 6. What to build, in order
 
+The engine's types, store, fold, resume check, step-kind contracts, and tests are in [workflows-engine.md](workflows-engine.md).
+
 1. **The run store and the fold** (`jason.workflows`): a definition type that reads the existing `Procedure` rows and adds the step kinds, the run store, the event log, the state fold, and the resume check. Pure and tested on made-up definitions. No UI.
 2. **`jason workflow`** (list, start, show, do, attest, skip, pause): the terminal first, as every write is, with `--by`.
 3. **One family end to end**, chosen for how much already exists: the owner-information cycle (its approvals kind, campaign, follow-ups, and responses are built), then the bill attach (its queue, investigation, outcome, and approvals kind are built).
