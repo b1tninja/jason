@@ -13,6 +13,7 @@ Every design brief and screen spec for the console, in the order to read them. A
 
 | Order | Brief | What it covers |
 |---|---|---|
+| 0 | [approval-clarity.md](approval-clarity.md) | What "approve" means on a plan: the five stages (review, sign, second signature, apply, done), the words, a progress strip, "nothing written yet", and opt-in apply preferences. Read before drawing any plan or approval screen. |
 | 1 | [screens/office-views.md](screens/office-views.md) with [screens/today.md](screens/today.md) | The landing page per office, and the lens that lets any board member read another's. Draw it first: it frames who sees what. |
 | 2 | [design-brief-work.md](design-brief-work.md) with [screens/work.md](screens/work.md) | The Work list, the run page, the seven step kinds, starting a run, the definitions catalog, and the rule for where a step's work happens (the run embeds reads and links writes). Every family's long task is a run drawn here. |
 | 3 | [design-brief-fonts-and-theme.md](design-brief-fonts-and-theme.md), [design-brief-limits.md](design-brief-limits.md) | The theme and type decision, and the instance limits page (a worked example of a small brief). |
