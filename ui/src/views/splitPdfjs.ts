@@ -72,11 +72,12 @@ const breathe = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 class Engine implements PdfEngine {
   constructor(private doc: pdfjs.PDFDocumentProxy) {}
   get pages(): number { return this.doc.numPages; }
-  async draw(page: number, px: number, signal: AbortSignal): Promise<DrawnPage> {
+  async draw(page: number, px: number, signal: AbortSignal, opts?: { ink?: boolean }): Promise<DrawnPage> {
     if (signal.aborted) throw new DOMException("aborted", "AbortError");
     await breathe();
     const { canvas, ctx } = await paint(this.doc, page, px, signal);
-    const inkPixels = inkPixelsIn(ctx, canvas.width, canvas.height, px >= 800 ? 2 : 1);
+    // the magnifier's very large drawing is not read back for ink: the picture is only looked at
+    const inkPixels = opts?.ink === false ? 1 : inkPixelsIn(ctx, canvas.width, canvas.height, px >= 800 ? 2 : 1);
     const blob = await toBlob(canvas, px >= 800 ? 0.8 : 0.7);
     canvas.width = canvas.height = 0;
     return { blob, inkPixels };

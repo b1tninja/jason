@@ -1,7 +1,9 @@
 /** The splitter's screen layout (docs/pdf-splitter.md, section 5.9): focus mode, the drawers, and the grid's columns. Pure helpers and the
  * per-tab preferences; nothing here touches React or the page. */
 
-export type Side = "left" | "right" | "bottom";
+import { clampZoom } from "./splitLoupe";
+
+export type Side ="left" | "right" | "bottom";
 export type DrawerId = "rail" | "inspect";
 
 /** What a person chose for the layout, kept for the tab (sessionStorage), never sent anywhere.
@@ -17,9 +19,13 @@ export interface LayoutPrefs {
   fill: boolean;
   showSuggestions: boolean;
   showFlags: boolean;
+  /** the magnifier: null, the device decides (on for a mouse or trackpad that hovers, off for touch); true or false, a person chose */
+  magnifier: boolean | null;
+  /** how many times the cell the lens shows a spot, 2 to 6 */
+  magnifierZoom: number;
 }
 
-export const DEFAULT_PREFS: LayoutPrefs = { focus: false, rail: null, railSide: "left", pinned: null, inspectFull: false, fill: true, showSuggestions: true, showFlags: true };
+export const DEFAULT_PREFS: LayoutPrefs = { focus: false, rail: null, railSide: "left", pinned: null, inspectFull: false, fill: true, showSuggestions: true, showFlags: true, magnifier: null, magnifierZoom: 3 };
 
 /** The segments drawer opens by itself, docked, only on a screen this wide; under it the default is closed. */
 export const RAIL_OPEN_PX = 1400;
@@ -40,6 +46,8 @@ export function loadPrefs(id: string): LayoutPrefs {
     if (typeof raw.fill === "boolean") out.fill = raw.fill;
     if (typeof raw.showSuggestions === "boolean") out.showSuggestions = raw.showSuggestions;
     if (typeof raw.showFlags === "boolean") out.showFlags = raw.showFlags;
+    if (typeof raw.magnifier === "boolean" || raw.magnifier === null) out.magnifier = raw.magnifier;
+    if (typeof raw.magnifierZoom === "number") out.magnifierZoom = clampZoom(raw.magnifierZoom);
     return out;
   } catch { return { ...DEFAULT_PREFS }; }
 }

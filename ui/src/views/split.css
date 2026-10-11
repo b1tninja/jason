@@ -377,3 +377,15 @@ html[data-split-focus] .console-body { gap: 0; }
   .lib-table td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: .8rem; }
   .lib-table-wrap { max-height: 70vh; }
 }
+
+/* The magnifier (docs/pdf-splitter.md, section 5.12): one lens, placed with a transform, that never takes a pointer event. Its ring is the
+ * ink colour with a paper-coloured keyline, so it reads on either theme and on a page of any colour. */
+.split-loupe { position: fixed; left: 0; top: 0; z-index: 90; width: 220px; height: 220px; box-sizing: border-box; border-radius: 14px; pointer-events: none;
+  background-color: #fff; background-repeat: no-repeat; border: 3px solid var(--ink); outline: 2px solid var(--paper);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--ink) 38%, transparent); contain: strict; will-change: transform; user-select: none; -webkit-user-select: none; }
+.split-loupe[hidden] { display: none; }
+.split-loupe[data-size="cell"] { background-color: var(--paper); }
+@media (prefers-reduced-motion: no-preference) { .split-loupe { animation: split-loupe-in .1s ease-out; } }
+@keyframes split-loupe-in { from { opacity: 0; } to { opacity: 1; } }
+/* a press and hold on a page is the magnifier's, not the browser's text-selection or image-callout */
+.split-pic img { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }

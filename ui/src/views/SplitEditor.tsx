@@ -19,7 +19,9 @@ import {
 import { SplitStore, type Snapshot } from "./splitStore";
 import { ThumbLoader, fetchPicture } from "./splitThumbs";
 import type { ClientPictures, PictureStatus } from "./splitClient";
-import { budgetFor } from "./splitWindow";
+import { budgetFor, pixelMegabytes } from "./splitWindow";
+import { Loupe } from "./Loupe";
+import { FINE_HOVER, LOUPE_MAX_PX, LOUPE_ZOOM_MAX, LOUPE_ZOOM_MIN, SERVER_MAX_PX, clampZoom, loupeBudget, magnifierOn, releaseSharp, sharpLoader, zoomWords } from "./splitLoupe";
 import "./split.css";
 
 type View = "album" | "filmstrip" | "scroll" | "list";
@@ -374,6 +376,21 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
   };
 
   const toggleFocus = () => setPrefs({ focus: !prefs.focus });
+
+  // ---- the magnifier (section 5.12): on for a mouse or trackpad that hovers, off for touch, until a person chooses
+  const fineHover = useMediaQuery(FINE_HOVER);
+  const magOn = magnifierOn(prefs.magnifier, fineHover);
+  const magTouch = prefs.magnifier === true;
+  const toggleMagnifier = (on = !magOn) => {
+    setPrefs({ magnifier: on });
+    setMessage(on ? (phone || !fineHover ? "Magnifier on. Press and hold a page, then drag to magnify it." : "Magnifier on. Hold the pointer over a page to magnify it.") : "Magnifier off.");
+  };
+  const setMagZoom = useCallback((z: number) => setPrefs({ magnifierZoom: clampZoom(z) }), [setPrefs]);
+  const sharp = useMemo(() => sharpLoader({
+    drawLarge: pictures ? (page, px, signal) => pictures.drawLarge(page, px, signal) : undefined,
+    server: (page, signal) => (pictures ? pictures.fetcher(`huge:${page}`, signal) : fetchPicture(backend.thumbUrl(id, page, "huge"), signal)),
+  }), [backend, id, pictures]);
+  const magBudget = useMemo(() => loupeBudget(pixelMegabytes(), lowMemory), [lowMemory]);
   const dockedRail = docked === "rail";
   const closeTopLayer = (): boolean => {
     if (tool) { setTool(null); return true; }
@@ -398,6 +415,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
     // the layout keys work from anywhere on the screen, a toolbar button or a drawer included
     switch (lower) {
       case "f": e.preventDefault(); toggleFocus(); return;
+      // `M` is taken (merge a segment with the one before), so the magnifier is on `E`
+      case "e": e.preventDefault(); toggleMagnifier(); return;
       case "s": e.preventDefault(); setRail(!railOpen); return;
       case "c": e.preventDefault(); openInspect(!inspect); return;
       case "?": e.preventDefault(); setHelp(true); return;
@@ -495,7 +514,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
     else setMessage(`This file has ${pages} pages.`);
   };
 
-  const common = { count: pages, snap: gridSnap, facts, loader, focus, selection, confidential, turns, onMenu, onMove, onFocusPage };
+  const common = { count: pages, snap: gridSnap, facts, loader, focus, selection, confidential, turns, onMenu, onMove, onFocusPage, noLongPress: magTouch };
   const prevPage = focus > 1 ? focus - 1 : null;
   const prevSegFirst = (() => { const at = startOf(focus); if (at <= 1) return null; return startOf(at - 1); })();
   const goMark = (d: 1 | -1) => { const m = nextMark(marks, focus, d); if (m !== null) goTo(m); };
@@ -530,6 +549,11 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
     checkbox("Suggestions", showSug, () => setPrefs({ showSuggestions: !showSug })),
     checkbox("Flags", prefs.showFlags, () => setPrefs({ showFlags: !prefs.showFlags })),
     checkbox("Rejected suggestions", showRejected, () => setShowRejected(!showRejected), { disabled: !showSug }),
+    { type: "sep" },
+    { type: "heading", label: "Magnifier" },
+    checkbox(`Magnifier (${magOn ? "on" : "off"})`, magOn, () => toggleMagnifier(), { keys: "E" }),
+    ...Array.from({ length: LOUPE_ZOOM_MAX - LOUPE_ZOOM_MIN + 1 }, (_, i) => LOUPE_ZOOM_MIN + i).map((z) =>
+      radio(`Magnifier zoom: ${zoomWords(z)} the page`, prefs.magnifierZoom === z, () => setMagZoom(z), { disabled: !magOn })),
     { type: "sep" },
     { type: "heading", label: "Panels" },
     checkbox("Focus: hide the console's menu and header", prefs.focus, toggleFocus, { keys: "F" }),
@@ -616,6 +640,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
     <div className="split-view split-shell" data-focus={prefs.focus || undefined} data-phone={phone || undefined} onKeyDown={onKeyDown}>
       {head}
       <div className="split-live" role="status" aria-live="polite">{message}</div>
+      <Loupe enabled={magOn} touchMode={magTouch} zoom={prefs.magnifierZoom} onZoom={setMagZoom} load={sharp} release={releaseSharp} budget={magBudget}
+        maxPx={pictureStatus?.client ? LOUPE_MAX_PX : SERVER_MAX_PX} announce={setMessage} />
       {backend.demo && <p className="notice" role="note"><Badge tone="warn" glyph="info">Demo</Badge> Made-up pages, kept in this tab only; reload to start over. <a href="#/setup/split">Back to the splitter</a></p>}
       {snap.save === "offline" && <p className="notice notice-warn" role="alert">You are offline. Your marks are kept on this device and will be saved when you are back. <button type="button" onClick={() => store.retry()}>Retry now</button></p>}
       {snap.save === "error" && <p className="notice notice-error" role="alert"><span>Not saved. {snap.message} Your marks are kept on this device.</span><button type="button" onClick={() => store.retry()}>Retry</button></p>}
@@ -650,6 +676,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
           <ToolButton onClick={() => store.redo()} disabled={redoOff} title="Redo (Y)">Redo</ToolButton>
           <ToolButton aria-pressed={railOpen} aria-controls="split-drawer-rail" onClick={() => setRail(!railOpen)} title="Segments drawer (S)">Segments <span className="split-count">{topCount}</span></ToolButton>
           <ToolButton aria-pressed={inspect} aria-controls="split-drawer-inspect" onClick={() => openInspect(!inspect)} title="Compare drawer (C)">Compare</ToolButton>
+          <ToolButton aria-pressed={magOn} onClick={() => toggleMagnifier()} title="Magnifier: a lens over the page under the pointer (E)">Magnifier</ToolButton>
           <ToolButton aria-pressed={prefs.focus} onClick={toggleFocus} title="Focus: the pages fill the screen (F)">Focus</ToolButton>
           <ToolButton className="primary" disabled={reviewOff} onClick={() => setReviewing(true)}>Review and split</ToolButton>
         </>)}
@@ -751,6 +778,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
           <MenuButton spec={menus.pages} up />
           <ToolButton aria-pressed={railOpen} aria-controls="split-drawer-rail" onClick={() => setRail(!railOpen)}>Segments <span className="split-count">{topCount}</span></ToolButton>
           <ToolButton aria-pressed={inspect} aria-controls="split-drawer-inspect" onClick={() => openInspect(!inspect)}>Compare</ToolButton>
+          <ToolButton aria-pressed={magOn} onClick={() => toggleMagnifier()} title="Magnifier: press and hold a page, then drag">Magnifier</ToolButton>
           <ToolButton className="primary" disabled={reviewOff} onClick={() => setReviewing(true)}>Review and split</ToolButton>
         </Toolbar>
       )}

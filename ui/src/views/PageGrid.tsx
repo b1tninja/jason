@@ -55,6 +55,8 @@ export interface PageGridProps {
   onMenu(page: number): void;
   onMove(from: number, to: number): void;
   onFocusPage(page: number): void;
+  /** the magnify mode of a touch screen is on: a press and hold drags the lens, so it does not also open the page menu */
+  noLongPress?: boolean;
 }
 
 const CHROME = 24;
@@ -101,7 +103,7 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
       data-start={isStart ? (start > 0 ? "nested" : "top") : undefined} data-sug={open ? bandWord(sug) : undefined} data-band={no % 2} data-selected={selected || undefined}
       data-state={f?.pending ? "pending" : f?.blank === "blank" ? "blank" : undefined} style={{ width: w, height: h }}>
       <button type="button" className="split-cell-btn" data-page={page} tabIndex={focused ? 0 : -1} aria-pressed={isStart} aria-label={label}>
-        <span className="split-pic" style={{ height: h - CHROME }}>
+        <span className="split-pic" data-loupe={page} style={{ height: h - CHROME }}>
           <span className="split-lqip" style={lq ? { backgroundImage: `url(${lq})` } : undefined} aria-hidden="true" />
           <img ref={img} alt="" draggable={false} decoding="async" />
         </span>
@@ -336,7 +338,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       e.preventDefault();
       return;
     }
-    if (e.pointerType === "touch" || e.pointerType === "pen") {
+    if ((e.pointerType === "touch" && !p.noLongPress) || e.pointerType === "pen") {
       const page = pageOf(e.target);
       if (!page) return;
       cancelLongPress();

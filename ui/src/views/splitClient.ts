@@ -15,7 +15,7 @@ export interface DrawnPage { blob: Blob; inkPixels: number }
 export interface PdfEngine {
   readonly pages: number;
   /** Draw page `page` so its longest side is `px` pixels. Rejects with an AbortError when `signal` aborts. */
-  draw(page: number, px: number, signal: AbortSignal): Promise<DrawnPage>;
+  draw(page: number, px: number, signal: AbortSignal, opts?: { ink?: boolean }): Promise<DrawnPage>;
   destroy(): void;
 }
 export interface SelfTestResult { ok: boolean; failed: string[] }
@@ -38,6 +38,8 @@ export interface PictureStatus {
 export const LOW_MEMORY_GB = 2;
 export const LOW_MEMORY_BYTES = 80 * 1024 * 1024;
 export const CLIENT_CONCURRENCY = 4;
+/** The most a page is drawn at for the magnifier: 300 dpi on a letter page. */
+export const LARGE_MAX_PX = 3300;
 
 export interface PicturesOpts {
   /** `split.client_render` */
@@ -154,6 +156,25 @@ export class ClientPictures {
     }
     return this.fromServer(page, size, signal);
   };
+
+  /** One page drawn finer than any cell needs, for the magnifier (docs/pdf-splitter.md, section 5.12): up to `px` pixels on its longest side
+   * (the drawing itself stops at the page's own 300 dpi). Null when the browser is not the source or has given this page to the server; the
+   * caller then asks the server's largest picture. The picture is the caller's to release. It is held to the same limits as every picture here:
+   * a device short of memory is not asked for more than the server's largest size. */
+  async drawLarge(page: number, px: number, signal: AbortSignal): Promise<{ url: string; px: number } | null> {
+    await this.ready;
+    const engine = this.engine;
+    if (!engine || this.serverPages.has(page)) return null;
+    const lowMemory = this.o.memoryGB !== undefined && this.o.memoryGB <= LOW_MEMORY_GB;
+    const asked = Math.min(px, lowMemory ? SIZE_PX.huge : LARGE_MAX_PX);
+    try {
+      const drawn = await engine.draw(page, asked, signal, { ink: false });
+      return { url: URL.createObjectURL(drawn.blob), px: asked };
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      return null;
+    }
+  }
 
   // ---- inside
 
