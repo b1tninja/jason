@@ -143,16 +143,17 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
-    @app.post("/api/hearings/<path:key>")
-    def hearing_decision(key: str):
-        """The board's decision after a hearing, in its words; the notice stays a letter a person fills and sends."""
+    @app.post("/api/hearings/<handle>")
+    def hearing_decision(handle: str):
+        """The board's decision after a hearing, in its words, onto the hearing its opaque handle names (never its day and
+        address); the notice stays a letter a person fills and sends. P3: private view only (``jason.web.hearing_rows``)."""
         if hearing_writer is None:
             return jsonify(error="writes are off"), 405
         body = request.get_json(silent=True) or {}
         try:
-            return jsonify(hearing_writer(key, body))
+            return jsonify(hearing_writer(handle, body))
         except KeyError:
-            return jsonify(error=f"no hearing {key}"), 404
+            return jsonify(error="no such hearing"), 404
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 

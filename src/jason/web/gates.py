@@ -39,7 +39,7 @@ GATES: dict[str, str] = {
     "collections": P2,
     "title-watch": P2,
     "audit-chains": P2,
-    "hearings": P2,
+    "hearings": P2,           # the board sees that a hearing is on the clock; the unit, notice, and findings only in the private view (P3)
     "request-links": P2,
     "records-requests": P2,
     "mail-triage": P2,
@@ -138,6 +138,21 @@ def check(gate: str) -> None:
     access.allow(viewer, access.Level[gate.upper()])
 
 
+def check_private(path: str) -> None:
+    """For a write (or a read) whose content opens only in the private view: in a request where console sign-in is set up,
+    abort 401 (not signed in) or 403 (the offices do not open P3, or the private view is not open), and log the opening
+    under ``path`` in ``access/served.jsonl`` (503 when it cannot be logged). Otherwise nothing."""
+    from flask import has_request_context
+
+    if not has_request_context() or not _configured():
+        return
+    from jason.web import access
+
+    viewer = access.signed_in()
+    access.allow(viewer, access.Level.P3)
+    access.log_or_refuse(viewer, access.Level.P3, path=path)
+
+
 def gated(name: str, load: Loader, gate: str) -> Loader:
     """``load`` behind ``gate``; it keeps its name, and a read in the owner view (see the module) passes."""
     @functools.wraps(load)
@@ -158,4 +173,4 @@ def apply(loaders: dict[str, Loader]) -> dict[str, Loader]:
     return {name: gated(name, load, GATES[name]) if name in GATES else load for name, load in loaders.items()}
 
 
-__all__ = ["ADMIN", "GATES", "P0", "P2", "apply", "check", "gated"]
+__all__ = ["ADMIN", "GATES", "P0", "P2", "apply", "check", "check_private", "gated"]

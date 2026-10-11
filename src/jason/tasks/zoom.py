@@ -477,7 +477,8 @@ def save_hearing(data_dir: Path, plan: HearingPlan, association: str, *, letter:
     earlier = next((r for r in rows if (r.get("address"), r.get("start")) == (plan.address, start)), {})
     doc = {k: letter[k] for k in ("id", "url", "unfilled")} if letter else earlier.get("noticeDoc")
     record = {**plan.record(), "notice": str(notice.relative_to(root)).replace("\\", "/"), "noticeDoc": doc,
-              "saved": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+              "saved": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              **({"handle": earlier["handle"]} if earlier.get("handle") else {})}   # the console's opaque name for it survives a re-save
     rows = [r for r in rows if (r.get("address"), r.get("start")) != (record["address"], record["start"])] + [record]
     path.write_text(json.dumps({"hearings": sorted(rows, key=lambda r: r["start"])}, indent=1), encoding="utf-8")
     return record

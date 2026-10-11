@@ -194,27 +194,12 @@ def reserves(args: Args) -> dict[str, Any]:
 
 
 def hearings(args: Args) -> dict[str, Any]:
-    """The hearings as `jason hearing` saved them, each with its key (its day and address), the 5855 clock as stages,
-    and the decision recorded on it when there is one, and its notice as references (``noticeRefs``: the Doc, then
-    jason's draft; P3). Confidential: for directors."""
-    from jason.mcp.county import _data_dir, hearings as tool
-    from jason.tasks.hearing_decisions import key_of
-    from jason.web.extra.meeting_docs import hearing_refs
+    """The hearings as `jason hearing` saved them, each by an opaque handle and a general title with its 5855 clock as
+    stages and the decision recorded on it. The unit, the grounds, the notice (``noticeRefs``), and the findings only in
+    the private view (P3; ``jason.web.hearing_rows``). Confidential: for directors."""
+    from jason.web.hearing_rows import hearings as rows
 
-    out = tool()
-    root = _data_dir(None)
-    rows = []
-    for h in out.get("hearings", []):
-        decision = h.get("decision") or None
-        stages = [{"key": "noticeBy", "label": "Notice delivered by", "date": str(h.get("noticeBy", ""))[:10], "authority": "CIV 5855(a)", "done": bool(h.get("noticeOn"))},
-                  {"key": "hearing", "label": "Hearing", "date": str(h.get("start", ""))[:10], "done": bool(decision)}]
-        if decision:
-            stages.append({"key": "noticeDueBy", "label": "Written decision to the owner by", "date": decision["noticeDueBy"], "authority": "CIV 5855(f)"})
-        elif h.get("decisionByIfHeld"):
-            stages.append({"key": "decisionBy", "label": "Written decision by, if the board acts at the hearing", "date": str(h["decisionByIfHeld"])[:10], "authority": "CIV 5855(f)"})
-        rows.append({**h, "key": key_of(h), "stages": [st for st in stages if st["date"]], "decision": decision,
-                     "noticeRefs": hearing_refs(h, root)})
-    return {**out, "hearings": rows}
+    return rows(args)
 
 
 def title_watch(args: Args) -> dict[str, Any]:
@@ -1126,9 +1111,9 @@ def confirm_owner_info_write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     return status(root)
 
 
-def write_hearing_decision(key: str, body: dict[str, Any]) -> dict[str, Any]:
-    """The board's decision after a hearing, onto the hearing's row: findings, the day decided, who recorded it."""
-    from jason.mcp.county import _data_dir
-    from jason.tasks.hearing_decisions import record
+def write_hearing_decision(handle: str, body: dict[str, Any]) -> dict[str, Any]:
+    """The board's decision after a hearing, onto the row ``handle`` names: findings, the day decided, who recorded it.
+    P3: only in the private view, logged (``jason.web.hearing_rows``)."""
+    from jason.web.hearing_rows import write
 
-    return record(_data_dir(None), key, findings=str(body.get("findings", "")), decided_on=str(body.get("decidedOn", "")), by=str(body.get("by", "")))
+    return write(handle, body)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,12 @@ DECISION_DAYS = 14   # CIV 5855(f)
 def key_of(row: dict[str, Any]) -> str:
     """A hearing's identity across runs: its day and address, as `save_hearing` keeps rows unique."""
     return f"{str(row.get('start', ''))[:10]}|{re.sub(r'[^a-z0-9]+', '-', str(row.get('address', '')).lower()).strip('-')}"
+
+
+def new_handle() -> str:
+    """An opaque handle for a hearing: random, so it says nothing of the day or the address and cannot be found by trying
+    the association's addresses. The console and its URLs name a hearing by this, never by its key."""
+    return "h-" + secrets.token_hex(4)
 
 
 def _now() -> str:
@@ -43,6 +50,34 @@ def _store_lock(fn):
         with hold(Resource.STORE, "hearings", timeout=60, purpose=f"hearing decisions: {fn.__name__}"):
             return fn(*args, **kwargs)
     return wrapper
+
+
+@_store_lock
+def ensure_handles(data_dir: Path) -> list[dict[str, Any]]:
+    """The saved hearings, each with its ``handle``: one that lacks it is given a random one, written back beside its
+    key (the key stays as it was). A store that cannot be written is read as it is, and those rows have no handle."""
+    rows = load(data_dir)
+    fresh = [r for r in rows if not r.get("handle")]
+    if not fresh:
+        return rows
+    for r in fresh:
+        r["handle"] = new_handle()
+    try:
+        path = Path(data_dir) / HEARINGS
+        path.write_text(json.dumps({"hearings": sorted(rows, key=lambda r: r["start"])}, indent=1), encoding="utf-8")
+    except OSError:
+        for r in fresh:
+            r.pop("handle", None)
+    return rows
+
+
+def key_for_handle(data_dir: Path, handle: str) -> str:
+    """The key of the hearing ``handle`` names; ``KeyError`` when it names none."""
+    handle = str(handle or "").strip()
+    row = next((r for r in load(data_dir) if handle and r.get("handle") == handle), None)
+    if row is None:
+        raise KeyError(handle)
+    return key_of(row)
 
 
 @_store_lock

@@ -516,7 +516,7 @@ def test_onboarding_and_communities_overlay_the_stores(county, tmp_path, monkeyp
     assert comm["count"] == 2 and comm["communities"][0]["progress"]["accountsSet"] == 1 and "progress" not in comm["communities"][1]
 
 
-def test_hearings_adds_keys_stages_and_decisions(county, tmp_path, monkeypatch):
+def test_hearings_adds_titles_stages_and_decisions(county, tmp_path, monkeypatch):
     import sys
 
     from jason.web import sources
@@ -529,7 +529,8 @@ def test_hearings_adds_keys_stages_and_decisions(county, tmp_path, monkeypatch):
     ]}, raising=False)
     out = sources.hearings({})
     a, b = out["hearings"]
-    assert a["key"] == "2026-10-20|123-main-st-12" and [st["key"] for st in a["stages"]] == ["noticeBy", "hearing", "decisionBy"] and a["stages"][0]["done"] is True
+    assert "key" not in a and "member discipline" in a["title"] and a["address"] == "123 Main St #12" and a["held"] is False     # no day-and-address key; a script sees the whole row
+    assert [st["key"] for st in a["stages"]] == ["noticeBy", "hearing", "decisionBy"] and a["stages"][0]["done"] is True
     assert b["decision"]["findings"] == "A $50 fine" and [st["key"] for st in b["stages"]] == ["noticeBy", "hearing", "noticeDueBy"] and b["stages"][1]["done"] is True
 
 

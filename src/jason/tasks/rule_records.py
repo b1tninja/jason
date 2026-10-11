@@ -175,19 +175,20 @@ def links(data_dir: Path) -> tuple[dict[str, list[rr.Use]], list[str]]:
     """Uses by rule id: each stored hearing or open-session board decision whose own record cites ``jason://rules/<id>``.
     An executive-session decision is not read (it is held by its nature); names are never carried, only a route."""
     from jason.tasks.decisions import is_executive, load as load_decisions
-    from jason.tasks.hearing_decisions import key_of, load as load_hearings
+    from jason.tasks.hearing_decisions import ensure_handles
 
     out: dict[str, list[rr.Use]] = {}
     notes: list[str] = []
     try:
-        for h in load_hearings(data_dir):
+        for h in ensure_handles(data_dir):
             ids = _scan(json.dumps(h, default=str))
             if not ids:
                 continue
             decided = h.get("decision") or {}
             on = str(h.get("start", ""))[:10]
             use = rr.Use("hearing", date.fromisoformat(on) if on else None,
-                         "decision recorded" if decided else "hearing planned", {"route": f"#/hearings?id={key_of(h)}"})
+                         "decision recorded" if decided else "hearing planned",
+                         {"route": f"#/hearings?id={h['handle']}"} if h.get("handle") else {})   # the handle, never the day and address
             for i in ids:
                 out.setdefault(i, []).append(use)
     except Exception as exc:                                       # noqa: BLE001

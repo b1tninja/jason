@@ -5,17 +5,19 @@ import { useApi } from "../lib/useApi";
 import type { Hearing as Base } from "./types";
 
 /** `noticeRefs`: the hearing notice as the loader names it (docs/console/doc-component.md), the Doc made from the template
- * first, then jason's draft under `zoom/hearings/`; both P3, opened only in the private view. */
-type Hearing = Base & { key: string; stages: { key: string; label: string; date: string; authority?: string; done?: boolean }[]; decision: { findings: string; decidedOn: string; noticeDueBy: string; by: string; recorded: string; history: string[] } | null; violation?: string; owner?: string; noticeRefs?: DocRef[] };
-interface Hearings { found?: boolean; note?: string; hearings: Hearing[] }
+ * first, then jason's draft under `zoom/hearings/`; both P3, opened only in the private view. A hearing is named by its opaque
+ * `handle` (in the URL, the open state, and the key), never by its day and address. Outside the private view a row is `held`:
+ * it has the general `title`, the clock, and whether a decision is recorded, and no unit, grounds, notice, or findings. */
+type Hearing = Base & { stages: { key: string; label: string; date: string; authority?: string; done?: boolean }[]; decision: { findings?: string; decidedOn: string; noticeDueBy: string; by?: string; recorded: string; history?: string[] } | null; violation?: string; owner?: string; noticeRefs?: DocRef[] };
+interface Hearings { found?: boolean; note?: string; held?: boolean; hearings: Hearing[] }
 
 /** The decision notice as it would read, from the decision-notice template with the hearing's facts, and the command that fills a Drive copy. */
-function NoticePreview({ h }: { h: Hearing }) {
+function NoticePreview({ h }: { h: Hearing & { address: string } }) {
   const q = useMemo(() => {
     const p = new URLSearchParams({ kind: "decision-notice", name: `Decision notice, ${h.address}` });
     p.set("V_ADDRESS", h.address);
     p.set("V_HEARING_DATE", h.start.slice(0, 10));
-    if (h.decision) { p.set("V_FINDINGS", h.decision.findings); p.set("V_DATE", h.decision.decidedOn); }
+    if (h.decision?.findings) { p.set("V_FINDINGS", h.decision.findings); p.set("V_DATE", h.decision.decidedOn); }
     if (h.violation) p.set("V_VIOLATION", h.violation);
     if (h.owner) p.set("V_OWNER_NAME", h.owner);
     return p.toString();
@@ -34,8 +36,19 @@ function NoticePreview({ h }: { h: Hearing }) {
   );
 }
 
-/** One hearing opened: its clock, the decision entered once in the board's words, then the notice. */
-function HearingPanel({ h, today, onSaved }: { h: Hearing; today: Date; onSaved: (next: Hearing) => void }) {
+/** One hearing opened outside the private view: the clock and the general title, and where to open the rest. */
+function HeldPanel({ h, today }: { h: Hearing; today: Date }) {
+  return (
+    <div className="stack">
+      <Clock stages={h.stages} today={today} />
+      <p className="notice notice-warn">{h.heldWhy ?? "The unit, notice, and findings of a member's discipline open in the private view."}</p>
+      {h.decision && <p className="muted">A decision is recorded; the written notice is due by <strong>{h.decision.noticeDueBy}</strong> (CIV 5855(f)).</p>}
+    </div>
+  );
+}
+
+/** One hearing opened in the private view: its clock, the decision entered once in the board's words, then the notice. */
+function HearingPanel({ h, today, onSaved }: { h: Hearing & { address: string }; today: Date; onSaved: (next: Hearing) => void }) {
   const [findings, setFindings] = useState(h.decision?.findings ?? "");
   const [decidedOn, setDecidedOn] = useState(h.decision?.decidedOn ?? h.start.slice(0, 10));
   const [by, setBy] = useState(h.decision?.by ?? "");
@@ -43,7 +56,7 @@ function HearingPanel({ h, today, onSaved }: { h: Hearing; today: Date; onSaved:
   const [error, setError] = useState("");
   const save = async () => {
     setBusy(true); setError("");
-    try { onSaved({ ...h, ...(await postJson<Hearing>(`/api/hearings/${encodeURIComponent(h.key)}`, { findings, decidedOn, by })) }); }
+    try { onSaved({ ...h, ...(await postJson<Hearing>(`/api/hearings/${encodeURIComponent(h.handle)}`, { findings, decidedOn, by })) }); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return (
@@ -78,12 +91,15 @@ function HearingPanel({ h, today, onSaved }: { h: Hearing; today: Date; onSaved:
 
 const cols: Column<Hearing>[] = [
   { key: "start", header: "Hearing", render: (h) => <>{h.start.slice(0, 16).replace("T", " ")}{h.scheduled ? <> <Badge tone="good">zoom</Badge></> : <> <Badge>no meeting</Badge></>}</> },
-  { key: "address", header: "Unit" },
+  { key: "title", header: "Matter" },
   { key: "noticeBy", header: "Notice by (5855(a))", render: (h) => <>{h.noticeOn ? <Badge tone="good">{`delivered ${h.noticeOn}`}</Badge> : <DueDate iso={h.noticeBy} />}</>, value: (h) => h.noticeBy },
   { key: "decision", header: "Decision", render: (h) => h.decision ? <><Pill word="done" /> <span className="muted">notice due {h.decision.noticeDueBy}</span></> : <Pill word="open" />, value: (h) => h.decision ? 1 : 0 },
   { key: "standing", header: "Where it stands" },
-  { key: "problems", header: "Problems", render: (h) => <Findings items={h.problems ?? []} empty="none" />, value: (h) => h.problems?.length ?? 0 },
+  { key: "problems", header: "Problems", render: (h) => h.held ? (h.problemCount ? `${h.problemCount} in the plan` : "none") : <Findings items={h.problems ?? []} empty="none" />, value: (h) => h.problems?.length ?? h.problemCount ?? 0 },
 ];
+/** The unit is a column only in the private view. */
+const unitCol: Column<Hearing> = { key: "address", header: "Unit" };
+const hasAddress = (h: Hearing): h is Hearing & { address: string } => !h.held && typeof h.address === "string";
 
 /** The disciplinary hearings a person planned, against the 5855 clocks, with the board's decision recorded once and the notice from the template. */
 export function HearingsView() {
@@ -94,15 +110,19 @@ export function HearingsView() {
   return (
     <RemoteView r={r}>
       {(raw) => {
-        const rows = [...raw.hearings].map((h) => patched[h.key] ?? h).sort((a, b) => b.start.localeCompare(a.start));
-        const current = rows.find((h) => h.key === open);
+        const rows = [...raw.hearings].map((h) => patched[h.handle] ?? h).sort((a, b) => b.start.localeCompare(a.start));
+        const current = rows.find((h) => h.handle === open);
+        const columns = raw.held ? cols : [cols[0], cols[1], unitCol, ...cols.slice(2)];
         return (
           <div className="stack">
+            {raw.held && <p className="notice">Held back outside the private view: each hearing shows its general matter and its clock. Open the private view, for a stated reason, to see the unit, the notice, and the findings.</p>}
             <p className="notice notice-warn">Confidential: for directors. A hearing needs the notice ten days ahead and the written decision within fourteen days of the board's action. jason schedules a meeting only when a person runs the command, never sends the notice, and never decides discipline.</p>
             <Card title={`Hearings (${rows.length})`}>
-              <DataTable rows={rows} columns={[...cols, { key: "open", header: "", render: (h) => <button className={open === h.key ? "" : "primary"} onClick={() => setOpen(open === h.key ? "" : h.key)}>{open === h.key ? "Close" : "Open"}</button> }]} searchable={false} />
+              <DataTable rows={rows} columns={[...columns, { key: "open", header: "", render: (h) => <button className={open === h.handle ? "" : "primary"} disabled={!h.handle} onClick={() => setOpen(open === h.handle ? "" : h.handle)}>{open === h.handle ? "Close" : "Open"}</button> }]} searchable={false} />
             </Card>
-            {current && <HearingPanel key={current.key + (current.decision?.recorded ?? "")} h={current} today={today} onSaved={(n) => setPatched((p) => ({ ...p, [n.key]: n }))} />}
+            {current && (hasAddress(current)
+              ? <HearingPanel key={current.handle + (current.decision?.recorded ?? "")} h={current} today={today} onSaved={(n) => setPatched((p) => ({ ...p, [n.handle]: n }))} />
+              : <HeldPanel key={current.handle} h={current} today={today} />)}
           </div>
         );
       }}

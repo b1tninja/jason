@@ -281,7 +281,9 @@ def test_a_use_is_linked_only_where_the_use_cites_the_rule(store):
         {"start": "2026-03-10T18:00:00", "address": "2 Example St", "statement": "no rule cited"}]}), encoding="utf-8")
     out = task.uses_detail("R-2", store, records="stored")
     assert out["count"] == 1 and out["uses"][0]["kind"] == "hearing" and out["uses"][0]["version"] == "v1"
-    assert "1 Example" not in json.dumps(out) and out["uses"][0]["ref"]["route"].startswith("#/hearings?id=2026-02-10|")
+    handle = json.loads((hearings / "hearings.json").read_text(encoding="utf-8"))["hearings"][0]["handle"]      # given on first read
+    assert out["uses"][0]["ref"]["route"] == f"#/hearings?id={handle}" and handle.startswith("h-")
+    assert "example" not in json.dumps(out).lower() and "2026-02-10|" not in json.dumps(out)       # no address, no day-and-address key
     assert task.uses_detail("R-1", store, records="stored")["count"] == 0
 
 

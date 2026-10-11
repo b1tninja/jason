@@ -141,7 +141,7 @@ describe("Minutes review", () => {
 
 // --- Hearings ---------------------------------------------------------------------------------------------------------------
 
-const hearing = { key: "2099-10-20|123-main-st-12", address: "123 Main St #12", start: "2099-10-20T18:00:00", noticeBy: "2099-10-10", decisionByIfHeld: "2099-11-03",
+const hearing = { handle: "h-1a2b3c4d", title: "Hearing on member discipline (Civil Code 4935(a), (b))", held: false, address: "123 Main St #12", start: "2099-10-20T18:00:00", noticeBy: "2099-10-10", decisionByIfHeld: "2099-11-03",
   standing: "notice by 2099-10-10", scheduled: false, problems: [], decision: null, notice: "hearings/2099-10-20-123-main-st-12.md",
   noticeDoc: { id: "1ExampleHearingDoc01", url: "https://docs.google.com/document/d/1ExampleHearingDoc01/edit" }, noticeRefs: [noticeDoc, noticeDraft],
   stages: [{ key: "noticeBy", label: "Notice delivered by", date: "2099-10-10" }, { key: "hearing", label: "Hearing", date: "2099-10-20" }] };

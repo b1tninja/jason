@@ -475,6 +475,7 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("split/*", Level.P3),      # the splitter's copy of a file, its drafts, and its page pictures; served only by /api/split/thumb, at the file's own level
     PathRule("library/files/*", Level.P2, _library_file),
     PathRule("library/text/*", Level.P2, _library_text),
+    PathRule("zoom/hearings.json", Level.P3),  # the store of hearings: addresses, the Zoom passcode, the board's findings
     PathRule("zoom/hearings/*", Level.P3),     # a hearing's notice and record: a member's discipline, as the Zoom index's hearings
     PathRule("zoom/meetings/*", Level.P2, _zoom_meeting),
     PathRule("payhoa-files/requests/*", Level.P2),

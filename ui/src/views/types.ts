@@ -130,11 +130,14 @@ export interface Reserves {
   /** The latest reserve study's reference, when one is on disk. */
   study?: DocRef;
 }
+/** A hearing is a member's discipline (P3). `handle` and `title` are always there; `held` is true outside the private view, where the
+ * unit, grounds, notice, and findings are left out (`problemCount` stands for `problems`). */
 export interface Hearing {
-  address: string; building?: string | number; start: string; noticeBy: string; noticeOn?: string; decisionByIfHeld: string; statement?: string;
+  handle: string; title: string; held?: boolean; heldWhy?: string; problemCount?: number;
+  address?: string; building?: string | number; start: string; noticeBy: string; noticeOn?: string; decisionByIfHeld: string; statement?: string;
   standing: string; scheduled: boolean; zoom?: { id?: string; joinUrl?: string } | null; notice?: string; problems?: string[];
 }
-export interface Hearings { found?: boolean; note?: string; hearings: Hearing[] }
+export interface Hearings { found?: boolean; note?: string; held?: boolean; hearings: Hearing[] }
 export interface TitleRow {
   apn: string; address: string; building: string | number; owner: string; currentOwners: string[]; process: string; number: string; recorded: string;
   claimant: string[]; status: string; standing: string; meaning: string; presumedPaidAt: string; namesakeRisk: boolean; enforceableUntil: string; sharedWith: string[]; latestStep: string; taxBillYear?: number | string;
