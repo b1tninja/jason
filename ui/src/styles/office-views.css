@@ -1,0 +1,35 @@
+/* Office views (docs/console/screens/office-views.md): the lens, the banner, the bands, and a control the viewer's offices do
+   not hold. Tokens only, so dark and light follow; a state is a word, never a colour alone. */
+.office-today { display: grid; gap: 1rem; margin-bottom: 1.5rem; }
+.office-today-head { justify-content: space-between; align-items: center; gap: .5rem 1.25rem; }
+.office-today-head h2 { margin: 0; font-size: 1.2rem; }
+.office-lens { gap: .5rem; align-items: center; }
+.office-lens label { font-size: .9rem; color: var(--muted); }
+.office-lens select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .3rem .5rem; min-height: 24px; max-width: 100%; }
+.office-lens select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.office-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; border-color: var(--accent); }
+.office-banner p { margin: 0; }
+.office-banner button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.office-bands { margin-top: 0; }
+.office-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
+.office-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; padding: .45rem .1rem; border-bottom: 1px solid var(--line); }
+.office-row:last-child { border-bottom: 0; }
+.office-row-text { flex: 1 1 18rem; min-width: 0; overflow-wrap: anywhere; }
+.office-row-marks { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .5rem; font-size: .85rem; }
+.office-row a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.office-not-composed { border: 1px dashed var(--line); border-radius: 8px; padding: .6rem .9rem; font-size: .9rem; }
+.office-not-composed h2 { margin: 0 0 .35rem; font-size: .95rem; }
+.office-not-composed ul { margin: 0; padding-left: 1.1rem; display: grid; gap: .25rem; }
+
+/* a control the viewer's offices do not hold: shown, disabled, with the reason beside it */
+.disabled-for-office { display: grid; gap: .25rem; }
+.disabled-for-office fieldset { border: 0; margin: 0; padding: 0; min-width: 0; opacity: .6; }
+.disabled-for-office p { margin: 0; }
+
+@media (max-width: 720px) {
+  .office-today-head { align-items: flex-start; }
+  .office-banner { align-items: flex-start; }
+}

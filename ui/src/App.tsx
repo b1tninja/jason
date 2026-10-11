@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  ConsoleShell, DOCK_DRAWERS, DockDrawerBody, DockToolbar, Drawer, ErrorNotice, Loading, landingScreen, useDockCounts, visibleScreens,
+  ConsoleShell, DOCK_DRAWERS, DockDrawerBody, DockToolbar, Drawer, ErrorNotice, Loading, OfficeToday, landingScreen, useDockCounts, visibleScreens,
   type Audience, type ConsoleScreen,
 } from "./components";
 import { roleMoves, roleOf } from "./lib/roles";
@@ -55,9 +55,13 @@ import { StatusView } from "./views/StatusView";
 
 function BoardDigest() {
   const r = useApi<Digest>("/api/board-digest");
-  if (r.status === "loading") return <Loading />;
-  if (r.status === "error") return <ErrorNotice error={r.error} onRetry={r.reload} />;
-  return <DigestView digest={r.data} />;
+  // the office bands and the lens (office-views.md) stand above the digest, whether or not the digest reads
+  return (
+    <>
+      <OfficeToday />
+      {r.status === "loading" ? <Loading /> : r.status === "error" ? <ErrorNotice error={r.error} onRetry={r.reload} /> : <DigestView digest={r.data} />}
+    </>
+  );
 }
 
 export const GROUPS = ["Overview", "Governance", "Money", "Records", "Setup", "Instance"] as const;

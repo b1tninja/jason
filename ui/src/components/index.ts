@@ -125,3 +125,5 @@ export { ControlNotice, ControlNoticeFor, ControlSigners } from "./ControlNotice
 export { ControlProposeConfirm } from "./ControlProposeConfirm";
 export { ControlRow, ControlQuestionRow, RefusedRow, type ProposeAs } from "./ControlRow";
 export { ControlCard, ControlChangedBanner, controlDates } from "./ControlCard";
+// Office views (docs/console/screens/office-views.md): the lens, its banner, the office bands, and a control the viewer's offices do not hold. lib/officeView.ts has the loader shape.
+export { OfficeLens, OfficeBanner, OfficeBands, OfficeBand, OfficeRowItem, NotComposed, OfficeToday, DisabledForOffice, useOfficeLens } from "./OfficeLens";

@@ -22,9 +22,11 @@ A landing page answers "what is mine to do, and what is coming for my office?" T
 
 | Part | Source | Loader |
 |---|---|---|
-| An office's bands | The Today bands cut to the office: the digest's sections for the office's duties (`schedule` assignments), the approvals that wait on that office (`Officer.approves`), the runs whose current step the office holds (`jason.workflows`, "Yours" for that office), and the board items and decisions that wait on it | `GET /api/office-view?office=ROLE` (to add; `ROLE` is an `OfficerRole` word, never a name) |
-| Which offices the viewer holds | `GET /api/session` (`roleClass`, offices) | built |
-| The offices a viewer may read | Every `OfficerRole` the profile names, to any signed-in board member | `office-view` answers `offices[]` |
+| An office's bands | The Today bands cut to the office, from what exists: the letters requested of an approver the office stands for (`Officer.approves`, "the <office>", and "the board" for the two offices that record its vote), by kind and count; the board items the board gave the office (or the board) to act on, matched on the item's owner text (matched, never shown); for the secretary, the board's open votes to record; the schedule's occurrences for the duties the profile's assignments give the office, the board, or name it as backup (overdue and due soon, then the next 45 days); a count of the dock's open tasks the office owns; and the runs whose current step's `role` is the office (`jason.workflows`) | `GET /api/office-view?office=ROLE` (built, `jason.web.extra.office_view`; `ROLE` is an `OfficerRole` word, never a name; empty reads the viewer's own offices as a union) |
+| Which offices the viewer holds | `GET /api/session` (`roleClass`, offices); `office-view` answers `mine[]` as words | built |
+| The offices a viewer may read | Every `OfficerRole` the profile names, to any signed-in board member or the manager | `office-view` answers `offices[]` (`office`, `vacant`, `holders` as a count) |
+
+**Not composed, and said so in the answer (`notComposed`).** The engine's plans (`jason.approvals`) wait on a named person or a second signature, and no office is attached to a plan unless a control names the offices that may sign; they stay in Approvals. The governance digest's requests, intake, notices, living documents, conflicts, and people's-tasks lines carry no office (only the schedule's duties carry a role); they stay on the Board digest. Next questions (onboarding) are the board's, not an office's. A band whose store cannot be read is named in `bandErrors` and in `notComposed`, and the others stand. The answer adds a fourth band, `comingUp` (the next weeks of the schedule), to the three above, as the layout's "Coming up" row.
 | The actions an office has | A step's `role` (the definition), an approval's signers (`Officer.approves`), a decision's recorder (the secretary) | the same rows as Work and Approvals |
 
 **Reading another office's page never changes who the viewer is.** The data levels are the viewer's own (`SEE_RULES`: every office opens P2 and, in the private view, P3), a write goes on the record under the viewer's own name, and the page says "Reading as the treasurer" so no one mistakes it for that person's session.
@@ -54,13 +56,13 @@ A landing page answers "what is mine to do, and what is coming for my office?" T
 ```
 
 - **The lens** (`OfficeLens`) is a select in the header: "My offices" (the default; a person who holds two offices sees the union) and each office the profile names. It stays on a page across reloads (the URL's `?as=secretary`), and the page names it in a banner whenever it is not the viewer's own.
-- **Bands** are the same components as Today and Work, cut to the office: `Waiting on a person`, `Needs attention`, `Your work` (retitled "Work for the treasurer"), `Next questions`. Each band's heading names the office when the lens is not the viewer's.
+- **Bands** are cut to the office: `Waiting on you` (or "Waiting on the treasurer"), `Needs attention`, `Coming up`, `Your work` (retitled "Work for the treasurer"). Each band's heading names the office when the lens is not the viewer's. Built as `OfficeToday` (`ui/src/components/OfficeLens.tsx`) above the Board digest on `#/digest`; `Next questions` is not composed per office (above).
 - **A control the viewer's offices do not hold is shown, disabled, with the reason** ("Only the treasurer can sign this. You are the secretary."). It is never hidden, so a board member sees what the office does. The server refuses the act whatever the page shows (the check is on the server, as every write).
 - **No impersonation:** the page never says "you", "your" for the other office, never fills the other office's name into a record, and never shows a "Switch to" that signs in as them.
 
 ## Components
 
-Built: `Card`, `DataTable`, `Pill`, `Stat`, `Confirm`, `Command`, `DueDate`, `Caveats`, `ScreenHeader`. To add: `OfficeLens` (the select and the banner), `OfficeBand` (a band with the office named in its heading), `DisabledForOffice` (a control with the reason it is not live), and the retitled `Your work` band of [today.md](today.md).
+Built: `Card`, `DataTable`, `Pill`, `Stat`, `Confirm`, `Command`, `DueDate`, `Caveats`, `ScreenHeader`, and, in `OfficeLens.tsx`, `OfficeLens` (the select), `OfficeBanner`, `OfficeBand` and `OfficeBands` (a band with the office named in its heading), `OfficeToday` (the loader's page), `DisabledForOffice` (a control with the reason it is not live; no screen uses it yet, because no officer-only control is on Today), and `useOfficeLens` (the URL's `?as=`). The `Your work` band of [today.md](today.md) is the same band with the run rows; the Work screen is not built, so a run row has no link yet. Styles: `ui/src/styles/office-views.css`.
 
 ## Actions
 

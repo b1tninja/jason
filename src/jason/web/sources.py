@@ -937,6 +937,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "controls": "jason.web.extra.controls:controls",  # ?family=&state=: the safeguards the board opts into and jason suggests, by family, with the provision whole, the floor, the roster check; P2
     "control": "jason.web.extra.controls:control",  # ?key=: one control, six bands, with its provision as the documents hold it now; P2
     "control-notices": "jason.web.extra.controls:control_notices",  # ?subject=KIND: the effective rule and the controls waiting or refused, for the one-line notice; read only, P2
+    "office-view": "jason.web.extra.office_view:office_view",  # ?office=ROLE (an OfficerRole word; empty: the viewer's own offices): the office's Today bands, a lens for any board member; offices, counts, and titles, never a name; P2
 }
 EXTRA_WRITERS: dict[str, str] = {
     "controls": "jason.web.extra.controls:write",  # <control key> {act: propose}: a board item with the provision as evidence, in the signer's name (P2); adopts nothing
