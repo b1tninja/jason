@@ -73,4 +73,6 @@ A reading of Article 10 of the Bylaws, with the sections that bear on it (8.3, 8
 - Whether the Bylaws' "any two Directors" permits the second signature on every plan kind, including the reserve (12.9 sets a two-board-member floor for reserve withdrawals).
 - How a President's "absence or disability" is recorded; the Bylaws name no procedure.
 - Whether the board has by resolution prescribed other duties for any office (10.8 to 10.11 and 10.4 contemplate it). jason has no list of such resolutions; the minutes would show them.
-- Whether "the Chief Financial Officer" and "Treasurer" are one office in the profile's roster (10.1 says the CFO "may ... be referred to as the Treasurer").
+- ~~Whether "the Chief Financial Officer" and "Treasurer" are one office~~: settled 2026-10-11. The Chief Financial Officer is the Treasurer, and the chief executive officer is the President (10.1, 10.8).
+
+What the board might add as safeguards, drawn from these provisions, is in [controls.md](controls.md).
