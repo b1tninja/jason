@@ -234,7 +234,10 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
             return ("UI not built: run `npm install && npm run build` in ui/.", 503)
         target = dist / path
         if path and target.is_file() and target.resolve().is_relative_to(dist.resolve()):
-            resp = send_from_directory(dist, path)
+            # A module script and a WebAssembly file are refused by the browser unless the type says so, and the machine's own
+            # table (the Windows registry) may say text/plain for .mjs: pdf.js's worker is a module (the splitter draws pages with it).
+            forced = {".mjs": "text/javascript", ".js": "text/javascript", ".wasm": "application/wasm"}.get(target.suffix.lower())
+            resp = send_from_directory(dist, path, mimetype=forced) if forced else send_from_directory(dist, path)
             if path.startswith("assets/"):  # content-hashed by Vite
                 resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
             return resp

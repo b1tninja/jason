@@ -4,8 +4,40 @@
 
 import type { GlyphName } from "../components/Glyph";
 
-export type Size = "tiny" | "small" | "large";
-export const SIZE_PX: Record<Size, number> = { tiny: 96, small: 200, large: 800 };
+/** The steps a page picture comes in (the longest side in pixels): the server's ladder (`split_thumbs.SIZES`), which the browser's own drawing follows. */
+export type Size = "tiny" | "small" | "medium" | "large" | "huge";
+export const SIZE_PX: Record<Size, number> = { tiny: 96, small: 200, medium: 400, large: 800, huge: 1600 };
+export const SIZE_STEPS: Size[] = ["tiny", "small", "medium", "large", "huge"];
+
+/** The picture a cell needs: the smallest step whose pixels cover the cell's longest displayed side in device pixels (CSS size x the
+ * screen's pixel ratio), never above `cap`. A picture smaller than this is only upscaled, so it is never the final one when a sharper is possible. */
+export function sizeFor(cssLongest: number, dpr = 1, cap: Size = "huge"): Size {
+  const need = Math.ceil(Math.max(1, cssLongest) * Math.max(1, dpr));
+  const top = SIZE_STEPS.indexOf(cap);
+  for (let i = 0; i <= top; i++) if (SIZE_PX[SIZE_STEPS[i]] >= need) return SIZE_STEPS[i];
+  return SIZE_STEPS[top];
+}
+
+/** The largest step `cells` pictures on screen at once may be drawn at without their decoded pixels (width x height x 4 bytes, a page
+ * about 1.3 times as tall as wide) passing `megabytes`. Never below "small": the album is still readable. */
+export function stepWithin(cells: number, megabytes: number): Size {
+  let best: Size = "small";
+  for (const s of SIZE_STEPS) if (s !== "tiny" && Math.max(1, cells) * SIZE_PX[s] * SIZE_PX[s] * 0.77 * 4 <= megabytes * 1e6) best = s;
+  return best;
+}
+
+/** The sizes the compare pane's figures ask for: a quick small one, then the sharp one for the zoom (800 px for "800 px", the largest for
+ * "enlarged", and for "fit" whatever covers the figure's width in device pixels). */
+export function figureSizes(zoom: "fit" | "full" | "enlarged", cssWidth: number, dpr: number): Size[] {
+  const sharp: Size = zoom === "enlarged" ? "huge" : zoom === "full" ? "large" : sizeFor(cssWidth * 1.294, dpr, "huge");
+  return sharp === "small" || sharp === "tiny" ? ["small"] : ["small", sharp];
+}
+
+/** The sizes a cell asks for: a quick low-resolution picture first, then the sharp one, in place. */
+export function sizesFor(cssLongest: number, dpr: number, cap: Size): Size[] {
+  const sharp = sizeFor(cssLongest, dpr, cap);
+  return sharp === "tiny" ? ["tiny"] : ["tiny", sharp];
+}
 
 export interface PageFact {
   n: number; width: number; height: number; rotation: number;
@@ -37,7 +69,7 @@ export interface SessionView {
 }
 export interface SessionAnswer extends SessionView {
   renderer?: string; sizes?: string[]; confidential?: boolean; facts?: PageFact[]; review?: Review; flags?: FlagsAnswer;
-  limits?: { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number }; caveats?: string[];
+  limits?: { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number; clientRender?: boolean; clientRenderMaxPages?: number }; caveats?: string[];
 }
 export interface ListedSession {
   id: string; status: string; pages: number; segments: number; suggestionsOpen: number; updated: string; by: string; confidential: boolean; kind: string; label: string;

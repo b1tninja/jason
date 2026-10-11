@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "../components";
 import { Glyph } from "../components/Glyph";
 import type { FactsCache } from "./splitFacts";
-import { BAND_GLYPH, TURN_DEGREES, pageAlt, sidewaysWords, stateWord, turnWord, type PageFact, type Size, type Suggestion, type Turn } from "./splitModel";
+import { BAND_GLYPH, TURN_DEGREES, figureSizes, pageAlt, sidewaysWords, stateWord, turnWord, type PageFact, type Size, type Suggestion, type Turn } from "./splitModel";
 import type { ThumbLoader } from "./splitThumbs";
 
 /** The compare and zoom pane, and the page menu (docs/pdf-splitter.md, sections 5.2 and 5.3). */
@@ -11,12 +11,13 @@ export type Zoom = "fit" | "full" | "enlarged";
 export const ZOOMS: { id: Zoom; words: string }[] = [
   { id: "fit", words: "Fit width" },
   { id: "full", words: "800 px" },
-  { id: "enlarged", words: "Enlarged (from the 800 px picture)" },
+  { id: "enlarged", words: "Enlarged (the sharpest picture)" },
 ];
 
-export function Figure({ page, loader, caption, zoom, sizes = ["large"], facts, confidential, note }: {
+export function Figure({ page, loader, caption, zoom, sizes: given, facts, confidential, note }: {
   page: number; loader: ThumbLoader; caption: string; zoom: Zoom; sizes?: Size[]; facts: FactsCache; confidential: boolean; note?: string;
 }) {
+  const sizes = given ?? figureSizes(zoom, typeof window === "undefined" ? 700 : Math.min(window.innerWidth, 720), typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
   const img = useRef<HTMLImageElement>(null);
   const [failed, setFailed] = useState("");
   useEffect(() => {

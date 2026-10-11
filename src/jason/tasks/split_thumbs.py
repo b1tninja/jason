@@ -1,4 +1,4 @@
-"""The splitter's page pictures (docs/pdf-splitter.md, section 3): one page of a PDF drawn at 96, 200, or 800 pixels, kept by content.
+"""The splitter's page pictures (docs/pdf-splitter.md, section 3): one page of a PDF drawn at 96, 200, 400, 800, or 1600 pixels, kept by content.
 
 ``render_page(path, page, size)`` is the one function the renderer lives behind. It prefers ``pypdfium2`` (permissive license;
 ``pip install -e ".[split]"``), else the PyMuPDF already in the tree, else it raises ``RendererUnavailable`` and the caller says so in
@@ -26,9 +26,9 @@ from typing import Any
 
 from jason import limits, storage
 
-SIZES = (96, 200, 800)                     # the longest side in pixels: the grid at a distance, the album, the compare pane
-QUALITY = {96: 55, 200: 65, 800: 75}
-SIZE_NAMES = {"tiny": 96, "small": 200, "large": 800}
+SIZES = (96, 200, 400, 800, 1600)         # the longest side in pixels: a distance, the album, a larger cell, the compare pane, inspecting
+QUALITY = {96: 55, 200: 65, 400: 70, 800: 75, 1600: 78}
+SIZE_NAMES = {"tiny": 96, "small": 200, "medium": 400, "large": 800, "huge": 1600}
 RENDER_VERSION = "1"                       # bump when the drawing changes: every ETag changes with it
 FOLDER = ("split", "thumbs")
 NO_RENDERER = ("No page renderer is installed on this machine, so page pictures cannot be drawn. Install one with "
@@ -64,7 +64,7 @@ def renderer_name() -> str:
 
 
 def size_of(value: Any) -> int:
-    """96, 200, or 800 from a number or a name (tiny, small, large). Anything else is refused in words."""
+    """96, 200, 400, 800, or 1600 from a number or a name (tiny, small, medium, large, huge). Anything else is refused in words."""
     text = str(value).strip().lower()
     n = SIZE_NAMES.get(text)
     if n is None:
@@ -73,7 +73,7 @@ def size_of(value: Any) -> int:
         except ValueError:
             n = 0
     if n not in SIZES:
-        raise ValueError(f"a page picture is {', '.join(str(s) for s in SIZES)} pixels (tiny, small, large)")
+        raise ValueError(f"a page picture is {', '.join(str(s) for s in SIZES)} pixels (tiny, small, medium, large, huge)")
     return n
 
 

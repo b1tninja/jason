@@ -245,6 +245,24 @@ LIMITS: tuple[Limit, ...] = (
                    "scan into smaller files first, or ask your community's administrator to raise the limit (the most "
                    "allowed is {ceiling}).",
           applies_to=("tasks.split_session.open_session",), restart="next_job"),
+    Limit("split.client_render", True, None, None, "switch",
+          "Whether the splitter draws the pictures of a file chosen on this computer in the person's browser (pdf.js, served from the "
+          "console itself) while the server saves the file. Off: the server draws every picture.",
+          kind="switch", why="Drawing in the browser shows a file's pictures at once and spares the server a round trip for every "
+                             "page, at the cost of the file being held in the browser. A community that would rather the server "
+                             "draw every picture, or an operator who sees a browser draw a page wrongly, can turn it off. It is a "
+                             "convenience; the server's measurements never depend on it.",
+          when_hit="Page pictures are drawn by the server for this community, because browser drawing is off. They load one at a "
+                   "time and may take longer. Ask your community's administrator to turn browser drawing on.",
+          applies_to=("web.extra.split._limits",), restart="next_job"),
+    Limit("split.client_render_max_pages", 3000, 50, 10000, "count",
+          "The most pages a file may have for the splitter to draw its pictures in the browser; a longer file is drawn by the server.",
+          kind="count", why="The browser holds the whole file while it draws, and a phone has little memory; the server's pictures "
+                            "are kept on disk and cost the browser nothing.",
+          when_hit="This file has {amount} pages; the browser draws files of up to {limit}. The server is drawing this file's "
+                   "pictures instead, one at a time. Ask your community's administrator to raise the limit (the most allowed is "
+                   "{ceiling}).",
+          applies_to=("web.extra.split._limits",), restart="next_job"),
     Limit("split.max_parts", 500, 2, 2000, "count",
           "The most files one split may write.",
           kind="count", why="A split that writes a thousand files at once is more likely a wrong mark than a real archive; "

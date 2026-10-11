@@ -54,6 +54,18 @@ def build(data: Path, dist: Path, required: bool = False):
                               "admin": person.admin, "provider": "google"}
         return redirect(request.args.get("next", "/"))
 
+    @app.get("/__e2e/limit")
+    def e2e_limit():
+        """Set (``?key=split.client_render&value=off``) or clear (no ``value``) one limit for this process, as ``JASON_LIMIT_<KEY>`` does."""
+        from jason import limits
+
+        env = limits.limit(request.args["key"]).env_name
+        if request.args.get("value"):
+            os.environ[env] = request.args["value"]
+        else:
+            os.environ.pop(env, None)
+        return {"ok": True, "env": env, "value": os.environ.get(env, "")}
+
     @app.get("/__e2e/sign-out")
     def e2e_sign_out():
         session.pop("account", None)
@@ -115,6 +127,11 @@ def main(argv: list[str] | None = None) -> None:
 
     (data / "e2e").mkdir(exist_ok=True)
     (data / "e2e" / "sample.pdf").write_bytes(split_gold.numbered().pdf)      # five made-up documents of 3, 2, 4, 1, and 3 pages
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from client_pdf_make import build_image_pdf
+
+    build_image_pdf(data / "e2e" / "jpx.pdf", "jpx", 3, 60)            # three made-up pages, each one JPEG 2000 image (JPXDecode)
+    build_image_pdf(data / "e2e" / "ccitt.pdf", "ccitt", 3, 100)       # three made-up pages, each one 1-bit CCITT Group 4 image
     seed_library(data)
     os.environ["JASON_DATA_DIR"] = str(data.resolve())      # every store the console reads or writes is under the throwaway folder
     app = build(data, Path(a.dist), a.require_sign_in)

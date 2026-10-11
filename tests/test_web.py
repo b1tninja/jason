@@ -35,6 +35,16 @@ def test_spa_fallback_and_assets(tmp_path):
     assert c.get("/..%2f..%2fpyproject.toml").status_code in (200, 404)
 
 
+def test_a_module_script_and_a_wasm_file_are_served_with_the_type_the_browser_requires(tmp_path):
+    """pdf.js's worker is a module and its JPEG 2000 decoder is WebAssembly; the machine's own table may call .mjs text/plain."""
+    c = _client(tmp_path)
+    (tmp_path / "pdfjs").mkdir()
+    (tmp_path / "assets" / "w.mjs").write_text("export {}")
+    (tmp_path / "pdfjs" / "d.wasm").write_bytes(b"\0asm\1\0\0\0")
+    assert c.get("/assets/w.mjs").mimetype == "text/javascript"
+    assert c.get("/pdfjs/d.wasm").mimetype == "application/wasm"
+
+
 def test_unbuilt_is_503(tmp_path):
     assert _client(tmp_path, built=False).get("/").status_code == 503
 

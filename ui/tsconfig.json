@@ -5,5 +5,5 @@
     "skipLibCheck": true, "resolveJsonModule": true, "isolatedModules": true, "noEmit": true,
     "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "pdfjs-assets.ts", "node-shim.d.ts"]
 }

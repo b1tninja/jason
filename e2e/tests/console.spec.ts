@@ -37,20 +37,24 @@ test.describe("signed in, the splitter", () => {
     await expect(page.getByText("No drafts yet.")).toBeVisible();
   });
 
-  test("a PDF is checked, opened, marked, undone, reviewed, previewed, and written", async ({ page, watch }) => {
+  test("a PDF chosen on this computer is drawn in the browser at once, marked, saved in the background, reviewed, previewed, and written", async ({ page, watch }) => {
     await signIn(page, "A Manager", "setup/split");
     await page.locator("#split-file").setInputFiles(sample);
-    await expect(page.getByText(/sample\.pdf, /)).toBeVisible();
-    await page.getByRole("button", { name: "Check the file" }).click();
-    await expect(page.getByRole("region", { name: "What opening will do" })).toContainText("13 pages");
-    await page.getByRole("button", { name: "Open it for splitting" }).click();
 
-    // the editor: page pictures come from /api/split/thumb (the PyMuPDF renderer)
+    // the editor opens on the file itself: the pictures are drawn in this browser, with no picture asked of the server
+    await expect(page.locator(".split-pictures")).toContainText("Preview from this computer");
+    await expect(page.locator(".split-pictures")).toHaveAttribute("data-pictures", "browser");
     await expect(page.getByLabel("Draft summary")).toContainText("13 pages");
     const first = page.locator('[data-cell][data-page="1"] img');
     await expect(first).toHaveJSProperty("complete", true);
     await expect.poll(() => first.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
-    expect(watch.calls.some((c) => c.url.startsWith("/api/split/thumb") && c.status === 200)).toBe(true);
+    await expect.poll(() => first.evaluate((i: HTMLImageElement) => i.src.startsWith("blob:"))).toBe(true);
+
+    // the draft arrives from the server in the background; its id replaces the placeholder in the address
+    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8}$/);
+    await expect(page.locator('[data-measuring]')).toHaveCount(0, { timeout: 20_000 });             // every page's facts have arrived
+    expect(watch.calls.filter((c) => c.url.startsWith("/api/split/thumb")), "a picture was asked of the server").toEqual([]);
+    expect(watch.calls.filter((c) => c.url.startsWith("/api/split/file")), "the file was fetched back although it was chosen here").toEqual([]);
 
     // a click marks a start; z undoes it
     const two = page.locator('button.split-cell-btn[data-page="2"]');
@@ -71,10 +75,96 @@ test.describe("signed in, the splitter", () => {
     await expect(page.getByRole("heading", { name: "The split was written" })).toBeVisible();
   });
 
+  test("marks made before the draft reaches the server are held and sent in order once it does", async ({ page, watch }) => {
+    await signIn(page, "A Manager", "setup/split");
+    await page.locator("#split-file").setInputFiles(sample);
+    const four = page.locator('button.split-cell-btn[data-page="4"]');
+    await four.click();                                                            // at once: the page numbers are all it needs
+    await expect(four).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("z");
+    await expect(four).toHaveAttribute("aria-pressed", "false");
+    await four.click();
+    await expect(four).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-save="saved"]')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Review and split" }).first()).toBeEnabled();
+    expect(watch.calls.filter((c) => c.url.startsWith("/api/split/thumb"))).toEqual([]);
+  });
+
+  test("enlarging the cells makes the browser draw a sharper picture in place, with no request to the server", async ({ page, watch }) => {
+    await signIn(page, "A Manager", "setup/split");
+    await page.locator("#split-file").setInputFiles(sample);
+    const one = page.locator('[data-cell][data-page="1"] img');
+    await expect.poll(() => one.evaluate((i: HTMLImageElement) => i.dataset.size)).toBe("small");
+    const small = await one.evaluate((i: HTMLImageElement) => i.naturalWidth + "x" + i.naturalHeight);
+    await page.getByLabel("Thumbnail size").fill("220");
+    await expect.poll(() => one.evaluate((i: HTMLImageElement) => i.dataset.size)).toBe("medium");
+    expect(await one.evaluate((i: HTMLImageElement) => i.src.startsWith("blob:"))).toBe(true);
+    expect(await one.evaluate((i: HTMLImageElement) => Math.max(i.naturalWidth, i.naturalHeight))).toBeGreaterThan(Math.max(...small.split("x").map(Number)));
+    expect(watch.calls.filter((c) => c.url.startsWith("/api/split/thumb"))).toEqual([]);
+    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8}$/);
+  });
+
+  test("with browser drawing off for the community the server draws every picture", async ({ page, watch }) => {
+    await page.request.get("/__e2e/limit?key=split.client_render&value=off");
+    try {
+      await signIn(page, "A Manager", "setup/split");
+      await page.locator("#split-file").setInputFiles(sample);
+      await expect(page.getByText(/sample\.pdf, /)).toBeVisible();
+      await page.getByRole("button", { name: "Check the file" }).click();
+      await expect(page.getByRole("region", { name: "What opening will do" })).toContainText("13 pages");
+      await page.getByRole("button", { name: "Open it for splitting" }).click();
+      await expect(page.getByLabel("Draft summary")).toContainText("13 pages");
+      await expect(page.locator(".split-pictures")).toHaveCount(0);
+      const first = page.locator('[data-cell][data-page="1"] img');
+      await expect.poll(() => first.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+      expect(watch.calls.some((c) => c.url.startsWith("/api/split/thumb") && c.status === 200)).toBe(true);
+      expect(watch.calls.filter((c) => c.url.startsWith("/api/split/file")), "the file was fetched although browser drawing is off").toEqual([]);
+    } finally {
+      await page.request.get("/__e2e/limit?key=split.client_render");
+    }
+  });
+
+  for (const [name, file, codec] of [["JPEG 2000", "jpx.pdf", "JPEG 2000"], ["CCITT Group 4", "ccitt.pdf", "CCITT"]] as const) {
+    test(`a ${name} scan is drawn by the browser's self-hosted decoder and is not blank`, async ({ page, watch }) => {
+      await signIn(page, "A Manager", "setup/split");
+      await page.locator("#split-file").setInputFiles(path.join(process.env.E2E_DATA ?? "", "e2e", file));
+      await expect(page.locator(".split-pictures")).toHaveAttribute("data-pictures", "browser");
+      for (const n of [1, 2, 3]) {
+        const img = page.locator(`[data-cell][data-page="${n}"] img`);
+        await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.naturalWidth), { message: `${codec} page ${n} drew` }).toBeGreaterThan(0);
+        const dark = await img.evaluate(async (i: HTMLImageElement) => {
+          await i.decode();
+          const c = document.createElement("canvas"); c.width = i.naturalWidth; c.height = i.naturalHeight;
+          const x = c.getContext("2d")!; x.drawImage(i, 0, 0);
+          const d = x.getImageData(0, 0, c.width, c.height).data;
+          let m = 0; for (let k = 0; k < d.length; k += 4) if (d[k] < 200) m += 1;
+          return m / (c.width * c.height);
+        });
+        expect(dark, `${codec} page ${n} is blank`).toBeGreaterThan(0.001);
+      }
+      await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8}$/);
+      expect(watch.calls.filter((c) => c.url.startsWith("/api/split/thumb"))).toEqual([]);
+    });
+  }
+
+  test.describe("when the decoders cannot be loaded", () => {
+    test.use({ allowConsole: [/Failed to load resource|ERR_FAILED|net::/] });
+    test("the self-test sees a blank JPEG 2000 page, says so in words, and the server draws instead", async ({ page, watch }) => {
+      await page.route("**/pdfjs/wasm/**", (r) => r.abort());                    // pdf.js then draws JPEG 2000 white, or fails: either way the test fails
+      await signIn(page, "A Manager", "setup/split");
+      await page.locator("#split-file").setInputFiles(path.join(process.env.E2E_DATA ?? "", "e2e", "jpx.pdf"));
+      await expect(page.locator(".split-pictures")).toHaveAttribute("data-why", "selftest", { timeout: 20_000 });
+      await expect(page.locator(".split-pictures")).toContainText("did not draw the JPEG 2000 test page correctly");
+      const first = page.locator('[data-cell][data-page="1"] img');                  // the server's picture arrives when the draft is saved
+      await expect.poll(() => first.evaluate((i: HTMLImageElement) => i.naturalWidth), { timeout: 30_000 }).toBeGreaterThan(0);
+      expect(watch.calls.some((c) => c.url.startsWith("/api/split/thumb") && c.status === 200)).toBe(true);
+    });
+  });
+
   test("the start page lists the draft that was opened", async ({ page }) => {
     await signIn(page, "A Manager", "setup/split");
-    const row = page.locator("table.split-drafts tbody tr").first();
-    await expect(row).toContainText("13");
+    const row = page.locator("table.split-drafts tbody tr").filter({ hasText: /\b13\b/ }).first();
+    await expect(row).toBeVisible();
   });
 
   test("the library is browsed, searched by POST, filtered, and a file opened from it", async ({ page, watch }) => {
@@ -113,7 +203,22 @@ test.describe("signed in, the splitter", () => {
     await expect(page.getByRole("region", { name: "What opening will do" })).toContainText("13 pages");
     await page.getByRole("button", { name: "Open it for splitting" }).click();
     await expect(page.getByLabel("Draft summary")).toContainText("13 pages");
+    // a library file is the server's to draw: its pictures come from /api/split/thumb, the PDF itself is never sent to the browser
+    await expect(page.locator(".split-pictures")).toHaveCount(0);
+    const lib1 = page.locator('[data-cell][data-page="1"] img');
+    await expect.poll(() => lib1.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
     await quiet(page, watch);                                  // the page pictures finish loading before the page is left
+    expect(watch.calls.some((c) => c.url.startsWith("/api/split/thumb") && c.status === 200), "no server picture").toBe(true);
+    expect(watch.calls.filter((c) => /\.pdf|\/api\/split\/file/.test(c.url)), "a PDF was downloaded").toEqual([]);
+
+    // enlarging the cells asks the server for a sharper picture (the cell is longer than the 200 px one covers), and shows it in place
+    const before = await lib1.evaluate((i: HTMLImageElement) => i.dataset.size);
+    expect(before).toBe("small");
+    await page.getByLabel("Thumbnail size").fill("220");
+    await expect.poll(() => lib1.evaluate((i: HTMLImageElement) => i.dataset.size), { message: "the picture was upgraded" }).toBe("medium");
+    expect(watch.calls.some((c) => c.url.includes("page=1&size=medium") && c.status === 200)).toBe(true);
+    await expect.poll(() => lib1.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(200);        // the 400 px picture itself
+    await quiet(page, watch);
 
     // back at the explorer, the file says a draft exists and links to it
     await page.evaluate(() => { window.location.hash = "#/setup/split"; });

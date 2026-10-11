@@ -250,15 +250,15 @@ describe("scroll speed, priority, and the image budget", () => {
   });
 
   it("halves the budget on a phone or a device with 2 GB or less", () => {
-    expect(budgetFor({ width: 1200 })).toEqual({ tiny: 150, small: 60, large: 3 });
-    expect(budgetFor({ width: 390 })).toEqual({ tiny: 75, small: 30, large: 2 });
+    expect(budgetFor({ width: 1200 })).toEqual({ tiny: 150, small: 60, medium: 30, large: 4, huge: 2 });
+    expect(budgetFor({ width: 390 })).toEqual({ tiny: 75, small: 30, medium: 12, large: 2, huge: 1 });
     expect(budgetFor({ width: 1200, deviceMemory: 2 }).small).toBe(30);
     expect(budgetFor({ width: 1200, deviceMemory: 8 }).small).toBe(60);
   });
 });
 
 // A loader whose pictures take a moment, so what is in flight can be seen.
-function fixture(budget = { tiny: 150, small: 60, large: 3 }) {
+function fixture(budget = { tiny: 150, small: 60, medium: 30, large: 3, huge: 1 }) {
   const calls: string[] = [];
   const pending = new Map<string, { resolve(u: string): void; reject(e: unknown): void; signal: AbortSignal }>();
   const fetcher = (url: string, signal: AbortSignal) => new Promise<string>((resolve, reject) => {
@@ -348,7 +348,7 @@ describe("the picture loader", () => {
   });
 
   it("keeps no more decoded pictures than its budget, and never drops one that is on screen", async () => {
-    const f = fixture({ tiny: 3, small: 2, large: 1 });
+    const f = fixture({ tiny: 3, small: 2, medium: 1, large: 1, huge: 1 });
     const on = f.img();
     f.loader.attach(on, 1, ["tiny"]);
     f.pending.get("/pic/tiny/1")!.resolve("data:1");

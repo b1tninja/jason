@@ -93,7 +93,9 @@ def _limits() -> dict[str, Any]:
 
     c = _community()
     return {"maxPages": limits.value("split.max_pages", community=c), "suggestEnabled": bool(limits.value("split.suggest_enabled", community=c)),
-            "draftDays": limits.value("split.draft_days", community=c), "maxParts": limits.value("split.max_parts", community=c)}
+            "draftDays": limits.value("split.draft_days", community=c), "maxParts": limits.value("split.max_parts", community=c),
+            "clientRender": bool(limits.value("split.client_render", community=c)),
+            "clientRenderMaxPages": limits.value("split.client_render_max_pages", community=c)}
 
 
 def split_session(args: Args) -> dict[str, Any]:

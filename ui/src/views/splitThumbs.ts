@@ -1,5 +1,5 @@
 import { priorityOf, budgetFor, type Budget } from "./splitWindow";
-import { type Size } from "./splitModel";
+import { SIZE_STEPS, type Size } from "./splitModel";
 
 /** The page-picture loader (docs/pdf-splitter.md, section 3.4). A cell hands it an `<img>`, a page, and the sizes it wants (tiny first, then
  * small); the loader sets `img.src` itself, so a picture arriving costs no React render. It
@@ -27,7 +27,7 @@ export const fetchPicture: Fetcher = async (url, signal) => {
   return URL.createObjectURL(await res.blob());
 };
 
-const ORDER: Size[] = ["tiny", "small", "large"];
+const ORDER: Size[] = SIZE_STEPS;
 const rank = (s: Size) => ORDER.indexOf(s);
 
 export interface AttachOpts { onState?: (state: "ready" | "failed", words?: string) => void }
@@ -54,6 +54,7 @@ export class ThumbLoader {
   private queue: Job[] = [];
   private inflight = new Map<string, AbortController>();
   private failed = new Map<string, string>();
+  private retired: string[] = [];                  // pictures replaced by `reload`, kept until `clear` so a cell never shows a revoked address
   private unwanted = new Set<string>();       // keys a detached picture asked for, to drop at the end of the commit unless asked for again
   private sweeping = false;
   private center = 1;
@@ -137,6 +138,33 @@ export class ThumbLoader {
     this.pump();
   }
 
+  /** Try every failed picture again (the draft that had no server copy yet now has one). */
+  retryFailed(): void {
+    const pages = new Set([...this.failed.keys()].map((k) => Number(k.slice(k.indexOf(":") + 1))));
+    this.failed.clear();
+    for (const page of pages) for (const entry of this.byPage.get(page) ?? []) { entry.el.dataset.state = "loading"; this.want(entry); }
+    this.pump();
+  }
+
+  /** Draw one page's pictures again from the source (a picture the browser drew blank, where the server says the page has ink). The old
+   * picture stays on screen until the new one arrives, so the cell does not flicker; it is released with the rest in `clear`. */
+  reload(page: number): void {
+    for (const size of ORDER) {
+      const key = `${size}:${page}`;
+      const url = this.cache.get(key);
+      if (url !== undefined) { this.retired.push(url); this.cache.delete(key); }
+      this.failed.delete(key);
+      this.queue = this.queue.filter((j) => j.key !== key);
+      const ctl = this.inflight.get(key);
+      if (ctl) { ctl.abort(); this.inflight.delete(key); this.counts.aborted += 1; }
+    }
+    for (const entry of this.byPage.get(page) ?? []) { entry.shown = -1; this.want(entry); }
+    this.pump();
+  }
+
+  /** How many pictures are asked for at once (the browser's own drawing is four at a time). */
+  setConcurrency(n: number): void { this.concurrency = Math.max(1, n); this.pump(); }
+
   /** Forget every held picture (a new file, or the person purged the cache). */
   clear(): void {
     for (const ctl of this.inflight.values()) ctl.abort();
@@ -144,12 +172,14 @@ export class ThumbLoader {
     this.queue = [];
     this.unwanted.clear();
     for (const url of this.cache.values()) this.release(url);
+    for (const url of this.retired) this.release(url);
+    this.retired = [];
     this.cache.clear();
     this.failed.clear();
   }
 
   stats(): LoaderStats {
-    const cached: Record<Size, number> = { tiny: 0, small: 0, large: 0 };
+    const cached: Record<Size, number> = { tiny: 0, small: 0, medium: 0, large: 0, huge: 0 };
     for (const key of this.cache.keys()) cached[key.split(":")[0] as Size] += 1;
     return { inflight: this.inflight.size, queued: this.queue.length, attached: this.entries.size, cached, ...this.counts };
   }

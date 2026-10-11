@@ -1,4 +1,5 @@
 import { getJson, postJson } from "../lib/api";
+import type { ClientPictures } from "./splitClient";
 import type { ActAnswer, ApplyAnswer, ListedSession, Review, SessionAnswer, SessionView, Size } from "./splitModel";
 
 /** What the splitter's screens ask of a server. `RealBackend` is the console's routes (docs/pdf-splitter.md, section 9.4); the demo
@@ -11,13 +12,25 @@ export interface OpenAnswer {
   /** Drive is not connected on this server: `found` is false, with the sentence and the command that fixes it. */
   found?: boolean; driveConnected?: boolean; why?: string; command?: string;
 }
-export interface ListAnswer { found?: boolean; note?: string; sessions: ListedSession[]; limits?: { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number }; caveats?: string[] }
+/** The limits a draft's screens read (`jason.limits`); the two `clientRender` ones say whether and for how long a file the browser draws. */
+export interface SplitLimits { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number; clientRender?: boolean; clientRenderMaxPages?: number }
+export interface ListAnswer { found?: boolean; note?: string; sessions: ListedSession[]; limits?: SplitLimits; caveats?: string[] }
 export type OpenRef = { kind: "library"; id: string } | { kind: "upload"; name: string; base64: string } | { kind: "drive"; id: string };
 export type ActBody = { act: string; by?: string; version?: number; dryRun?: boolean; [k: string]: unknown };
 export type AnyAnswer = ActAnswer & ApplyAnswer & { review?: Review };
 
+/** A draft being saved in the background (a file chosen on this computer is read and sent while the person already works on it). */
+export type Phase = "uploading" | "saved" | "refused";
+export interface Background { phase: Phase; id: string; words: string }
+
 export interface SplitBackend {
   readonly demo: boolean;
+  /** The browser's own picture source, for a backend that has one before the draft exists (a file chosen on this computer). */
+  readonly pictures?: ClientPictures;
+  /** The background save of a local file: `get()` is its state, and `subscribe` hears each change. */
+  readonly background?: { subscribe(fn: () => void): () => void; get(): Background };
+  /** Hear the draft arrive on the server (a local file's), once. */
+  onServer?(fn: () => void): () => void;
   thumbUrl(id: string, page: number, size: Size): string;
   list(): Promise<ListAnswer>;
   session(id: string, q?: { facts?: [number, number]; review?: boolean; flags?: boolean }): Promise<SessionAnswer>;

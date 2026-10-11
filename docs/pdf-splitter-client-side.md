@@ -1,6 +1,6 @@
 # The splitter and document ingestion: what could move to the browser
 
-Status: research (2026-10-11). Nothing here is built or decided. The question: could any of the splitter's work, and more broadly document ingestion, be offloaded to client-side JavaScript, thumbnail generation for instance? General for any association; samples are made-up. It answers against [pdf-splitter.md](pdf-splitter.md) (section 3, the thumbnail pipeline, and decisions 9.3 and 9.3a), [instance-limits.md](instance-limits.md), [console/screens/split.md](console/screens/split.md), and the code in `src/jason/tasks/split_thumbs.py`, `split_session.py`, `split_suggest.py`, `split_flags.py` and `ui/src/views/splitThumbs.ts`, `splitWindow.ts`, `splitFacts.ts`.
+Status: research (2026-10-11); **phase B1 built the same day for a file chosen on this computer only** ([pdf-splitter.md](pdf-splitter.md) 9.7: pdf.js, self-hosted and lazy; the instant preview; the self-test; the two limits). The user decided that library and Drive files stay the server's to draw (no streaming of the PDF to the browser), and that every picture, the browser's or the server's, follows the displayed size. The rest below (hash and skip, chunked upload, client OCR, client cutting) is still research and not built. The question: could any of the splitter's work, and more broadly document ingestion, be offloaded to client-side JavaScript, thumbnail generation for instance? General for any association; samples are made-up. It answers against [pdf-splitter.md](pdf-splitter.md) (section 3, the thumbnail pipeline, and decisions 9.3 and 9.3a), [instance-limits.md](instance-limits.md), [console/screens/split.md](console/screens/split.md), and the code in `src/jason/tasks/split_thumbs.py`, `split_session.py`, `split_suggest.py`, `split_flags.py` and `ui/src/views/splitThumbs.ts`, `splitWindow.ts`, `splitFacts.ts`.
 
 **The short answer.** Yes for four things, no for the rest, and the server stays the authority for everything that is applied.
 
@@ -245,3 +245,20 @@ All inputs are generated; no real archive is read. `scripts/client_pdf_make.py` 
 ## What is unverified
 
 The phone and Safari and Firefox behaviour; JBIG2 in either renderer; every figure for EmbedPDF, mupdf.js, CanvasKit, tesseract.js and ONNX OCR (taken from each project's own page or marked "from memory"); the console's CSP; pdf.js's advisory history; the licence text of its cmaps and fonts; pdf-lib's fidelity on outlines and forms; the caller's recorded server timings (about 2.1, 3.8 and 47.6 ms per page).
+
+## 14. What phase B1 measured in the built console (2026-10-11)
+
+Chromium 153 headless, Playwright 1.63.0, the console's own build, a file chosen from disk, on the same desktop (32 logical cores, loopback; a phone is still not measured). "First picture" is from the file being chosen to the first cell showing a drawn picture; "20 sharp" is until 20 visible cells show the size their display needs (small, at 1x); the draft arrives on the server within the same second on loopback. Self-test, worker and decoders are included in each figure (a cold start).
+
+| File (made up) | Size | First picture | 20 sharp | JS heap after |
+|---|---|---|---|---|
+| CCITT G4, 100 pages | 4.6 MB | 0.43 s | 0.85 s | 10 MB |
+| JPEG, 100 pages | 44 MB | 1.62 s | 2.19 s | 12 MB |
+| Flate grey, 100 pages | 9.5 MB | 0.58 s | 0.85 s | 37 MB |
+| JPEG 2000, 100 pages | 33 MB | 1.51 s | 2.86 s | 11 MB |
+| CCITT G4, 2,000 pages | 93 MB | 2.95 s | 3.41 s | 386 MB |
+
+The 2,000-page file's heap is the file held once in the page (the base64 string for the upload and the `ArrayBuffer` for drawing); a 400 MB scan on a 2 GB phone is still the case this cannot answer, which is why a file over 80 MB on a device reporting 2 GB or less is the server's.
+
+**Found on the way.** (1) The Flask app served `.mjs` as `text/plain` on this Windows machine, so the module worker did not load; the start-up self-test caught it and fell back to the server, which is the failure it exists for. The app now sets the types for `.mjs`, `.js` and `.wasm`. (2) A 64 by 64 *RGB* JPEG 2000 written losslessly by Pillow decoded in pdf.js with its white half red; a grey one, and the lossy RGB scans of the end-to-end suite, drew correctly, and PyMuPDF drew all of them correctly. Cause not found (unverified whether it is the file or pdf.js 5.4.149); the self-test page is grey for that reason, so the test asks whether the decoder runs and places the black, not whether this particular colour path is right. A real scanner's JPEG 2000 should be tried before the colour path is trusted.
+

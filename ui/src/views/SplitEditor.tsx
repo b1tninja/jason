@@ -7,14 +7,15 @@ import { ComparePane, KeyHelp, PageMenu, ZOOMS, Figure, type Zoom } from "./Spli
 import { FlagsDialog, WalkBar } from "./SplitFlags";
 import { SegmentList, itemsOf } from "./SplitRail";
 import { SplitReview } from "./SplitReview";
-import type { SplitBackend } from "./splitApi";
+import { type Background, type SplitBackend } from "./splitApi";
 import { FactsCache } from "./splitFacts";
 import {
   acceptable, everyNth, isTurn, marksIn, nextMark, sidewaysIn, sizeText, splitAtRestarts, splitOnBlanks, startsOf, type BlankKeep, type FlagsAnswer, type SegmentFlags,
   type SegmentRow, type SessionAnswer, type Suggestion, type Turn, type Turns,
 } from "./splitModel";
 import { SplitStore, type Snapshot } from "./splitStore";
-import { ThumbLoader } from "./splitThumbs";
+import { ThumbLoader, fetchPicture } from "./splitThumbs";
+import type { ClientPictures, PictureStatus } from "./splitClient";
 import { budgetFor } from "./splitWindow";
 import "./split.css";
 
@@ -27,7 +28,10 @@ const WIDE = "(min-width: 1200px)";
 
 const deviceMemory = (): number | undefined => (typeof navigator !== "undefined" ? (navigator as unknown as { deviceMemory?: number }).deviceMemory : undefined);
 
-interface Boot { store: SplitStore; facts: FactsCache; loader: ThumbLoader; first: SessionAnswer }
+interface Boot { store: SplitStore; facts: FactsCache; loader: ThumbLoader; first: SessionAnswer; pictures: ClientPictures | null }
+
+/* Pictures: only a file chosen on this computer is drawn in the browser (its `LocalBackend.pictures`); every other draft's pictures are the server's,
+ * asked for at the size the cell displays. */
 
 /** The splitter's working screen for one draft (`#/setup/split/<id>`). It loads the draft, then hands a store (the draft and its queue of
  * saves), a facts cache, and a picture loader to the screen. Nothing per page is React state. */
@@ -37,14 +41,23 @@ export function SplitEditor({ backend, id }: { backend: SplitBackend; id: string
   useEffect(() => {
     let live = true;
     const store = new SplitStore(backend, id, me);
-    const loader = new ThumbLoader({ urlOf: (page, size) => backend.thumbUrl(id, page, size), budget: budgetFor({ width: typeof window === "undefined" ? 1024 : window.innerWidth, deviceMemory: deviceMemory() }) });
+    let pictures: ClientPictures | null = backend.pictures ?? null;
+    const sized = { width: typeof window === "undefined" ? 1024 : window.innerWidth, deviceMemory: deviceMemory() };
+    // With a browser source the loader is asked for `size:page` keys; the source falls back to the server's address by itself.
+    const loader = new ThumbLoader({
+      urlOf: (page, size) => (pictures ? `${size}:${page}` : backend.thumbUrl(id, page, size)),
+      fetcher: (url, signal) => (pictures ? pictures.fetcher(url, signal) : fetchPicture(url, signal)),
+      budget: budgetFor(sized),
+    });
+    if (pictures) { pictures.attach(loader); pictures.start(); }
     let facts: FactsCache | null = null;
     store.load().then(() => {
       const s = store.getSnapshot().session!;
       facts = new FactsCache(backend, id, s.source.pages);
-      if (live) setBoot({ store, facts, loader, first: s as SessionAnswer });
+      pictures?.useFacts((n) => facts?.get(n));
+      if (live) setBoot({ store, facts, loader, first: s as SessionAnswer, pictures });
     }, (e: Error) => { if (live) setBoot({ error: e.message }); });
-    return () => { live = false; loader.clear(); facts?.dispose(); };
+    return () => { live = false; loader.clear(); facts?.dispose(); if (pictures && pictures !== backend.pictures) pictures.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backend, id]);
   useEffect(() => { if (boot && "store" in boot) boot.store.by = me; }, [boot, me]);
@@ -70,9 +83,30 @@ function Ticks({ pages, starts, suggestions, facts, version }: { pages: number; 
 }
 const TicksM = memo(Ticks);
 
-function EditorBody({ backend, id, by, store, facts, loader, first }: { backend: SplitBackend; id: string; by: string } & Boot) {
+const NO_STATUS = { subscribe: () => () => undefined, get: (): PictureStatus | null => null };
+const NO_BACKGROUND = { subscribe: () => () => undefined, get: (): Background | null => null };
+
+function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: { backend: SplitBackend; id: string; by: string } & Boot) {
   const snap: Snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const factsVersion = useSyncExternalStore(facts.subscribe, facts.getVersion, facts.getVersion);
+  const pic = pictures ? { subscribe: pictures.subscribe, get: pictures.getStatus } : NO_STATUS;
+  const pictureStatus = useSyncExternalStore(pic.subscribe, pic.get, pic.get);
+  const bgSource = backend.background ?? NO_BACKGROUND;
+  const background = useSyncExternalStore(bgSource.subscribe, bgSource.get, bgSource.get);
+  // a local file is not yet a draft on the server: its marks are held here until it is
+  const notYet = !!background && background.phase !== "saved";
+  // the server's draft has arrived: read it again for its starts and suggestions, and ask for the measures that were waiting
+  useEffect(() => backend.onServer?.(() => { void store.reload(); facts.refresh(); }), [backend, store, facts]);
+  // a page the browser drew white before the server had measured it is checked when its measure arrives
+  useEffect(() => { pictures?.reconcile(); }, [pictures, factsVersion]);
+  // suggestions and flags follow the measures: when the last page being measured is done, the draft is read again
+  const sawPending = useRef(false);
+  useEffect(() => {
+    if (notYet) return;
+    const p = facts.progress();
+    if (p.pending > 0) sawPending.current = true;
+    else if (sawPending.current && p.known > 0) { sawPending.current = false; void store.reload(); }
+  }, [facts, store, factsVersion, notYet]);
   const session = snap.session!;
   const pages = session.source.pages;
   const confidential = !!first.confidential || session.source.confidential;
@@ -161,7 +195,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
   }, [snap.pending, snap.save]);
 
   // flags are read once the draft is saved and again when more facts arrive; a failure only leaves them out (they are readings, not needs)
-  const settled = snap.save === "saved" && snap.pending === 0;
+  const settled = snap.save === "saved" && snap.pending === 0 && !notYet;
   useEffect(() => {
     if (!settled || session.status === "declined") return;
     let live = true;
@@ -293,8 +327,9 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
 
   const saveWords = snap.save === "saving" ? "Saving…" : snap.save === "saved" ? (snap.savedAt ? `Draft saved ${snap.savedAt}` : "Draft saved") : snap.save === "offline" ? "Offline: marks held on this device" : snap.save === "conflict" ? "Not saved: the draft changed elsewhere" : "Not saved";
   const prog = facts.progress();
-  const label = confidential ? "A confidential file" : session.source.kind === "demo" ? `${pages} made-up pages` : `${pages} pages, ${sizeText(session.source.size)}, ${session.source.sha256.slice(0, 8)}`;
-  const guardMsg = readOnly ? `This split is ${session.status}.` : "Wait for the draft to finish saving.";
+  const label = confidential ? "A confidential file" : session.source.kind === "demo" ? `${pages} made-up pages` : `${pages} pages, ${sizeText(session.source.size)}${session.source.sha256 ? `, ${session.source.sha256.slice(0, 8)}` : ""}`;
+  const guardMsg = readOnly ? `This split is ${session.status}.` : notYet ? "Wait for the file to finish saving on the server." : "Wait for the draft to finish saving.";
+  const blocked = readOnly || snap.pending > 0 || snap.save !== "saved" || notYet;
 
   const jump = (e: React.FormEvent) => {
     e.preventDefault();
@@ -319,8 +354,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
           onAccept={(i) => store.accept([i])} onReject={(i) => store.reject([i])} onWhy={(s) => setMenu(s.page)} />
       )}
       <div className="row wrap split-rail-foot">
-        <button type="button" className="primary" disabled={readOnly || snap.pending > 0 || snap.save !== "saved"} onClick={() => { setReviewing(true); setSheet(false); }}>Review and split</button>
-        {(readOnly || snap.pending > 0 || snap.save !== "saved") && <span className="muted">{guardMsg}</span>}
+        <button type="button" className="primary" disabled={blocked} onClick={() => { setReviewing(true); setSheet(false); }}>Review and split</button>
+        {blocked && <span className="muted">{guardMsg}</span>}
       </div>
     </div>
   );
@@ -354,7 +389,11 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
       {snap.conflict && <Conflict snap={snap} store={store} />}
       {snap.restorable > 0 && <p className="notice" role="note">Unsaved marks from earlier were kept on this device ({snap.restorable} starts). <button type="button" onClick={() => store.restore()}>Restore them</button></p>}
       {readOnly && <p className="notice notice-warn" role="note">This split is {session.status}. It can be looked at but not changed.</p>}
-      {(prog.pending > 0 || facts.failed) && <p className="muted" role="status">{facts.failed ? `Page facts could not be read: ${facts.failed}` : `Page facts are still being measured (${prog.known - prog.pending} of ${pages} pages ready).`}</p>}
+      {pictureStatus && <p className="muted split-pictures" role="status" data-pictures={pictureStatus.client ? "browser" : pictureStatus.why === "waiting" ? "waiting" : "server"} data-why={pictureStatus.why}>{pictureStatus.words}</p>}
+      {background?.phase === "uploading" && <p className="notice" role="status" data-background="uploading">The file is being saved on the server in the background. Your marks are kept here and are sent, in order, as soon as it is saved.</p>}
+      {background?.phase === "refused" && <p className="notice notice-error" role="alert" data-background="refused"><span>The server did not keep this file: {background.words} Your marks cannot be saved. Nothing was sent anywhere else.</span><a href="#/setup/split">Back to the splitter</a></p>}
+      {background?.phase === "saved" && background.words && <p className="muted" role="status">{background.words}</p>}
+      {(prog.pending > 0 || facts.failed) && <p className="muted" role="status">{facts.failed ? `Page facts could not be read: ${facts.failed}` : notYet ? `The server has not measured the pages yet: blank pages, sideways pages, repeats, page numbers and suggested starts appear as it measures them (${prog.known - prog.pending} of ${pages} pages ready).` : `Page facts are still being measured (${prog.known - prog.pending} of ${pages} pages ready). Each page shows what it is as it is measured.`}</p>}
       {session.notes.length > 0 && <ul className="muted split-notes">{session.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
 
       {walk && <WalkBar pages={walk.pages} at={walk.at} why={walk.why} isStart={snap.starts.has(walk.pages[walk.at])} readOnly={readOnly}
@@ -412,7 +451,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
             <Confirm label="Clear" summary={<p>Remove all {snap.starts.size - 1} of your starts? Page 1 stays. You can undo this.</p>} onConfirm={() => store.clear()} busy={readOnly}>Clear all my marks</Confirm>
           </div>
         </details>
-        <button type="button" className="primary" disabled={readOnly || snap.pending > 0 || snap.save !== "saved"} onClick={() => setReviewing(true)}>Review and split</button>
+        <button type="button" className="primary" disabled={blocked} onClick={() => setReviewing(true)}>Review and split</button>
       </div>
       {selSize > 1 && <p className="split-selbar" role="status">{selSize} pages selected ({lo} to {hi}). <button type="button" onClick={() => setSelection(null)}>Clear the selection</button> <span className="muted">Open the page menu (L) for what to do with them.</span></p>}
 

@@ -1,12 +1,12 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Glyph } from "../components/Glyph";
 import type { FactsCache } from "./splitFacts";
-import { cellLabel, lqipUrl, stateWord, turnWord, type PageFact, type Size, type Suggestion, type Turn, type Turns } from "./splitModel";
+import { cellLabel, lqipUrl, sizesFor, stateWord, stepWithin, turnWord, type PageFact, type Size, type Suggestion, type Turn, type Turns } from "./splitModel";
 import type { Snapshot } from "./splitStore";
 import type { ThumbLoader } from "./splitThumbs";
 import {
   FAST_PX_PER_S, SETTLE_MS, bandedCenterPage, bandedLayout, bandedPagesIn, bandedRowStep, bandedScrollFor, bandedScrollForDoc, centerPage,
-  layoutOf, liveCells, motionOf, pagesIn, rowInfo, scrollFor, visibleRows, visibleTracks,
+  layoutOf, liveCells, motionOf, pagesIn, pixelMegabytes, rowInfo, scrollFor, visibleRows, visibleTracks,
   type Axis, type BandDoc, type Banded, type Layout, type Win,
 } from "./splitWindow";
 
@@ -18,7 +18,6 @@ import {
 export type Variant = "album" | "scroll" | "strip";
 export const BUFFER_VIEWPORTS = 2;
 const LONG_PRESS_MS = 500;
-const SIZES: Record<string, Size[]> = { ts: ["tiny", "small"], t: ["tiny"], sl: ["small", "large"], s: ["small"] };
 
 export interface GridApi {
   scrollToPage(page: number, start?: boolean): void;
@@ -62,6 +61,17 @@ const CHROME = 24;
 /** a band's height; fixed, so the offsets are prefix sums */
 export const BAND_H = 30;
 
+/** `value` once it has stayed the same for `ms` (the first value at once). */
+function useSettled(value: string, ms: number): string {
+  const [held, setHeld] = useState(value);
+  useEffect(() => {
+    if (value === held) return;
+    const t = setTimeout(() => setHeld(value), ms);
+    return () => clearTimeout(t);
+  }, [value, held, ms]);
+  return held;
+}
+
 function pagesWord(n: number): string { return `${n} ${n === 1 ? "page" : "pages"}`; }
 
 function bandWord(s: Suggestion | undefined): string { return s ? String(s.band) : ""; }
@@ -77,7 +87,7 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
   useEffect(() => {
     const el = img.current;
     if (!el) return;
-    return loader.attach(el, page, SIZES[sizes], {
+    return loader.attach(el, page, sizes.split(",") as Size[], {
       onState: (state, words) => { if (note.current) note.current.textContent = state === "failed" ? (words || "This page could not be drawn") : ""; },
     });
   }, [loader, page, sizes]);
@@ -103,7 +113,8 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
           {variant !== "strip" && !f?.sideways && state !== "content" && state !== "not measured yet" && (
             <span className="split-cell-state"><Glyph name={f?.blank === "blank" ? "file-minus" : f?.blank === "marked" ? "pencil" : "scan-line"} size={12} /> {state.startsWith("no text") ? "No text" : state === "blank" ? "Blank" : state === "marked" ? "Marked" : state}</span>
           )}
-          {variant !== "strip" && !f?.sideways && turn !== undefined && <span className="split-cell-state split-cell-turn" data-turned=""><Glyph name="refresh-cw" size={12} /> {turnWord(turn, f?.fix)}</span>}
+          {variant !== "strip" && (!f || f.pending) && <span className="split-cell-state" data-measuring=""><Glyph name="clock" size={12} /> Measuring…</span>}
+          {variant !== "strip" && !f?.sideways && turn !== undefined &&<span className="split-cell-state split-cell-turn" data-turned=""><Glyph name="refresh-cw" size={12} /> {turnWord(turn, f?.fix)}</span>}
           {variant !== "strip" && no > 0 && <span className="split-cell-seg">S{no}</span>}
         </span>
         {variant !== "strip" && <span className="split-cell-note" ref={note} aria-hidden="true" />}
@@ -123,6 +134,13 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
   const ch = Math.round(cw * aspect) + CHROME;
   const layout: Layout = useMemo(() => layoutOf({ axis, count, width: size.w, cellW: cw, cellH: ch, gap }), [axis, count, size.w, cw, ch, gap]);
   const layoutRef = useRef(layout); layoutRef.current = layout;
+  // The pictures follow the displayed size: the cell's longest side times the screen's pixel ratio, rounded up to the next step, held to
+  // what the cells on screen may hold in decoded pixels. A quick low-resolution picture comes first; the sharp one replaces it in place once
+  // the size has stopped changing (a slider being dragged does not ask for a picture at every width).
+  const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  const onScreen = Math.max(1, layout.perTrack * Math.ceil((axis === "y" ? size.h : size.w) / Math.max(1, layout.track)));
+  const asked = sizesFor(Math.max(cw, ch - CHROME), dpr, stepWithin(onScreen, pixelMegabytes())).join(",");
+  const wanted = useSettled(asked, 200);
   // with bands the rows differ in height: offsets are prefix sums built here, once per layout, and searched in log time
   const banded: Banded | null = useMemo(() => (axis === "y" && p.bands && p.bands.length > 0 ? bandedLayout(layout, p.bands, BAND_H) : null), [axis, layout, p.bands]);
   const bandedRef = useRef(banded);
@@ -374,7 +392,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
     const lastPage = ri ? ri.last : Math.min(count, (t + 1) * layout.perTrack);
     for (let page = firstPage; page <= lastPage; page++) {
       if (page > count) break;
-      const sizes = variant === "strip" ? "t" : variant === "scroll" ? (Math.abs(page - focus) <= 1 ? "sl" : "s") : "ts";
+      const sizes = variant === "strip" ? "tiny" : wanted;
       cells.push(
         <PageCell key={page} page={page} f={facts.get(page)} start={snap.starts.has(page) ? snap.starts.get(page)! : -1} no={snap.docNo[page] ?? 0}
           sug={snap.sugByPage.get(page)} selected={!!sel && page >= sel.lo && page <= sel.hi} focused={page === focus} w={cw} h={ch} sizes={sizes}

@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge, Caveats, RemoteView, ScreenHeader, type Tone } from "../components";
 import type { GlyphName } from "../components/Glyph";
 import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
 import { useSession, NO_PEOPLE } from "../lib/session";
 import { SplitEditor } from "./SplitEditor";
-import { realBackend, type ListAnswer, type OpenAnswer, type OpenRef, type SplitBackend } from "./splitApi";
+import { realBackend, type ListAnswer, type OpenAnswer, type OpenRef, type SplitBackend, type SplitLimits } from "./splitApi";
+import { LOCAL_ID, currentLocal, dropLocal, startLocal } from "./splitLocal";
 import { DemoBackend } from "./splitDemo";
 import { DEMO_ID, parseSplitRoute, sizeText, splitRoute, type ListedSession } from "./splitModel";
 import { useFileBytes, useUploadCap } from "./RecordActs";
@@ -45,8 +46,14 @@ function stamp(t: string): string { return t ? t.slice(0, 16).replace("T", " ") 
 type OpenTab = "upload" | "library" | "drive";
 const DRIVE_SLOT: ChooserSlot = { key: "split", title: "splitting", cardinality: "one", source: "" };
 
-export function OpenPanel({ backend, by, libraryFetcher }: { backend: SplitBackend; by: string; libraryFetcher?: typeof libraryFiles }) {
+export function OpenPanel({ backend, by, libraryFetcher, limits, limitsReady = true }: { backend: SplitBackend; by: string; libraryFetcher?: typeof libraryFiles; limits?: SplitLimits; limitsReady?: boolean }) {
   const [tab, setTab] = useState<OpenTab>("upload");
+  // a file chosen before the community's settings have arrived waits for them: which way it opens depends on them
+  const [held, setHeld] = useState<File | null>(null);
+  // A file chosen on this computer is opened at once, drawn by this browser, when the community allows it (`split.client_render`); the
+  // server's copy is made in the background. Without it the file is read, checked, and opened in the steps below.
+  const local = backend === realBackend && !!limits?.clientRender;
+  const [chosen, setChosen] = useState<{ name: string; size: number } | null>(null);
   const file = useFileBytes();
   const cap = useUploadCap();
   const [lib, setLib] = useState<LibraryFile | null>(null);
@@ -57,8 +64,25 @@ export function OpenPanel({ backend, by, libraryFetcher }: { backend: SplitBacke
   const [busy, setBusy] = useState(false);
   const ref: OpenRef | null = tab === "upload" ? (file.file ? { kind: "upload", name: file.file.name, base64: file.file.base64 } : null)
     : tab === "library" ? (lib?.id ? { kind: "library", id: lib.id } : null) : drive ? { kind: "drive", id: drive.ref } : null;
-  const tooBig = tab === "upload" && !!file.file && cap.bytes !== null && file.file.size > cap.bytes;
+  const tooBig = tab === "upload" && (local ? chosen : file.file) !== null && cap.bytes !== null && (local ? chosen!.size : file.file!.size) > cap.bytes;
+  const choose = (f: File | undefined) => {
+    reset();
+    if (!limitsReady) { setHeld(f ?? null); return; }
+    if (!local) { file.choose(f); return; }
+    if (!f) { setChosen(null); return; }
+    setChosen({ name: f.name, size: f.size });
+    if (cap.bytes !== null && f.size > cap.bytes) return;           // the words below say so; nothing is started
+    startLocal(f, backend, by, { enabled: true, maxPages: limits?.clientRenderMaxPages ?? limits?.maxPages ?? 3000 });
+    window.location.hash = splitRoute(LOCAL_ID).slice(1);
+  };
   const reset = () => { setChecked(null); setError(""); };
+  useEffect(() => {
+    if (!limitsReady || !held) return;
+    const f = held;
+    setHeld(null);
+    choose(f);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limitsReady, held]);
   const go = async (dry: boolean) => {
     if (!ref) return;
     setBusy(true); setError("");
@@ -80,11 +104,13 @@ export function OpenPanel({ backend, by, libraryFetcher }: { backend: SplitBacke
       {tab === "upload" ? (
         <div className="split-field">
           <label htmlFor="split-file">PDF file</label>
-          <input id="split-file" type="file" accept="application/pdf,.pdf" onChange={(e) => { reset(); file.choose(e.target.files?.[0]); }} />
+          <input id="split-file" type="file" accept="application/pdf,.pdf" onChange={(e) => choose(e.target.files?.[0])} />
+          {held && <p className="muted" role="status">Waiting for this community's settings before opening {held.name}…</p>}
+          {local && !chosen && !held && <p className="muted">The pages appear here as soon as you choose the file, drawn in this browser. The file is saved on the server in the background.</p>}
           {file.busy && <p className="muted" role="status">Reading the file in this browser…</p>}
           {file.error && <p className="notice notice-error" role="alert">{file.error}</p>}
-          {file.file && <p className="muted">{file.file.name}, {sizeText(file.file.size)}. {cap.words ? `The largest upload is ${cap.words}.` : ""}</p>}
-          {tooBig && <p className="notice notice-warn" role="alert">This file is {sizeText(file.file!.size)}; the largest upload is {cap.words}. Nothing was sent. Split the scan into smaller files first, or ask your community's administrator to raise the limit.</p>}
+          {!local && file.file && <p className="muted">{file.file.name}, {sizeText(file.file.size)}. {cap.words ? `The largest upload is ${cap.words}.` : ""}</p>}
+          {tooBig && <p className="notice notice-warn" role="alert">This file is {sizeText(local ? chosen!.size : file.file!.size)}; the largest upload is {cap.words}. Nothing was sent. Split the scan into smaller files first, or ask your community's administrator to raise the limit.</p>}
         </div>
       ) : tab === "library" ? (
         <div className="split-field">
@@ -153,13 +179,14 @@ function Drafts({ rows }: { rows: ListedSession[] }) {
 function SplitStart() {
   const r = useApi<ListAnswer>("/api/split-sessions");
   const { me } = useSession(NO_PEOPLE);
+  useEffect(() => { dropLocal(); }, []);                  // coming back to the list lets go of a file held for the editor
   return (
     <div className="stack split-view">
       <ScreenHeader title="Split document" summary="Open a combined PDF, see its pages, and tap the first page of each document. jason can suggest starts; you decide. Nothing is written until you review and confirm, and the original is never changed." />
       <section className="split-demo-card" aria-label="Try it">
         <p><a className="split-demo-link" href={splitRoute(DEMO_ID)}>Try it on a made-up 120-page file</a> <span className="muted">No server, no real documents: the pages are invented and the draft lives in this tab.</span></p>
       </section>
-      <OpenPanel backend={realBackend} by={me} />
+      <OpenPanel backend={realBackend} by={me} limits={r.status === "ready" ? r.data.limits : undefined} limitsReady={r.status !== "loading"} />
       <section aria-labelledby="split-drafts-h">
         <h2 id="split-drafts-h">Drafts</h2>
         <RemoteView r={r}>
@@ -178,6 +205,18 @@ export function SplitView() {
   const [hash] = useHash(`setup/split`);
   const { id, query } = parseSplitRoute(hash);
   if (!id) return <SplitStart />;
+  if (id === LOCAL_ID) {
+    const held = currentLocal();
+    if (!held) {
+      return (
+        <div className="stack split-view">
+          <ScreenHeader title="Split document" summary="A file chosen on this computer is held by this tab only." />
+          <p className="notice notice-warn" role="note">That file was held by the tab before it was reloaded. If it was saved, it is in the list of drafts; otherwise choose it again. <a href="#/setup/split">Back to the splitter</a></p>
+        </div>
+      );
+    }
+    return <SplitEditor key="local" backend={held} id={LOCAL_ID} />;
+  }
   if (id === DEMO_ID) {
     const pages = Math.max(10, Math.min(3000, Number(query.get("pages")) || 120));
     return <SplitEditor key={`demo-${pages}`} backend={demoBackend(pages)} id={DEMO_ID} />;

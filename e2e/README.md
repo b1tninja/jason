@@ -28,7 +28,7 @@ after Google answers. The shipped app has no such route or flag. A signed-out te
 
 - `console.spec.ts` (served by Flask from `ui/dist`): the signed-out splitter says to sign in and asks the server a bounded number
   of times, then nothing more; other screens settle when signed out; signed in, the splitter lists drafts, uploads a made-up PDF,
-  checks it (dry run), opens it, shows page thumbnails from `/api/split/thumb`, marks a start by click, undoes it with `z`,
+  opens a made-up PDF chosen on the computer at once (pictures drawn by the browser, no `/api/split/thumb` request, the draft saved in the background), enlarges the cells and sees a sharper picture, draws made-up JPEG 2000 and CCITT scans, falls back to the server when the decoders cannot load or browser drawing is off (a test-only `/__e2e/limit` route sets a limit), shows a library file's pictures from `/api/split/thumb` with no PDF downloaded, marks a start by click, undoes it with `z`,
   reviews, previews, and writes (into the throwaway folder); the demo needs no server; Records and Limits load.
 - `vite.spec.ts` (Vite dev server): "Sign in with Google" reaches the server through the proxy (a 302 to Google, not Vite's
   `index.html`), and the signed-out splitter settles there too.

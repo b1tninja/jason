@@ -34,8 +34,8 @@ def test_a_page_is_drawn_at_each_size_with_its_longest_side_and_nothing_else_of_
         got = th.render_page(world.pdf, 2, size)
         assert max(got.width, got.height) == size and got.mime in ("image/webp", "image/jpeg") and 200 < len(got.data) < 300_000
     assert th.size_of("tiny") == 96 and th.size_of("800") == 800
-    with pytest.raises(ValueError, match="96, 200, 800"):
-        th.size_of(1600)
+    with pytest.raises(ValueError, match="96, 200, 400, 800, 1600"):
+        th.size_of(3000)
     with pytest.raises(th.PageUnreadable):
         th.render_page(world.pdf, 99, 96)
     turned = th.render_page(world.pdf, 2, 200, rotate=90)
@@ -193,3 +193,25 @@ def test_a_confidential_files_pictures_need_the_private_view_and_are_never_kept_
     listing = c.get("/api/split-sessions").json["sessions"][0]
     assert listing["label"] == "a confidential file"
     assert "Held" not in c.get(f"/api/split-session?id={s['id']}").get_data(as_text=True)
+
+
+def test_the_route_serves_the_two_larger_sizes_and_the_stored_file_has_no_route(world, monkeypatch):
+    s = opened(world)
+    c = webclient.client(_app(world))
+    webclient.sign_in(c, "A Manager")
+    for size in (400, 1600):
+        r = c.get(f"/api/split/thumb?id={s['id']}&page=2&size={size}")
+        assert r.status_code == 200 and r.headers["ETag"] == th.etag(s["source"]["sha256"], 2, size)
+    assert c.get(f"/api/split/thumb?id={s['id']}&page=2&size=huge").status_code == 200
+    assert c.get(f"/api/split/thumb?id={s['id']}&page=2&size=1000").status_code == 400
+    assert c.get(f"/api/split/file?id={s['id']}").status_code == 404                 # the PDF itself is never streamed to the browser
+
+
+def test_the_browser_drawing_limits_reach_the_screen(world, monkeypatch):
+    opened(world)
+    c = webclient.client(_app(world))
+    webclient.sign_in(c, "A Manager")
+    monkeypatch.setenv("JASON_LIMIT_SPLIT_CLIENT_RENDER", "off")
+    monkeypatch.setenv("JASON_LIMIT_SPLIT_CLIENT_RENDER_MAX_PAGES", "50")
+    lim = c.get("/api/split-sessions").json["limits"]
+    assert lim["clientRender"] is False and lim["clientRenderMaxPages"] == 50

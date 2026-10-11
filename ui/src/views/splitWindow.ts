@@ -2,6 +2,8 @@
  * measuring, and only the tracks (rows when it scrolls down, columns when it scrolls across) in view plus a buffer exist as elements.
  * Pure functions; the tests run them on a synthetic 3,000-page file. */
 
+import type { Size } from "./splitModel";
+
 export type Axis = "y" | "x";
 
 export interface Layout {
@@ -231,16 +233,21 @@ export const SETTLE_MS = 120;
 
 // ---------------------------------------------------------------------------------------------------------------- image budget
 
-export interface Budget { tiny: number; small: number; large: number }
+export interface Budget { tiny: number; small: number; medium: number; large: number; huge: number }
 
-/** Decoded pictures held at once (about 12 MB of pixels at the design's sizes); halved on a small or low-memory device. */
+/** Decoded pictures held at once (a few tens of MB of pixels at the design's sizes); halved on a small or low-memory device. */
 export function budgetFor(env: { width: number; deviceMemory?: number } = { width: typeof window === "undefined" ? 1024 : window.innerWidth }): Budget {
   const small = env.width < 480 || (env.deviceMemory !== undefined && env.deviceMemory <= 2);
-  return small ? { tiny: 75, small: 30, large: 2 } : { tiny: 150, small: 60, large: 3 };
+  return small ? { tiny: 75, small: 30, medium: 12, large: 2, huge: 1 } : { tiny: 150, small: 60, medium: 30, large: 4, huge: 2 };
+}
+
+/** Megabytes of decoded pixels the cells on screen may hold between them (`stepWithin`): the album never asks for a size that would pass it. */
+export function pixelMegabytes(env: { width: number; deviceMemory?: number } = { width: typeof window === "undefined" ? 1024 : window.innerWidth }): number {
+  return env.width < 480 || (env.deviceMemory !== undefined && env.deviceMemory <= 2) ? 48 : 128;
 }
 
 /** A request's urgency: smaller is sooner. Pages ahead of the way the person is scrolling beat pages behind at the same distance. */
-export function priorityOf(page: number, center: number, dir: -1 | 0 | 1, size: "tiny" | "small" | "large"): number {
+export function priorityOf(page: number, center: number, dir: -1 | 0 | 1, size: Size): number {
   const d = page - center;
   const ahead = dir === 0 || Math.sign(d) === dir || d === 0;
   const klass = size === "tiny" ? 0 : size === "small" ? 0.5 : 0.25;

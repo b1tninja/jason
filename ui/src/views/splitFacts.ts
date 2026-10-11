@@ -40,6 +40,11 @@ export class FactsCache {
     for (let c = 0; c < n; c++) if (!this.loaded.has(c)) await this.read(c);
   }
 
+  /** Ask again now for every chunk that was read while its pages were still being measured (the draft has just reached the server). */
+  refresh(): void {
+    for (const [c, t] of this.timers) { clearTimeout(t); this.timers.delete(c); this.loaded.delete(c); this.loading.delete(c); void this.read(c); }
+  }
+
   dispose(): void {
     for (const t of this.timers.values()) clearTimeout(t);
     this.timers.clear();

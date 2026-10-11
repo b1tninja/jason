@@ -84,7 +84,7 @@ def test_the_console_opens_a_draft_edits_it_and_reads_it_back_with_reasons_and_f
     got = c.get(f"/api/split-session?id={sid}&facts=1-3&review=1")
     assert got.status_code == 200 and got.json["counts"]["pages"] == 13 and [f["n"] for f in got.json["facts"]] == [1, 2, 3]
     assert got.json["suggestions"][0]["why"] and got.json["review"]["files"] == 1 and got.json["renderer"] in ("pypdfium2", "pymupdf")
-    assert got.json["sizes"] == [96, 200, 800] and got.json["limits"]["maxPages"] == 3000
+    assert got.json["sizes"] == [96, 200, 400, 800, 1600] and got.json["limits"]["maxPages"] == 3000
     text = got.get_data(as_text=True)
     assert "scan.pdf" not in text and "numbered.pdf" not in text
     acc = c.post(url, json={"act": "accept", "id": "all", "by": BY, "version": v})
