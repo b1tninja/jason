@@ -624,6 +624,7 @@ An assistant can explain a plan to a person, cite its rules, and say what is hel
 
 `jason.web.approvals` calls the same engine functions with `via: "console"`, and the name from "Signed in as" as `by` ([architecture.md](architecture.md#the-approvals-engine-behind-jason-web) has the route table):
 - reads: `GET /api/approvals` (the letters inbox as before, with the engine's approvals beside it), `GET /api/approvals/<id>`, `GET /api/approvals/audit`, and `GET /api/evidence?address=...&approval=...` (disk only; a miss is 200 with `found: false`);
+- `POST /api/approvals/plan` `{kind, scope?, by}`: starts a plan (the kind's planner reads live, nothing is written outside jason; the approval is stored in the signed-in person's name), behind the write guard's token header and live reads being on. A kind that needs a scope (`gmail-drafts`) says what it takes when it refuses;
 - `POST /api/approvals/<id>/check`: `engine.check`, a live read that writes nothing, behind the write guard's token header;
 - `POST /api/evidence/refresh`: one piece of evidence read again live for the person and kept in jason's cache, never written to PayHOA ([Evidence you can open](#evidence-you-can-open)), behind the same header;
 - `POST /api/evidence/refresh-all`: every refreshable piece of one plan's evidence read again on one sign-in, the same way, behind the same header;

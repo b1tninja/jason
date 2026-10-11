@@ -397,3 +397,30 @@ def test_jason_web_apply_flag(monkeypatch):
     main(["--allow-apply", "--port", "8181"])
     assert served[0][0].config["JASON_ALLOW_APPLY"] is False
     assert served[1][0].config["JASON_ALLOW_APPLY"] is True and served[1][1] == {"host": "127.0.0.1", "port": 8181}
+
+
+# --- starting a plan from the console ------------------------------------------------------------------------------------
+
+def test_a_plan_is_started_from_the_console_in_a_persons_name_and_changes_nothing_in_payhoa(web):
+    r = web.c.post("/api/approvals/plan", json={"kind": "owner-info-tags", "by": "A Manager"})
+    assert r.status_code == 200, r.json
+    a = store.load(r.json["id"])
+    assert a.kind == "owner-info-tags" and a.status is S.PLANNED
+    assert web.factory.calls == ["owner-info-tags"] and web.client.writes == []
+
+
+def test_a_plan_needs_a_kind_a_name_the_server_token_and_a_scope_object(web):
+    assert web.c.post("/api/approvals/plan", json={"by": "A Manager"}).status_code == 400
+    assert web.c.post("/api/approvals/plan", json={"kind": "owner-info-tags"}).status_code == 400          # no name
+    assert web.c.post("/api/approvals/plan", json={"kind": "nope", "by": "A Manager"}).status_code in (400, 404)
+    assert web.c.post("/api/approvals/plan", json={"kind": "owner-info-tags", "by": "A Manager", "scope": []}).status_code == 400
+    bare = webclient.client(web.app, token=False)
+    assert bare.post("/api/approvals/plan", json={"kind": "owner-info-tags", "by": "A Manager"}).status_code == 403
+    assert web.client.writes == []
+
+
+def test_a_plan_is_off_when_live_reads_are_off(village, monkeypatch):
+    monkeypatch.setattr("jason.mcp.county._data_dir", lambda d: village.data_dir / "letters")
+    app = create_app(_dist(village.data_dir), None, approvals_live=None)
+    r = webclient.client(app).post("/api/approvals/plan", json={"kind": "owner-info-tags", "by": "A Manager"})
+    assert r.status_code == 405

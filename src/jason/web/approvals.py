@@ -658,6 +658,38 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
                 return _check_dict(engine.check(a.id, lv))
         return _answer(run)
 
+    @bp.post("/api/approvals/plan")
+    def plan_route():
+        """Start a plan: ``{kind, scope?}`` plans the kind's writes (read only; it records the plan in jason's own store, in
+        the signed-in person's name) and answers the approval. The planner may read PayHOA or Google live, so it carries this
+        server's token and needs live reads on. A kind that needs a scope (``gmail-drafts``) says what it takes when it refuses."""
+        if not writes:
+            return jsonify(error="writes are off"), 405
+        if live is None:
+            return jsonify(error="live reads are off in this jason-web"), 405
+        if not header_token_ok():
+            return jsonify(error=f"a plan carries this server's token in {TOKEN_HEADER}"), 403
+        body = _body()
+
+        def run() -> dict[str, Any]:
+            from jason.approvals import engine, registry
+            from jason.approvals.model import to_dict
+
+            key = _text(body, "kind")
+            if not key:
+                raise ValueError("kind is the action kind to plan (see GET /api/approvals/kinds)")
+            scope = body.get("scope", {})
+            if not isinstance(scope, dict):
+                raise ValueError("scope is a JSON object")
+            by, _, via = _who(body)
+            if not by.strip():
+                raise ValueError("a plan is made in a person's name: sign in")
+            kind = registry.get(key)
+            with live(kind) as lv:
+                planned = engine.plan(kind.key, lv, by=by, via=via, scope=scope)
+            return mask(to_dict(planned))
+        return _answer(run)
+
     @bp.post("/api/approvals/<ident>/decide")
     def decide_route(ident: str):
         if not writes:

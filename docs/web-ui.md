@@ -61,6 +61,7 @@ The approvals engine (`jason.approvals`, [console/approval-workflow.md](console/
 | `GET /api/approvals` | The letters inbox as before (`letters`, `groups`, `pending`, `people`, …; `?key=` is one letter), with the engine's approvals beside it under `approvals`, open ones first (`?status=`, `?kind=`), `approvalsOpen`, and `approvalStatuses`. A letters store that cannot be read is `lettersError`; the approvals still show |
 | `GET /api/approvals/<id>` | The Approval JSON as the engine stores it (`approval.schema.json`); an id or a unique prefix |
 | `GET /api/approvals/audit` | The audit log (`?approval=` for one), and with `?verify=1` the chain check: `{whole, line, why}` |
+| `POST /api/approvals/plan` | `{kind, scope?, by}`: plans the kind's writes (a live read; nothing written outside jason), in the signed-in person's name, with the server's token in its header; answers the approval. `gmail-drafts` needs a scope |
 | `POST /api/approvals/<id>/check` | Re-plans live and compares, writing nothing: `ok`, `unchanged`, `changed` (each item's basis then and now, and why), `new`, `problems`, and `wouldApply`. The CLI's `jason approvals apply ID` without `--yes` |
 | `POST /api/approvals/<id>/decide` | `{items, decision, by, reason}`: `items` is a list of ids (or unique prefixes of six or more) or `"all"`; `decision` is `approved`, `rejected`, or `held`; a rejection or a hold needs `reason` |
 | `POST /api/approvals/<id>/submit` | `{by}`: signs the decisions (`role` optional, default `manager`) |
