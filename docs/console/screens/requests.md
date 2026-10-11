@@ -16,9 +16,10 @@ No screen lists every member request with its clock. Three screens hold parts of
 Members' requests and their clocks: what each one is, when it came in, which clock runs on it and who set that clock, when the answer is due, and what the next step is. The screen helps a person answer on time. It never decides a request.
 
 - **Manager:** works the open requests most urgent first. Reads the leads to where the answer is written. Drafts an acknowledgment for a person to send.
-- **Director:** reads the requests that wait on the board (architectural, solar, EV charger, rental, variance) before a meeting.
+- **Director:** reads what an officer reads (directors and officers have the same access to information; they differ in duties). Usually the requests that wait on the board (architectural, solar, EV charger, rental, variance) before a meeting.
 - **Treasurer:** reads the requests of a finance kind.
-- **Secretary, reviewer, counsel:** no access.
+- **Secretary:** reads the requests, and records the board's decisions on them.
+- **Reviewer, counsel:** no access.
 
 **What this screen never has.** No approve, deny, or assign control, at any phase. A request's decision is made in PayHOA by a person, or by the board at a meeting. jason computes the clock and drafts the first words; that is all ([AGENTS.md](../../../AGENTS.md#boundaries)).
 

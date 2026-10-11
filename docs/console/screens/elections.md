@@ -186,7 +186,7 @@ Every write is signed with the signer's name (a `by` naming someone else is a 40
 ## Privacy
 
 - **Shown (P0 once noticed):** kind, dates, the notices, the candidates' names as the notices give them, the tabulated results the inspector reports and the general notice gives (5120(b): "available for review by members").
-- **Shown to the board's view (P1):** nominees and their status before a notice names them; the inspector; counts of the lists, of ballots delivered, of ballots counted; the report.
+- **P2 (the offices that open it; a director reads what an officer reads):** nominees and their status before a notice names them; the inspector; the report. **P1:** counts only (of the lists, of ballots delivered, of ballots counted), with no name.
 - **Never shown, never stored:** how any member voted; any individual ballot, envelope, or electronic receipt; a tally before the count; whether one named member has returned a ballot. The secret ballot is the law's (5100(a)(1)); the signed envelope may be inspected but not copied (5200(c)); no one but the inspector may review a ballot before the count (5120(a)).
 - **P2/P3:** a nominee's address, the voter list, the candidate registration list, and the materials are P3 election materials (security-and-privacy.md) held by the inspector. The page links no `/api/file`, shows no absolute path, and logs each report opening (`access/served.jsonl`).
 - A director reads what an officer reads. An election's executive-session discussion (e.g. a challenge) appears by its 4935 general words only.
@@ -210,7 +210,7 @@ As of 2099-03-10, `directors`, two seats; every day computed. Call for candidate
 
 ## Acceptance criteria
 
-1. `GET /api/elections` signed out is a 401; the owner view and an office that does not open P1 are refused with `access.may_see`'s sentence; `elections` is not in `OWNER_SOURCES`.
+1. `GET /api/elections` signed out is a 401; the owner view and an office that does not open P2 are refused (counts alone, no name, open at P1) with `access.may_see`'s sentence; `elections` is not in `OWNER_SOURCES`.
 2. The store appends under `locks.hold(Resource.STORE, ...)`; a stale `n` is refused with a changed-since message; an edited line fails `verify`; a torn last line is dropped and reported.
 3. Nothing the page loads, and nothing in the store, holds a ballot, an envelope, a voter or candidate list, how a member voted, or a count before `count-held`. A test greps the store and the API for these.
 4. Every statute quote renders from the shelf in `Recitation` before its `ReadingLabel`, and reads "recited from the shelf" when the shelf is absent.

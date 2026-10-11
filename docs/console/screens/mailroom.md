@@ -30,7 +30,7 @@ One letter, from the PDF to the mail slot to the mailbox: what it is, whom it re
 |---|---|
 | Can the Mailroom send | `status.json` (`verify.hasAddress`, `hasPayment`; the year's `counts`), with its read time; `jason mailroom` refreshes it |
 | Mailings | `status.json` `pdfBatches[]`, `invoiceBatches[]`: `id`, `created`, `costCents`, `sent`, `failed`, `cancelled`, `pages`, `sendTo`, `certified`, `color`, `standard`, `twoSided`, `completed`, `cancelledAt` |
-| Sent log | `sent.jsonl`, one line a send, written by `send()` (also by the owner-information mail batch, whose `MailHandler` calls it): `sent` (UTC), `pdf` (the path as given), `pages`, `sendTo`, `units` and `ownerIds` (ids), `doubleSided`, `withInvoices`, `color`, `mailClass`, `guideCents` (one letter by the guide), `batches[]` (as above), `letters[]` (`id`, `communication`, `costCents`, `status` as read back seconds after the send), `preview`. It holds no name, address, sha256, notice key, or who sent it |
+| Sent log | `sent.jsonl`, one line a send, written by `send()` (also by the owner-information mail batch, whose `MailHandler` calls it): `sent` (UTC), `pdf` (the path as given), `pages`, `sendTo`, `units` and `ownerIds` (ids), `doubleSided`, `withInvoices`, `color`, `mailClass`, `tracking`, `by` (who sent it; from 2026-10-11), `guideCents` (one letter by the guide), `batches[]` (as above), `letters[]` (`id`, `communication`, `costCents`, `status` as read back seconds after the send), `preview`. It holds no name, address, sha256, or notice key |
 | The pricing guide | `PRICING`: standard $1.05 or first class $1.25 for the first page, $0.20 each page after, color $0.20 a page, +$2.25 from 6 billed pages, certified $10.00, registered $25.00; PayHOA's address page is billed (`ADDRESS_PAGES`); read 2026-10-01. "A price list with a date, not a law" |
 | Charged against the guide | `price-check.json` (`price_check`): per kind, month, pages, options: letters, charged, guide, `matches` (`guide`, `guide, address page not billed`, `differs`) |
 | A letter after the send | live PayHOA only: `--batch ID` (status, last event, tracking), `--letters KIND`, `--events COMMUNICATION` (Lob's events). On disk afterward only through the notice ledger (`data/notices/deliveries.db`, `jason notices KEY --sync`), and only for a send with a notice key |
@@ -78,7 +78,7 @@ Five bands, always in this order. The rail on the left of the first band is the 
 | Open lessons: letters-cannot-be-recalled, test-as-an-owner (jason lessons --area mailroom)|
 +------------------------------------------------------------------------------------------+
 | 5 TO SEND IT  (a person, at a terminal)                                                  |
-| This mails 11 letters and charges the association $18.15. A letter cannot be recalled.   |
+| This mails 11 letters and charges the association $20.35. A letter cannot be recalled.   |
 | Command  jason mailroom --preview 7f3a --send --yes --by "NAME"   [Copy]                 |
 +------------------------------------------------------------------------------------------+
 ```
@@ -161,7 +161,7 @@ Why:
 
 ## A made-up sample
 
-Example Village HOA, 11 units on Example Rd. The PDF `annual-notice.pdf`, 3 pages, sha256 `9e2f4b7c1d0a5e33...`. The manager typed 12 street addresses; 11 matched the units table (synced Oct 3 07:00) and `131 Main St` did not. PayHOA's recipients: 12 rows; one left out (no mailing address), one flagged duplicate (a co-owner at one address); 11 letters expected. Mailed standard class, black and white, double-sided: 4 billed pages on 2 sheets, 105 + 3 x 20 = 165 cents a letter, 1,815 cents for 11 (`$18.15`). A fifth page would bill 6 pages, 105 + 5 x 20 + 225 = 430 cents a letter, 4,730 in all. Fingerprint `7f3a91c2d0b4`. Mailing batch 4012, Oct 3 09:40: 11 sent, 0 failed, 0 cancelled, charged $18.15, guide $18.15 (matches). A week on: 9 delivered, 1 re-routed, 1 returned (follow-up owed, linked to the notice `mailing-notice-2099-10`). `sent.jsonl` for it: `{"sent":"2099-10-03T09:40:12+00:00","pdf":"annual-notice.pdf","pages":3,"units":[...],"mailClass":"standard","guideCents":165,"batches":[{"id":4012,"costCents":1815,...}],"letters":[{"id":9001,"communication":7001,"costCents":165,"status":"processing"},...]}`.
+Example Village HOA, 11 units on Example Rd. The PDF `annual-notice.pdf`, 3 pages, sha256 `9e2f4b7c1d0a5e33...`. The manager typed 12 street addresses; 11 matched the units table (synced Oct 3 07:00) and `131 Main St` did not. PayHOA's recipients: 12 rows; one left out (no mailing address), one flagged duplicate (a co-owner at one address); 11 letters expected. Mailed first class (a `--notice` letter's default), black and white, double-sided: 4 billed pages on 2 sheets, 125 + 3 x 20 = 185 cents a letter, 2,035 cents for 11 (`$20.35`); standard would be 105 + 3 x 20 = 165 cents and 1,815 in all, with the 4040(a)(2) note. A fifth page would bill 6 pages, 125 + 5 x 20 + 225 = 450 cents a letter, 4,950 in all. Fingerprint `7f3a91c2d0b4`. Mailing batch 4012, Oct 3 09:40: 11 sent, 0 failed, 0 cancelled, charged $20.35, guide $20.35 (matches). A week on: 9 delivered, 1 re-routed, 1 returned (follow-up owed, linked to the notice `mailing-notice-2099-10`). `sent.jsonl` for it: `{"sent":"2099-10-03T09:40:12+00:00","pdf":"annual-notice.pdf","pages":3,"units":[...],"mailClass":"standard","guideCents":165,"batches":[{"id":4012,"costCents":1815,...}],"letters":[{"id":9001,"communication":7001,"costCents":165,"status":"processing"},...]}`.
 
 ## Decisions for the user
 
@@ -179,7 +179,7 @@ Example Village HOA, 11 units on Example Rd. The PDF `annual-notice.pdf`, 3 page
 
 1. The preview page renders its five bands in order from the saved record for a fixture, and shows "Not mailed" with no control that mails, cancels, or queues anything.
 2. Every money figure is integer cents shown as dollars by `Money`; the page total equals letters x cents a letter; the guide's date is shown beside it.
-3. For 4 PDF pages the page shows 5 billed pages, $1.85 a letter, no heavy line; for 5 PDF pages, 6 billed, $4.30, and the "$2.25 more postage" line with the saving.
+3. For 4 PDF pages the page shows 5 billed pages, $1.85 a letter at standard class ($2.05 first class), no heavy line; for 5 PDF pages, 6 billed, $4.30 standard ($4.50 first class), and the "$2.25 more postage" line with the saving.
 4. A named address that matches no unit is listed as not found and never dropped silently; the matched, left-out, and duplicate counts add up to the PayHOA rows (as counts before masking exists, as rows after).
 5. Once masking exists, each recipient row says what resolved it: the units table (with its sync time) and PayHOA's mailing or unit address (with its read time).
 6. Changing the PDF, syncing `payhoa.db` after the read, or ageing past the limit each shows `ChangedBanner` naming the cause and the command to read again.

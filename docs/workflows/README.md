@@ -7,7 +7,7 @@ The model is [../workflows-design.md](../workflows-design.md): a definition (ste
 | The members | [members-cycles.md](members-cycles.md) | `owner-info-cycle` (20 SOP steps become 25), `notice-delivery`, `mailroom-letter`, `respond-sweep`, `respond-request`, `respond-policy`, `owner-document`, `form-campaign`, `form-library-review` |
 | The board | [board-governance.md](board-governance.md) | `board-meeting`, `rule-change`, `election`, `hearing`, `law-review`, `duty-schedule` (with document duties), `owners-manual` |
 | The money | [money.md](money.md) | `bill-attach`, `payment-investigation`, `monthly-review`, `delinquency-account`, `fiscal-year`, `reserve-borrowing`, `insurance-renewal`, `county-tax-cycle` |
-| Documents and records | [documents-records.md](documents-records.md) | `document-intake`, `ingest`, the record checklist and the splitter, `onboard` (about 45 steps by gate, with the change-of-manager branch), key documents, `careful-reading`, `records-production` |
+| Documents and records | [documents-records.md](documents-records.md) | `document-intake`, `ingest`, the record checklist and the splitter, `onboard` (about 35 steps by gate, with the change-of-manager branch), key documents, `careful-reading`, `records-production` |
 | The property, its safety, its vendors | [property-safety-vendors.md](property-safety-vendors.md) | life-safety period, deficiency, `backflow-annual`, elevated elements, contract notice window, improvement request, paint cycle, loss or claim, maintenance program |
 | Mail, email, and running jason | [mail-and-platform.md](mail-and-platform.md) | paper mail triage, email awaiting us, a Gmail draft from an item, the response inbox, connecting an integration, running the service, check-in |
 
