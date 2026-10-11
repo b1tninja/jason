@@ -1,19 +1,27 @@
 import { useState } from "react";
-import { Badge, Card, Caveats, Clock, Confirm, DataTable, DueDate, Findings, Pill, RemoteView, RequestForm, type ClockStage, type Column } from "../components";
+import { Badge, Card, Caveats, Clock, Confirm, DataTable, DueDate, Findings, Pill, ReadingLabel, Recitation, RemoteView, RequestForm, type ClockStage, type Column } from "../components";
 import { postJson } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import "./recordsrequests.css";
 
 interface Withheld { record: string; reason: string }
-interface Decisions { purposeAdequate: boolean | null; withheld: Withheld[]; producedOn: string; inspectedOrCopies: "inspection" | "copies" | ""; feeCents: number; note: string }
+interface Decisions {
+  purposeAdequate: boolean | null; withheld: Withheld[]; producedOn: string; inspectedOrCopies: "inspection" | "copies" | ""; feeCents: number;
+  copyCents?: number; redactionCents?: number; redactionMinutes?: number; note: string;
+}
+/** The stored statute's words, as `/api/records-requests` recites them (`jason.tasks.records_fee`). */
+interface Words { citation: string; text: string; found: boolean; inForce: string }
+interface FeeCheck { status: "ok" | "warning" | "over_cap"; needsCounsel: boolean; findings: { code: string; sentence: string }[]; capCents: number | null; hourlyCents: number | null; words: Words[]; reading: string }
+interface Rule { fee: { words: Words[]; capCents: number | null; hourlyCents: number | null; reading: string }; membershipList: { words: Words[]; reading: string } }
 interface Req {
   id: string; receivedOn: string; unit: string; via: string; records: string[]; purpose: string; membershipList: boolean; years: number[];
-  decisions: Decisions; by: string; recorded: string; updated: string; history: string[]; stages: ClockStage[]; dueBy: string; standing: string; citations: Record<string, string>;
+  decisions: Decisions; by: string; recorded: string; updated: string; history: string[]; stages: ClockStage[]; dueBy: string; standing: string; citations: Record<string, string>; feeCheck?: FeeCheck | null;
 }
 interface Kind { record: string; label: string; citation: string; meaning: string; retention: string; files: number | null; gap: string }
-interface Source { found?: boolean; count: number; counts: Record<string, number>; requests: Req[]; kinds: Kind[]; vias: string[]; note?: string; caveats: string[]; produced?: string }
+interface Source { found?: boolean; count: number; counts: Record<string, number>; requests: Req[]; kinds: Kind[]; vias: string[]; note?: string; caveats: string[]; produced?: string; rule?: Rule }
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const centsOf = (amount: string) => Math.round(parseFloat(amount || "0") * 100);
 const label = (kinds: Kind[], record: string) => kinds.find((k) => k.record === record)?.label ?? record.replace(/_/g, " ");
 
 /** Receive a request: the day, the unit (never the member's name), how it came, the record kinds, and the purpose in the member's words. */
@@ -60,25 +68,58 @@ function ReceiveForm({ kinds, vias, onSaved }: { kinds: Kind[]; vias: string[]; 
   );
 }
 
+/** The words of CIV 5205(f) and (g) beside the fee fields, jason's reading labeled as jason's, and the check: a redaction figure
+ * above what the stored statute states is shown with that before saving, and the server refuses it. No control lowers a figure. */
+function FeeRule({ rule, saved, redactionCents }: { rule?: Rule["fee"]; saved?: FeeCheck | null; redactionCents: number }) {
+  if (!rule) return null;
+  const over = rule.capCents != null && redactionCents > rule.capCents;
+  return (
+    <div className="wide rr-fee-rule">
+      <details open>
+        <summary>What Civil Code 5205 says about the cost</summary>
+        {rule.words.filter((w) => w.citation !== "CIV 5200(b)").map((w) => <Recitation key={w.citation} citation={{ found: w.found, citation: w.citation, text: w.text, inForce: w.inForce }} />)}
+        <ReadingLabel whose="jason"><p>{rule.reading}</p></ReadingLabel>
+      </details>
+      {over && rule.capCents != null && <p className="notice notice-error" role="alert">The redaction figure, {dollars(redactionCents)}, is above the {dollars(rule.capCents)} total the stored CIV 5205(g) states per written request. The record will not be saved with it.</p>}
+      {saved && saved.findings.length > 0 && (
+        <div className="notice notice-warn" role="status">
+          <strong>{saved.needsCounsel ? "Counsel reads this fee" : "Fee"}</strong>
+          <ul className="rr-list">{saved.findings.map((f) => <li key={f.code}>{f.sentence}</li>)}</ul>
+          <ReadingLabel whose="jason" inline /> <span className="muted">{saved.reading}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One request opened: its clock, then the decisions a person records on it. */
-function RequestPanel({ r, kinds, today, onSaved }: { r: Req; kinds: Kind[]; today: Date; onSaved: (r: Req) => void }) {
+function RequestPanel({ r, kinds, rule, today, onSaved }: { r: Req; kinds: Kind[]; rule?: Rule; today: Date; onSaved: (r: Req) => void }) {
   const d = r.decisions;
   const [purposeAdequate, setPurposeAdequate] = useState<boolean | null>(d.purposeAdequate);
   const [withheld, setWithheld] = useState<Withheld[]>(d.withheld);
   const [producedOn, setProducedOn] = useState(d.producedOn);
   const [how, setHow] = useState<Decisions["inspectedOrCopies"]>(d.inspectedOrCopies);
   const [fee, setFee] = useState((d.feeCents / 100).toFixed(2));
+  const [copy, setCopy] = useState(((d.copyCents ?? 0) / 100).toFixed(2));
+  const [redaction, setRedaction] = useState(((d.redactionCents ?? 0) / 100).toFixed(2));
+  const [hours, setHours] = useState(((d.redactionMinutes ?? 0) / 60).toFixed(2));
   const [note, setNote] = useState(d.note);
   const [by, setBy] = useState(r.by);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const feeCents = Math.round(parseFloat(fee || "0") * 100);
+  const feeCents = centsOf(fee);
+  const copyCents = centsOf(copy);
+  const redactionCents = centsOf(redaction);
+  const redactionMinutes = Math.round(parseFloat(hours || "0") * 60);
   const changes: Partial<Decisions> & { by: string } = { by };
   if (r.membershipList && purposeAdequate !== d.purposeAdequate) changes.purposeAdequate = purposeAdequate;
   if (JSON.stringify(withheld) !== JSON.stringify(d.withheld)) changes.withheld = withheld;
   if (producedOn !== d.producedOn) changes.producedOn = producedOn;
   if (how !== d.inspectedOrCopies) changes.inspectedOrCopies = how;
   if (!Number.isNaN(feeCents) && feeCents !== d.feeCents) changes.feeCents = feeCents;
+  if (!Number.isNaN(copyCents) && copyCents !== (d.copyCents ?? 0)) changes.copyCents = copyCents;
+  if (!Number.isNaN(redactionCents) && redactionCents !== (d.redactionCents ?? 0)) changes.redactionCents = redactionCents;
+  if (!Number.isNaN(redactionMinutes) && redactionMinutes !== (d.redactionMinutes ?? 0)) changes.redactionMinutes = redactionMinutes;
   if (note !== d.note) changes.note = note;
   const changed = Object.keys(changes).length > 1 || by !== r.by;
   const complete = withheld.every((w) => w.record && w.reason.trim());
@@ -93,10 +134,18 @@ function RequestPanel({ r, kinds, today, onSaved }: { r: Req; kinds: Kind[]; tod
   if ("producedOn" in changes) summary.push(producedOn ? `produced ${producedOn}` : "production cleared");
   if ("inspectedOrCopies" in changes) summary.push(how ? `by ${how}` : "how produced cleared");
   if ("feeCents" in changes) summary.push(`fee ${dollars(feeCents)}`);
+  if ("copyCents" in changes || "redactionCents" in changes || "redactionMinutes" in changes)
+    summary.push(`of it, copying and mailing ${dollars(copyCents)} and redaction ${dollars(redactionCents)} for ${redactionMinutes} minute(s)`);
   if ("note" in changes) summary.push("note");
   return (
     <div className="stack">
       <Clock stages={r.stages} today={today} />
+      {r.membershipList && rule && (
+        <Card title="The membership list's timeframe">
+          {rule.membershipList.words.map((w) => <Recitation key={w.citation} citation={{ found: w.found, citation: w.citation, text: w.text, inForce: w.inForce }} />)}
+          <ReadingLabel whose="jason"><p>{rule.membershipList.reading}</p></ReadingLabel>
+        </Card>
+      )}
       <div className="grid-2">
         <Card title={`The request from ${r.unit}`}>
           <dl className="rr-facts">
@@ -120,7 +169,12 @@ function RequestPanel({ r, kinds, today, onSaved }: { r: Req; kinds: Kind[]; tod
             <label>Produced on <input type="date" value={producedOn} onChange={(e) => setProducedOn(e.target.value)} /></label>
             <label>Inspection or copies (CIV 5205) <select value={how} onChange={(e) => setHow(e.target.value as Decisions["inspectedOrCopies"])}><option value="">not yet</option><option value="inspection">inspection</option><option value="copies">copies</option></select></label>
             <label>Fee the member agreed to, in dollars <input inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} /></label>
+            <label>Of it, copying and mailing, in dollars (CIV 5205(f)) <input inputMode="decimal" value={copy} onChange={(e) => setCopy(e.target.value)} /></label>
+            <label>Of it, redacting an enhanced record, in dollars (CIV 5205(g)) <input inputMode="decimal" value={redaction} onChange={(e) => setRedaction(e.target.value)} /></label>
+            <label>Time spent redacting, in hours <input inputMode="decimal" value={hours} onChange={(e) => setHours(e.target.value)} /></label>
+            <FeeRule rule={rule?.fee} saved={d.feeCents > 0 || (d.redactionCents ?? 0) > 0 ? r.feeCheck : null} redactionCents={Number.isNaN(redactionCents) ? 0 : redactionCents} />
             <label>Decided by <input value={by} onChange={(e) => setBy(e.target.value)} /></label>
+            <p className="muted wide">Where sign-in is set up, the record carries your own signed-in name, whatever is typed here.</p>
             <label className="wide">Note <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></label>
           </div>
           <div className="rr-withheld">
@@ -221,7 +275,7 @@ export function RecordsRequestsView({ audience }: { audience?: "board" | "owner"
             <Card title={`Records requests (${rows.length})`}>
               {rows.length === 0 ? <p className="muted">No request recorded yet.</p> : <DataTable rows={rows} columns={cols} searchable={false} rowKey={(x) => x.id} selectedKey={open} onSelect={(x) => setOpen(open === x.id ? "" : x.id)} />}
             </Card>
-            {current && <RequestPanel key={current.id + current.updated} r={current} kinds={raw.kinds} today={today} onSaved={(n) => setPatched((p) => ({ ...p, [n.id]: n }))} />}
+            {current && <RequestPanel key={current.id + current.updated} r={current} kinds={raw.kinds} rule={raw.rule} today={today} onSaved={(n) => setPatched((p) => ({ ...p, [n.id]: n }))} />}
             <ReceiveForm kinds={raw.kinds} vias={raw.vias ?? ["email", "mail", "form"]} onSaved={(n) => { setAdded((xs) => [n, ...xs]); setOpen(n.id); }} />
           </div>
         );

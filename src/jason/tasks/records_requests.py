@@ -11,6 +11,10 @@ with counsel where needed, and jason keeps the history.
 The store is jason's own, ``data/records-requests/requests.json``. A request is keyed by its day and unit, never by
 the member's name.
 
+The fee a person records is read against CIV 5205(f) and (g) by ``jason.tasks.records_fee``: a redaction charge above the
+total or the hourly rate the stored 5205(g) states is refused, and any other question the figures leave is accepted and
+recorded as one for counsel. jason lowers no figure and decides no fee.
+
 Business days here are Monday through Friday. Court and state holidays are not subtracted, so a computed business-day
 deadline can fall a day or two earlier than the statute would allow; a person checks the calendar before relying on it.
 The fiscal year is taken as the calendar year of the day the request was received: a ``years`` entry equal to that
@@ -35,11 +39,13 @@ STORE = Path("records-requests") / "requests.json"
 VIAS = ("email", "mail", "form")
 HOW = ("inspection", "copies", "")
 RECORD_VALUES = tuple(r.value for r in AssociationRecord)
-DECISION_FIELDS = ("purposeAdequate", "withheld", "producedOn", "inspectedOrCopies", "feeCents", "note")
+DECISION_FIELDS = ("purposeAdequate", "withheld", "producedOn", "inspectedOrCopies", "feeCents", "copyCents", "redactionCents",
+                   "redactionMinutes", "note")
+FEE_FIELDS = ("feeCents", "copyCents", "redactionCents", "redactionMinutes")
 
 CURRENT_YEAR_BUSINESS_DAYS = 10     # section 5210(b)(1)
 PRIOR_YEAR_CALENDAR_DAYS = 30       # section 5210(b)(2)
-MEMBERSHIP_LIST_BUSINESS_DAYS = 5   # section 5210(b)
+MEMBERSHIP_LIST_BUSINESS_DAYS = 5   # jason's count; section 5210(b)(6) points to Corporations Code 8330, which counsel reads
 
 
 @dataclass
@@ -48,7 +54,10 @@ class Decisions:
     withheld: list[dict[str, str]] = field(default_factory=list)   # [{record, reason}], section 5215 grounds as given
     producedOn: str = ""                           # ISO date the records were made available or sent
     inspectedOrCopies: str = ""                    # "inspection" | "copies" | ""
-    feeCents: int = 0                              # the copying, mailing, or redaction cost the member agreed to
+    feeCents: int = 0                              # the total the member agreed to (CIV 5205(f), (g))
+    copyCents: int = 0                             # of it, copying and mailing; 0 when not broken out
+    redactionCents: int = 0                        # of it, the redaction charge; 0 when none or not broken out
+    redactionMinutes: int = 0                      # the time recorded for the redaction; 0 when not recorded
     note: str = ""
 
 
@@ -93,7 +102,8 @@ def deadlines(received_on: date | str, records: list[str] | tuple[str, ...], yea
     """The section 5210 clock for a request, as stages for a Clock.
 
     Current-fiscal-year records are due within ten business days, prior-year records within thirty calendar days, and
-    the membership list within five business days. Business days are Monday through Friday with no holidays
+    the membership list on jason's own count of five business days, "computed" and for a person to check: section
+    5210(b)(6) gives that timeframe as the one in Corporations Code 8330, which counsel reads. Business days are Monday through Friday with no holidays
     subtracted, and the fiscal year is the calendar year of ``received_on`` (module docstring). ``years`` empty means
     only the current year was asked for. A request for the membership list alone carries only that stage.
     """
@@ -104,7 +114,8 @@ def deadlines(received_on: date | str, records: list[str] | tuple[str, ...], yea
     asked_years = list(years or [])
     stages: list[dict[str, Any]] = [{"key": "received", "label": "Request received", "date": day.isoformat(), "done": True}]
     if AssociationRecord.MEMBERSHIP_LIST.value in kinds:
-        stages.append({"key": "membershipList", "label": "Membership list produced by", "authority": "CIV 5210(b)",
+        stages.append({"key": "membershipList", "label": "Membership list: jason's computed date, for a person to check",
+                       "authority": "CIV 5210(b)(6), CORP 8330", "computed": True, "who": "counsel reads the statute",
                        "date": add_business_days(day, MEMBERSHIP_LIST_BUSINESS_DAYS).isoformat()})
     if other:
         if not asked_years or any(y >= current_year for y in asked_years):
@@ -160,12 +171,22 @@ def _validate_decisions(changes: dict[str, Any], req: Request) -> None:
         date.fromisoformat(str(changes["producedOn"]))
     if "inspectedOrCopies" in changes and changes["inspectedOrCopies"] not in HOW:
         raise ValueError("inspectedOrCopies is inspection, copies, or empty")
-    if "feeCents" in changes:
-        fee = changes["feeCents"]
-        if isinstance(fee, bool) or not isinstance(fee, int) or fee < 0:
-            raise ValueError("feeCents is a whole number of cents, zero or more")
+    for name in FEE_FIELDS:
+        if name in changes:
+            v = changes[name]
+            if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+                raise ValueError(f"{name} is a whole number, zero or more" + (" (cents)" if name.endswith("Cents") else ""))
     if "note" in changes and not isinstance(changes["note"], str):
         raise ValueError("note is text")
+
+
+def fee_check(req: Request, decisions: Decisions | None = None) -> dict[str, Any]:
+    """The request's fee against CIV 5205(f) and (g) (``jason.tasks.records_fee``); ``decisions`` stands in for the stored ones."""
+    from jason.tasks import records_fee
+
+    d = decisions or req.decisions
+    return records_fee.check(d.feeCents, d.copyCents, d.redactionCents, d.redactionMinutes,
+                             enhanced=AssociationRecord.ENHANCED.value in req.records)
 
 
 def _from_raw(raw: dict[str, Any]) -> Request:
@@ -251,6 +272,15 @@ def decide(data_dir: Path, request_id: str, **changes: Any) -> Request:
         raise KeyError(request_id)
     _validate_decisions(changes, found)
     now = _now()
+    fee_changed = any(k in changes and changes[k] != getattr(found.decisions, k) for k in FEE_FIELDS)
+    if fee_changed:
+        from dataclasses import replace
+
+        from jason.tasks import records_fee
+
+        proposed = fee_check(found, replace(found.decisions, **{k: changes[k] for k in FEE_FIELDS if k in changes}))
+        if proposed["status"] == "over_cap":
+            raise ValueError(records_fee.refusal(proposed))
     for k, v in changes.items():
         before = getattr(found.decisions, k)
         if before != v:
@@ -261,7 +291,11 @@ def decide(data_dir: Path, request_id: str, **changes: Any) -> Request:
                 found.history.append(f"{now[:10]}: withheld {len(v)} record kind(s) (CIV 5215)")
             elif k == "producedOn":
                 found.history.append(f"{now[:10]}: produced {before or '(not yet)'} -> {v or '(not yet)'}")
+            elif k == "feeCents":
+                found.history.append(f"{now[:10]}: fee ${before / 100:.2f} -> ${v / 100:.2f} (CIV 5205(f), (g))")
             setattr(found.decisions, k, v)
+    if fee_changed and proposed["status"] == "warning":
+        found.history.append(f"{now[:10]}: fee needs counsel's reading (CIV 5205(g)): " + " ".join(f["sentence"] for f in proposed["findings"]))
     if by is not None:
         found.by = str(by)
     found.updated = now
@@ -270,5 +304,7 @@ def decide(data_dir: Path, request_id: str, **changes: Any) -> Request:
 
 
 def as_dict(req: Request, today: date | None = None) -> dict[str, Any]:
+    d = req.decisions
     return {**asdict(req), "stages": deadlines(req.receivedOn, req.records, req.years), "dueBy": due_by(req),
-            "standing": standing(req, today), "citations": {k: CITATION[AssociationRecord(k)] for k in req.records}}
+            "standing": standing(req, today), "citations": {k: CITATION[AssociationRecord(k)] for k in req.records},
+            "feeCheck": fee_check(req) if (d.feeCents or d.copyCents or d.redactionCents) else None}

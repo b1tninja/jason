@@ -10,7 +10,7 @@ def test_deadlines_each_class():
     # Friday 2026-10-02: five business days is the next Friday, ten the one after; thirty calendar days is November 1.
     stages = {s["key"]: s for s in store.deadlines("2026-10-02", ["membership_list", "minutes", "tax_return"], years=[2026, 2024])}
     assert stages["received"]["done"] is True
-    assert stages["membershipList"]["date"] == "2026-10-09" and stages["membershipList"]["authority"] == "CIV 5210(b)"
+    assert stages["membershipList"]["date"] == "2026-10-09" and stages["membershipList"]["authority"] == "CIV 5210(b)(6), CORP 8330"
     assert stages["currentYear"]["date"] == "2026-10-16" and stages["currentYear"]["authority"] == "CIV 5210(b)(1)"
     assert stages["priorYears"]["date"] == "2026-11-01" and stages["priorYears"]["authority"] == "CIV 5210(b)(2)"
     # Only the list: only its stage. Only prior years: no current-year stage. No years given: the current year.

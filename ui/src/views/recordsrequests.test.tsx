@@ -19,19 +19,31 @@ const existing = {
 const opened = {
   ...existing, id: "2026-10-02--unit-12", receivedOn: "2026-10-02", unit: "Unit 12", via: "email", records: ["membership_list", "minutes"], purpose: "to contact owners about the roof vote", membershipList: true,
   history: ["2026-10-02: received via email"], dueBy: "2026-10-09", standing: "open", citations: { membership_list: "CIV 5200(a)(9)", minutes: "CIV 5200(a)(8)" },
-  stages: [{ key: "received", label: "Request received", date: "2026-10-02", done: true }, { key: "membershipList", label: "Membership list produced by", date: "2026-10-09", authority: "CIV 5210(b)" }, { key: "currentYear", label: "Current fiscal year records produced by", date: "2026-10-16", authority: "CIV 5210(b)(1)" }],
+  stages: [{ key: "received", label: "Request received", date: "2026-10-02", done: true }, { key: "membershipList", label: "Membership list: jason's computed date, for a person to check", date: "2026-10-09", authority: "CIV 5210(b)(6), CORP 8330", who: "counsel reads the statute" }, { key: "currentYear", label: "Current fiscal year records produced by", date: "2026-10-16", authority: "CIV 5210(b)(1)" }],
 };
 
-function stub(posts: unknown[]) {
+const G = "(g) In addition to the direct and actual costs of copying and mailing, the association may bill the requesting member an amount not in excess of ten dollars ($10) per hour, and not to exceed two hundred dollars ($200) total per written request, for the time actually and reasonably involved in redacting an enhanced association record.";
+const F = "(f) The association may bill the requesting member for the direct and actual cost of copying and mailing requested documents.";
+const L = "(6) Membership list, within the timeframe specified in Section 8330 of the Corporations Code.";
+const words = (citation: string, text: string) => ({ citation, text, found: true, inForce: "the 2025 publication of the code" });
+const rule = {
+  fee: { words: [words("CIV 5205(f)", F), words("CIV 5205(g)", G), words("CIV 5200(b)", "(b) Enhanced association records means invoices.")], capCents: 20000, hourlyCents: 1000, reading: "jason's reading, not the statute's: 5205(g) bounds only the redaction charge." },
+  membershipList: { words: [words("CIV 5210(b)(6)", L), words("CORP 8330", "8330. A member may inspect and copy the record of all the members.")], reading: "jason's reading, not the statute's: the date on the clock is jason's count, computed for a person to check." },
+};
+const withFee = { ...existing, decisions: { ...existing.decisions, feeCents: 5000, redactionCents: 5000, redactionMinutes: 0 },
+  feeCheck: { status: "warning", needsCounsel: true, findings: [{ code: "no-time", sentence: "A redaction charge is recorded with no time, so the hourly rate in CIV 5205(g) cannot be checked." }], capCents: 20000, hourlyCents: 1000, words: [], reading: "jason's reading, not the statute's: counsel reads the statute." } };
+
+function stub(posts: unknown[], requests: unknown[] = [existing], fail = "") {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       const body = JSON.parse(String(init.body));
       posts.push([url, body]);
+      if (fail && !url.endsWith("/new")) return new Response(JSON.stringify({ error: fail }), { status: 400 });
       if (url.endsWith("/new")) return new Response(JSON.stringify(opened), { status: 200 });
       return new Response(JSON.stringify({ ...opened, by: body.by, updated: "2026-10-05T10:00:00+00:00", standing: body.producedOn ? "produced" : "open", history: [...opened.history, "2026-10-05: purpose (undecided) -> adequate (CIV 5225)"],
         decisions: { ...opened.decisions, ...body } }), { status: 200 });
     }
-    return new Response(JSON.stringify({ found: true, count: 1, counts: { overdue: 1 }, requests: [existing], kinds, vias: ["email", "mail", "form"], note: "", caveats }), { status: 200 });
+    return new Response(JSON.stringify({ found: true, count: 1, counts: { overdue: 1 }, requests, kinds, vias: ["email", "mail", "form"], note: "", caveats, rule }), { status: 200 });
   }));
 }
 
@@ -71,7 +83,7 @@ describe("RecordsRequestsView", () => {
     expect((posts[0] as unknown[])[1]).toEqual({ receivedOn: "2026-10-02", unit: "Unit 12", via: "email", records: ["membership_list", "minutes"], purpose: "to contact owners about the roof vote", years: [], by: "Manager" });
     expect(await screen.findByText("Records requests (2)")).toBeInTheDocument();
     expect(screen.getByText("The request from Unit 12")).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "timeline" })).toHaveTextContent("Membership list produced by");
+    expect(screen.getByRole("list", { name: "timeline" })).toHaveTextContent("Membership list: jason's computed date, for a person to check");
   });
 
   it("records the decisions through a confirm: adequacy under 5225, a withheld record with its basis, production", async () => {
@@ -107,5 +119,65 @@ describe("RecordsRequestsView", () => {
     expect((posts[1] as unknown[])[1]).toEqual({ by: "Manager", purposeAdequate: true, withheld: [{ record: "minutes", reason: "executive session minutes, CIV 4935" }], producedOn: "2026-10-08", inspectedOrCopies: "copies", feeCents: 1250 });
     expect(await screen.findByText(/Produced 2026-10-08 by copies, fee \$12\.50/)).toBeInTheDocument();
     expect(screen.getAllByText("produced").length).toBeGreaterThan(0);
+  });
+
+  it("recites 5205(f) and (g) beside the fee fields, with jason's reading labeled, and lowers nothing", async () => {
+    stub([]);
+    render(<RecordsRequestsView />);
+    await screen.findByText("Records requests (1)");
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const panel = screen.getByText("What Civil Code 5205 says about the cost").closest("details") as HTMLElement;
+    expect(panel).toHaveTextContent(G);
+    expect(panel).toHaveTextContent(F);
+    expect(panel).not.toHaveTextContent("Enhanced association records means");      // 5200(b) is the statute's definition, not recited here
+    expect(within(panel).getByLabelText("jason's reading")).toHaveTextContent("jason's reading, not the statute's");
+    expect(screen.queryByRole("button", { name: /lower|reduce|cap/i })).toBeNull();
+  });
+
+  it("warns before saving when the redaction figure is above the stated total, and shows the server's refusal with the statute's words", async () => {
+    const posts: unknown[] = [];
+    stub(posts, [existing], `The redaction charge, $250.00, is more than the $200.00 total the stored CIV 5205(g) states per written request. CIV 5205(g) reads: "${G}"`);
+    render(<RecordsRequestsView />);
+    await screen.findByText("Records requests (1)");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await user.clear(screen.getByLabelText(/Fee the member agreed to/));
+    await user.type(screen.getByLabelText(/Fee the member agreed to/), "250");
+    await user.clear(screen.getByLabelText(/Of it, redacting an enhanced record/));
+    await user.type(screen.getByLabelText(/Of it, redacting an enhanced record/), "250");
+    await user.clear(screen.getByLabelText(/Time spent redacting/));
+    await user.type(screen.getByLabelText(/Time spent redacting/), "25");
+    expect(screen.getByRole("alert")).toHaveTextContent("The redaction figure, $250.00, is above the $200.00 total");
+    await user.type(screen.getByLabelText("Decided by"), "Manager");
+    await user.click(screen.getByRole("button", { name: "Record the decisions" }));
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect((posts[0] as unknown[])[1]).toEqual({ by: "Manager", feeCents: 25000, redactionCents: 25000, redactionMinutes: 1500 });
+    expect(await screen.findByText(/CIV 5205\(g\) reads:/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Fee the member agreed to/)).toHaveValue("250");        // the figure is the person's still
+  });
+
+  it("shows a saved fee's warning for counsel, labeled as jason's reading", async () => {
+    stub([], [withFee]);
+    render(<RecordsRequestsView />);
+    await screen.findByText("Records requests (1)");
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const note = screen.getByRole("status");
+    expect(note).toHaveTextContent("Counsel reads this fee");
+    expect(note).toHaveTextContent("so the hourly rate in CIV 5205(g) cannot be checked");
+    expect(note).toHaveTextContent("jason's reading");
+  });
+
+  it("recites 5210(b)(6) and the law it points to beside the membership list's date, labeled as jason's count", async () => {
+    stub([], [{ ...opened, decisions: opened.decisions }]);
+    render(<RecordsRequestsView />);
+    await screen.findByText("Records requests (1)");
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const card = screen.getByText("The membership list's timeframe").closest("section") as HTMLElement;
+    expect(card).toHaveTextContent(L);
+    expect(card).toHaveTextContent("8330. A member may inspect and copy");
+    expect(card).toHaveTextContent("computed for a person to check");
+    expect(screen.getByRole("list", { name: "timeline" })).toHaveTextContent("counsel reads the statute");
+    expect(screen.queryByText("Membership list produced by")).toBeNull();
   });
 });
