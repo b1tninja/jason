@@ -123,8 +123,9 @@ def set_visibility(root: Path, unit: str, entry_id: str, visibility: str, *, by:
 
 
 def confirm_step(root: Path, unit: str, incident: str, step: int, *, shows: Any, by: str, note: str = "") -> dict[str, Any]:
-    """A person's confirmation of one step of a packet: what they say the record shows, who, and when. Replaces that step's
-    earlier confirmation. jason never confirms a step itself."""
+    """A person's confirmation of one step of a packet: what they say the record shows, who, and when. The latest
+    confirmation of a step is the one in force; the one it replaces is kept, with who and when, in ``history`` (the
+    register is append only). jason never confirms a step itself."""
     by = _need_by(by)
     if isinstance(step, bool) or not isinstance(step, int) or not 1 <= step <= STEP_COUNT:
         raise ValueError(f"step is a number from 1 to {STEP_COUNT}")
@@ -137,6 +138,9 @@ def confirm_step(root: Path, unit: str, incident: str, step: int, *, shows: Any,
         saved = _load(path, {})
         saved = saved if isinstance(saved, dict) else {}
         steps = saved.setdefault("steps", {})
+        earlier = steps.get(str(step))
+        if isinstance(earlier, dict):
+            saved.setdefault("history", []).append({"step": step, **earlier, "replaced_by": by, "replaced_at": _now()})
         steps[str(step)] = {"shows": saw, "confirmed_by": by, "confirmed_at": _now()}
         if note.strip():
             saved.setdefault("notes", {})[str(step)] = note.strip()

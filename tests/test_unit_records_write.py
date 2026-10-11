@@ -59,7 +59,7 @@ def test_visibility_changes_one_entry_and_is_logged_and_the_view_follows(tmp_pat
         w.set_visibility(tmp_path, "7", first["id"], "world", by="An Owner")
 
 
-def test_a_confirmation_is_a_person_s_and_replaces_that_step_only(tmp_path):
+def test_a_confirmation_is_a_person_s_and_a_later_one_replaces_it_but_the_first_is_kept(tmp_path):
     one = w.confirm_step(tmp_path, "7", "inc-1", 1, shows=["the faucet is an upgrade"], by="A Manager")
     assert one["confirmed_by"] == "A Manager" and one["confirmed_at"] and one["step"] == 1
     w.confirm_step(tmp_path, "7", "inc-1", 2, shows=["the leak began upstairs"], by="A Manager", note="per the plumber")
@@ -67,6 +67,9 @@ def test_a_confirmation_is_a_person_s_and_replaces_that_step_only(tmp_path):
     saved = json.loads(next(tmp_path.rglob("inc-1.json")).read_text(encoding="utf-8"))
     assert saved["steps"]["1"]["shows"] == ["corrected"] and saved["steps"]["1"]["confirmed_by"] == "A Director"
     assert saved["steps"]["2"]["confirmed_by"] == "A Manager" and saved["notes"] == {"2": "per the plumber"}
+    (kept,) = saved["history"]                                      # the register is append only: the first stays
+    assert kept["step"] == 1 and kept["shows"] == ["the faucet is an upgrade"] and kept["confirmed_by"] == "A Manager"
+    assert kept["replaced_by"] == "A Director" and kept["replaced_at"]
 
 
 @pytest.mark.parametrize("step,shows,by,message", [
