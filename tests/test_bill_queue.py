@@ -148,7 +148,7 @@ def test_an_offline_registry_routes_without_a_store_or_a_client():
 
     c = SimpleNamespace(vendor_portals=lambda: ())
     reg = routing_registry(c, None, "x")
-    assert [s.name for s in reg.sources] == ["smud", "idoxs"]
+    assert [s.name for s in reg.sources] == ["smud", "idoxs", "county-tax"]
     with pytest.raises(AttributeError):
         reg.sources[0].find_cached(SimpleNamespace(amount_cents=1, around=date(2026, 1, 1), window_days=7))
 

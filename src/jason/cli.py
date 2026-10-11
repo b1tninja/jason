@@ -10,14 +10,14 @@ from pathlib import Path
 
 
 def _bill_sources() -> tuple[str, ...]:
-    """The bill sources `--source` accepts: the two utilities, then each vendor portal in the specification."""
+    """The bill sources `--source` accepts: the two utilities, each vendor portal in the specification, then the county tax collector."""
     from jason.community import community as active
     from jason.community.profile import ProfileNotFound
 
     try:
-        return ("smud", "idoxs", *(p.key for p in active().vendor_portals()))
+        return ("smud", "idoxs", *(p.key for p in active().vendor_portals()), "county-tax")
     except ProfileNotFound:      # no community chosen (or a wrong name): `jason use KEY`, `jason cite`, --help still run
-        return ("smud", "idoxs")
+        return ("smud", "idoxs", "county-tax")
 
 
 def _agent(args: argparse.Namespace):

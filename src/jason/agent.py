@@ -923,6 +923,9 @@ class Jason:
                 return self.sync_idoxs()
             if any(p.key == name for p in self.community.vendor_portals()):
                 return self.sync_vendor_portal(name)
+            if name == "county-tax":      # nothing to sync: it reads the receipts and bills a person imported
+                return type("R", (), {"summary": lambda self: "read from the receipts and bills imported "
+                                      "(jason county-tax); nothing to sync"})()
             raise ValueError(f"unknown bill source: {name}")
 
         return run_sync_bills(
@@ -1005,6 +1008,9 @@ class Jason:
             if portal.platform.name == "FIELDPORTALS" and self.credential_configured(VENDOR_PORTAL,
                                                                                      portal_name(portal.key)):
                 sources.append(VendorPortalBillSource(portal, self.settings.payhoa_catalog.parent))
+        from jason.sources.county_tax import CountyTaxBillSource
+
+        sources.append(CountyTaxBillSource(self.settings.payhoa_catalog.parent, self.community))
         return BillSourceRegistry(sources)
 
     def vendor_portal(self, key: str):
