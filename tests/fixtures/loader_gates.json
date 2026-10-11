@@ -440,6 +440,18 @@
   "watchlist": {
    "gate": "p0",
    "why": "the life-safety items with their standing in words"
+  },
+  "work": {
+   "gate": "p2",
+   "why": "the open workflow runs by whose move it is: a run's label, step, role, and dated deadline with its basis, never a subject, item, or name; the offices that open P2 (the loader gates itself)"
+  },
+  "work-definitions": {
+   "gate": "p2",
+   "why": "the catalog of workflows jason has, with drift from their procedures and the statutes their clocks cite; read only, the offices that open P2 (the loader gates itself)"
+  },
+  "work-run": {
+   "gate": "p2",
+   "why": "one run: its steps, evidence addresses, clocks, links, and history by the signed-in accounts that acted; the offices that open P2 (the loader gates itself)"
   }
  }
 }

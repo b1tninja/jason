@@ -938,9 +938,13 @@ EXTRA_LOADERS: dict[str, str] = {
     "control": "jason.web.extra.controls:control",  # ?key=: one control, six bands, with its provision as the documents hold it now; P2
     "control-notices": "jason.web.extra.controls:control_notices",  # ?subject=KIND: the effective rule and the controls waiting or refused, for the one-line notice; read only, P2
     "office-view": "jason.web.extra.office_view:office_view",  # ?office=ROLE (an OfficerRole word; empty: the viewer's own offices): the office's Today bands, a lens for any board member; offices, counts, and titles, never a name; P2
+    "work": "jason.web.extra.work:work",  # ?definition=&role=&due=&state=&mine=1&q=: the open runs, each once, in the group of its most pressing step (yours, others, clock, board), legal dates first; no subject, item, or name in a row; P2
+    "work-run": "jason.web.extra.work:work_run",  # ?definition=&id=: one run (steps, clocks with basis and the statute's words, links, history, changed since); a dry resume, appends nothing; P2
+    "work-definitions": "jason.web.extra.work:work_definitions",  # ?family=&key=&role=&mine=1: the workflows jason has, by family, with drift from their procedures; with key one read whole; read only, P2
 }
 EXTRA_WRITERS: dict[str, str] = {
     "controls": "jason.web.extra.controls:write",  # <control key> {act: propose}: a board item with the provision as evidence, in the signer's name (P2); adopts nothing
+    "work": "jason.web.extra.work:write",  # <definition>/<run id> {act: attest|arrived|skip|reopen|pause|resume|note|cancel|open, step?, record?, reason?, text?, expect?, yes?} and <definition>/start {subject, label, dates, yes?, dryRun?}: the engine's own act in the signer's name (P2); records and decides nothing outward
     "registers": "jason.web.extra.registers:write",
     "life-safety": "jason.web.extra.life_safety:write",  # <deficiency id> {act}: confirm, impairs, cleared, insurer-told, or propose; append only, in the signer's name (P2)
     "bill-investigation": "jason.web.extra.bill_investigation:write",  # <tx> {outcome, doc?, note?}: a person's outcome, append only, in the signer's name; attaches and approves nothing
