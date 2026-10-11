@@ -13,7 +13,7 @@ Today (`#/digest`, [today.md](today.md)) is one landing page for everyone. The s
 A landing page answers "what is mine to do, and what is coming for my office?" The president, the vice president, the secretary, the treasurer, a director, and the manager each need a different first screen. A board member also needs to read the others': the secretary reading what the treasurer is waiting on, a director reading what the president will bring to the next meeting, the president reading the secretary's postings and minutes.
 
 - **President, vice president, secretary, treasurer, director:** open their own landing page by default and any other office's by the lens.
-- **Manager:** opens the manager's landing page by default. Whether a board member may read it is a decision below.
+- **Manager:** opens the manager's landing page by default. Every director and officer may read it too (decided 2026-10-11): directors have visibility into the manager's page and operations.
 - **Administrator (no office):** the owner of the instance; reads the status and setup pages, not an office's page, unless they also hold the office. The dev-only "view as someone" (`POST /auth/act-as`) stays a separate tool for building and checking views, and is not this lens.
 - **Reviewer, counsel, a roster person with no office:** no office view.
 - **Owner:** never.
@@ -95,8 +95,11 @@ Built: `Card`, `DataTable`, `Pill`, `Stat`, `Confirm`, `Command`, `DueDate`, `Ca
 
 ## Decisions for the user
 
-1. **Whether a board member may read the manager's landing page.** Recommended: yes; it is operational work the board oversees, and the data levels are the same.
-2. **Whether the lens is remembered per person** (recommended: only in the URL and the browser, not on the server) or stored with the person.
-3. **Whether the secretary and treasurer may read each other's** (recommended: yes, as every board member reads every office's).
-4. **What replaces the "Screens" column** of the security page's proposed table (recommended: nothing narrows; every board member opens every screen their data levels allow, and the table keeps only "Can sign").
+**Settled 2026-10-11:**
+1. A board member may read the manager's landing page and operations.
+2. The lens lives in the URL and the browser, not on the server.
+3. The secretary and the treasurer may read each other's pages, as every board member reads every office's.
+4. Nothing narrows the "Screens" column: every board member opens every screen their data levels allow, and the security page keeps only "Can sign".
+
+**Still to confirm:**
 5. **Which controls are officer-only** beyond signing and recording the board's decision: the definitions' `role` per step and each approvals kind's signers decide, and the board confirms the list once.
