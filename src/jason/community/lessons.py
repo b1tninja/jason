@@ -1527,6 +1527,74 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED,
            guards=("asspy tests/test_land.py (the first read is the baseline; a later plan or map is an event)",),
            docs=("docs/county-land.md",)),
+    Lesson("console-encoding-stopped-command", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "`jason verify-quotes` stopped with \"'charmap' codec can't encode character '\\u200b'\" when a quotation's "
+           "stored text carried a zero-width space, so the check printed nothing; it ran only with PYTHONIOENCODING=utf-8.",
+           "The Windows console's code page cannot show every character a scan, a web page, or a Google Doc carries, "
+           "and Python's default is to raise on one it cannot encode.",
+           "`jason.cli.main` sets a narrow console's output to print a stand-in for such a character, for every command.",
+           Status.FIXED,
+           guards=("tests/test_cli_output.py::test_a_narrow_console_prints_a_stand_in_for_a_character_it_cannot_show",)),
+    Lesson("doc-tables-written-as-pipes", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "A draft letter to a county office, set on the letterhead with `markdown_doc`, came out with its two comparison "
+           "tables as rows of pipe characters, and every soft-wrapped line of the Markdown as a paragraph of its own (a "
+           "bold line cut in two lost its bold).",
+           "The Docs writer read a small Markdown: one line, one paragraph, and no tables; a table row was written as "
+           "text. Board packets and reports had no tables until then, so nothing showed it.",
+           "`parse(..., tables=True)` folds a pipe table to a marker paragraph that `markdown_doc` swaps for a Docs table: "
+           "the header row bold, shaded, and repeated on each page, the columns sized so no word breaks across lines "
+           "(`column_widths`). The email path keeps rows as text. Markdown for a Doc is still one line per paragraph; "
+           "write it unwrapped.",
+           Status.FIXED,
+           guards=("tests/test_docs_markdown.py::test_tables_fold_to_a_marker_only_when_asked",
+                   "tests/test_docs_markdown.py::test_table_requests_insert_at_the_marker_and_fill_last_cell_first",
+                   "tests/test_docs_markdown.py::test_column_widths_follow_the_text_and_keep_a_floor")),
+    Lesson("quote-check-found-itself", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "A board brief saved under data/reports was checked with `jason verify-quotes` after the passage index was "
+           "rebuilt: every one of its 33 quotations came back FOUND, including words from a fire department notice and "
+           "a City web page that jason does not hold, because the index now held the brief and the check found each "
+           "quotation in the brief itself.",
+           "The index takes jason's own pages, and the check searched every file, the answer's own among them; the hit "
+           "carried the page's warning, but FOUND read as verified.",
+           "`jason verify-quotes FILE` leaves FILE's passages out (`quote_check.check(..., exclude=)`), so the brief "
+           "showed 13 found, 17 not found (the notice and the web page), and 3 altered.",
+           Status.FIXED,
+           guards=("tests/test_quote_check.py::test_the_answers_own_file_is_not_a_source_for_its_quotations",),
+           docs=("docs/mcp.md",)),
+    Lesson("legal-document-number-unread", date(2026, 10, 10), (Area.ONBOARDING,),
+           "A condominium unit whose legal description cites its plan in a deed's own wording (\"... THE CONDOMINIUM "
+           "PLAN FOR ... RECORDED JANUARY 2, 2020, AS DOCUMENT NO. 202001020300\") was left off its association's "
+           "page; the land check (`jason land-check`) found it as a unit the county holds but the page did not.",
+           "The legal-description reader knew book-and-page citations only, and its clause splitter cut \"... BUILDINGS "
+           "1, 2, AND 7, RECORDED ...\" at \"AND 7\", losing the word PLAN before the number.",
+           "A recorder's number written out whole is read, and belongs to the nearest instrument named before it.",
+           Status.FIXED,
+           guards=("asspy tests/test_legal.py::test_a_number_written_out_whole_cites_the_instrument_named_before_it",),
+           docs=("docs/county-land.md",)),
+    Lesson("parcel-line-tiles-blank", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Every county map the reports drew lacked the county's parcel lines: the 82,288 parcel-line tiles cached were "
+           "all transparent, and no page or test noticed. A condominium's common area also drew over its building, "
+           "because the area is its lot with a hole for the building and the hole was filled.",
+           "The tiles were exported from the parcels layer (8), which the county draws as a clear fill with no outline; "
+           "its boundary lines are layer 3. And the drawing treated a polygon's holes as more polygons to fill.",
+           "The tiles come from layer 3 under a new key (the blank file is left unused), checked live to draw lines, and "
+           "`render` fills a polygon's outer ring and clears its holes. A source of map images is checked for drawn "
+           "pixels before it is cached at scale.",
+           Status.FIXED,
+           guards=("asspy tests/test_gis_cache.py::test_a_common_areas_hole_for_its_building_is_left_clear",),
+           docs=("docs/county-land.md",),
+           notes=("No test asserts a live export draws lines (the tests have no county server); "
+                  "a person checks one tile when adding an image source.",)),
+    Lesson("map-render-erased-fills", date(2026, 10, 10), (Area.ONBOARDING,),
+           "Drawing condominium unit footprints as clear outlines over a report's aerial wiped out the parcels' fills "
+           "beneath them: the page showed bare aerial where its homes should have been colored.",
+           "asspy's `gis_cache.render` drew every shape straight onto one layer, so a shape replaced the pixels under it "
+           "instead of blending; a clear or overlapping shape erased what was drawn before it.",
+           "`render` draws each shape on its own tile and blends it onto the layer, so shapes stack as a person expects. "
+           "The report page traces the unit outlines after the drawing in any case.",
+           Status.FIXED,
+           guards=("asspy tests/test_gis_cache.py::test_a_clear_shape_drawn_over_another_does_not_erase_it",),
+           docs=("docs/county-land.md",)),
     Lesson("name-tie-read-two-words", date(2026, 10, 10), (Area.ONBOARDING,),
            "The name tie compared only a subdivision name's first two words with the directory. A three-word name that is an "
            "association's own (\"SAMPLE STREET OAKS\") tied nothing, and one tied the wrong association (a \"SAN JUAN "
@@ -2385,6 +2453,36 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-resource-loader-must-not-abort-on-unmount", date(2026, 10, 11), (Area.REPOSITORY,),
+           "In the album, marking a start re-keyed every row below it, so every in-flight page picture was aborted and asked "
+           "for again; with a slow server the last pages never finished.",
+           "The loader aborted a request the moment its cell detached, and rows were keyed by index.",
+           "A detached picture is dropped at the end of the commit, and only if nothing asked for it again.",
+           Status.FIXED, guards=("ui/src/views/splitwindow.test.ts (the re-key test)", "e2e/tests/fixtures.ts (the repeat ceiling)"),
+           docs=("docs/web-ui.md",)),
+    Lesson("a-dev-proxy-must-carry-every-route-the-page-links-to", date(2026, 10, 11), (Area.REPOSITORY,),
+           "Under npm run dev the Sign in with Google link landed on the dev server's own page, so sign-in could never "
+           "finish, and each retry was a full reload that aborted every read.",
+           "Vite proxied only /api.",
+           "/auth is proxied too, with the browser's Host kept so the write guard's Origin check passes.",
+           Status.FIXED, guards=("e2e/tests/vite.spec.ts",), docs=("docs/web-ui.md",),
+           notes=("A person's step: the Google client must list http://localhost:5173/auth/google/callback for a dev run "
+                  "through Vite.",)),
+    Lesson("a-literal-array-or-object-as-a-hook-argument", date(2026, 10, 11), (Area.REPOSITORY,),
+           "useSession([]) made a new array every render, so anything depending on the people list changed identity each "
+           "render and could refetch forever.",
+           "An object or array literal is a new value every render.",
+           "A frozen module constant (NO_PEOPLE) replaced the literal at four call sites.",
+           Status.OPEN, guards=("ui/src/lib/session.ts",), docs=("docs/web-ui.md",),
+           notes=("Open: no automated guard; a lint rule would stop it.",)),
+    Lesson("a-request-storm-is-invisible-to-jsdom", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A page stuck loading with hundreds of repeated requests passed every jsdom test.",
+           "jsdom does not run the browser's request timing, aborts or sign-in redirects.",
+           "A Playwright suite with sign-in bypassed in a test-only launcher fails on any console error, 5xx, request "
+           "pending over 3 seconds, or a GET repeated past a ceiling.",
+           Status.FIXED, guards=("e2e/tests/fixtures.ts", "e2e/serve_e2e.py"), docs=("docs/web-ui.md",),
+           notes=("Open: the suite is not in CI, and one early HTTP 500 with an undo that did not take effect was seen once "
+                  "and not reproduced.",)),
     Lesson("library-intake-reads-the-text-layer-only", date(2026, 10, 10), (Area.ONBOARDING,),
            "A part filed to the library from the splitter is invisible to text search until its scan is read, and a request "
            "must never wait on OCR.",
@@ -3289,6 +3387,54 @@ LESSONS: tuple[Lesson, ...] = (
            Status.FIXED, guards=("tests/test_index_sources.py::test_a_build_refuses_a_search_scope_instead_of_ignoring_it",),
            docs=("docs/cli.md",),
            notes=("Unload the embedding model after a build (`ollama stop qwen3-embedding:8b`): a loaded 12 GB model can crash numpy in a test run.",)),
+    Lesson("library-read-payhoa-only", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "`jason library` listed only the PayHOA catalog, so a record in Drive with no PayHOA copy (notices, forms, "
+           "reports, letters, most minutes and agendas) never entered the library, the index, or the classification. Drive "
+           "roots also matched a folder name at any depth, which put another manager's archive under a path rule.",
+           "The library was built when the PayHOA Document Library was treated as the association's record; Drive was "
+           "only where jason looked for a file's bytes by name.",
+           "The library reads the profile's Drive roots first and records a PayHOA file as a copy on its Drive row (by "
+           "checksum, else name and size, else name for a Google Doc). A root matches only at the top of My Drive and can "
+           "be marked confidential. `library_row` and `library_file` resolve an old `library:<PayHOA id>`, a path, or a "
+           "Drive row, so saved evidence and segments keep their document and level. Still open: retiring the hardcoded "
+           "mirror folders, fetching the Drive rows' bytes (`--fetch-drive`) so their text is read, and the board "
+           "confirming which roots are confidential.",
+           Status.FIXED,
+           guards=("tests/test_library_drive.py",),
+           docs=("docs/drive-holdings.md",)),
+    Lesson("sync-rules-publish-outside-member-set", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "Checked against the records the association provides members, the PayHOA Document Library held far more: "
+           "bank statements, owner histories, and board files stored there not public, and public deeds, maps, plans, "
+           "public reports, resolutions, and full insurance policies that the sync rules publish.",
+           "The sync rules were written as which Drive folders mirror into PayHOA. Nothing tied a `SyncRule` to the kinds "
+           "of record the association provides members, and PayHOA's upload has no audience setting.",
+           "`jason member-library` checks the library both ways, lists the rules that publish outside the member set, and "
+           "holds their files out of the publish plan. Open until the board settles the member set (whether recorded "
+           "instruments and plans are in it), the profile's rules are trimmed to match, and a test fails any rule whose "
+           "files classify outside `member_kinds()`. PayHOA's Email Attachments folder is how a broadcast sends its "
+           "files; the check should treat it as sending, not storage.",
+           Status.OPEN,
+           docs=("docs/drive-sync-rules.md",)),
+    Lesson("redacted-name-is-not-a-redaction", date(2026, 10, 11), (Area.DOCUMENTS,),
+           "The library held six treasurer's reports confidential whose names say they are the redacted member copies, and "
+           "PayHOA shows them to members. The build plan read this as a misclassification and asked for a rule that a "
+           "redacted copy is not confidential. Rendered, most of the six show the receivables aging with every unit and its "
+           "past-due balance in plain view (one is the same file filed twice); in another the bars cover the owners but one "
+           "unit's row was left. Across the other redacted copies the aging was blacked out and the text agreed.",
+           "Confidentiality came from the text (`content.private_content`: the aging lists units, Civil Code 5215(a)(4), "
+           "(a)(5)(B)), not the kind. Redaction was done by hand before upload, and nothing compared a file's name, its "
+           "text, and PayHOA's public flag, so a copy the redaction missed was published as if it were done.",
+           "A name that says redacted never clears a file: the text, the kind, and the folder (a Confidential folder, an "
+           "executive session) each still hold it back (`content.redacted_copy`). A redacted copy is shareable only when no "
+           "rule holds it back. `content.published_confidential` lists each confidential file PayHOA shows to members, a "
+           "failed redaction named as one (`failed_redaction`); `jason library` prints them and `library_status` returns "
+           "them as `publishedConfidential`. PayHOA's public flag is evidence, never a clearance. Unpublishing or replacing "
+           "a listed file is a person's act in PayHOA.",
+           Status.FIXED,
+           guards=("tests/test_library.py::test_a_redacted_copy_whose_text_carries_no_member_detail_is_not_confidential",
+                   "tests/test_library.py::test_the_unredacted_report_of_the_same_kind_is_still_confidential",
+                   "tests/test_library.py::test_a_name_that_says_redacted_never_clears_what_the_text_kind_or_folder_holds_back",
+                   "tests/test_library.py::test_a_confidential_file_the_catalog_shows_to_members_is_a_finding_and_the_flag_stands")),
 )
 
 

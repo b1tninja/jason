@@ -438,7 +438,11 @@ PROCEDURES: tuple[Procedure, ...] = (
         "changes: so the current text, the conflicts, and the duties stay true, and every answer a person gives is kept.",
         (
             Step("Bring the document in: the library and the Drive catalog.", command="jason library; jason drive",
-                 check="it has a kind; an unclassified file becomes a question"),
+                 check="it has a kind; an unclassified file becomes a question; no confidential file is shown to members "
+                       "in PayHOA (jason library lists each, library_status publishedConfidential): a copy named "
+                       "redacted whose text still carries member detail is a failed redaction, and a person unpublishes "
+                       "or replaces it",
+                 lessons=("redacted-name-is-not-a-redaction",)),
             Step("Establish its standing: a draft, adopted (minutes, resolution), or recorded (the county index, the "
                  "recorded copy with its stamp). Read the recorded copy, not a summary of it.",
                  command="jason-mcp recorder_search / recorder_detail; jason records-request",
@@ -732,6 +736,7 @@ PROCEDURES: tuple[Procedure, ...] = (
                  "proposes slots and fills none.",
                  command="jason records --read KEY; jason records --read KEY --yes --by NAME; "
                          "jason records --split KEY (the proposal, then --part SEGMENT=SLOT --yes --by NAME); "
+                         "after a console UI change run the browser suite (cd e2e; npm run e2e; docs/web-ui.md); "
                          "for a long combined scan, jason split FILE (mark first pages, review, --apply --yes --by NAME; with "
                          "--filing library run jason worker --once, then check jason jobs for failed OCR jobs: 'no OCR engine' "
                          "means install one, not retry)",
