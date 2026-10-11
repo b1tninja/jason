@@ -4,12 +4,14 @@ import { useMediaQuery } from "../lib/useMediaQuery";
 import { useSession } from "../lib/session";
 import { PageGrid, type GridApi } from "./PageGrid";
 import { ComparePane, KeyHelp, PageMenu, ZOOMS, Figure, type Zoom } from "./SplitPanes";
+import { FlagsDialog, WalkBar } from "./SplitFlags";
 import { SegmentList, itemsOf } from "./SplitRail";
 import { SplitReview } from "./SplitReview";
 import type { SplitBackend } from "./splitApi";
 import { FactsCache } from "./splitFacts";
 import {
-  acceptable, everyNth, marksIn, nextMark, sizeText, splitAtRestarts, splitOnBlanks, startsOf, type BlankKeep, type SegmentRow, type SessionAnswer, type Suggestion,
+  acceptable, everyNth, isTurn, marksIn, nextMark, sidewaysIn, sizeText, splitAtRestarts, splitOnBlanks, startsOf, type BlankKeep, type FlagsAnswer, type SegmentFlags,
+  type SegmentRow, type SessionAnswer, type Suggestion, type Turn, type Turns,
 } from "./splitModel";
 import { SplitStore, type Snapshot } from "./splitStore";
 import { ThumbLoader } from "./splitThumbs";
@@ -94,8 +96,32 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
   const [sheet, setSheet] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [drop, setDrop] = useState<number[]>(() => { try { return JSON.parse(sessionStorage.getItem(`jason-split-drop-${id}`) ?? "[]"); } catch { return []; } });
+  // pages to turn in the new files only (the original and the pictures are never changed); kept for the tab like the pages to leave out
+  const [turns, setTurnsState] = useState<Turns>(() => {
+    try {
+      const raw = JSON.parse(sessionStorage.getItem(`jason-split-turns-${id}`) ?? "{}") as Record<string, unknown>;
+      return Object.fromEntries(Object.entries(raw).filter(([k, v]) => Number.isInteger(Number(k)) && isTurn(v)).map(([k, v]) => [Number(k), v as Turn]));
+    } catch { return {}; }
+  });
+  const setTurns = useCallback((t: Turns) => {
+    setTurnsState(t);
+    try { sessionStorage.setItem(`jason-split-turns-${id}`, JSON.stringify(t)); } catch { /* storage blocked */ }
+  }, [id]);
+  const setTurnOf = useCallback((page: number, t: Turn | null) => {
+    setTurnsState((cur) => {
+      const next: Record<number, Turn> = { ...cur };
+      if (t === null) delete next[page]; else next[page] = t;
+      try { sessionStorage.setItem(`jason-split-turns-${id}`, JSON.stringify(next)); } catch { /* storage blocked */ }
+      return next;
+    });
+  }, [id]);
   const [showRejected, setShowRejected] = useState(false);
   const [viewTo, setViewTo] = useState<number | undefined>(undefined);
+  // the server's pre-review flags of each segment (read again whenever the saved draft or the measured facts change)
+  const [flags, setFlags] = useState<FlagsAnswer | null>(null);
+  const [flagView, setFlagView] = useState<{ flags: SegmentFlags; no: number } | null>(null);
+  const [walk, setWalk] = useState<{ pages: number[]; at: number; why: string } | null>(null);
+  const [sidewaysSeen, setSidewaysSeen] = useState<number | null>(null);
   const gridRef = useRef<GridApi>(null);
   const stripRef = useRef<GridApi>(null);
   const goRef = useRef<HTMLInputElement>(null);
@@ -134,6 +160,17 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
     return () => window.removeEventListener("beforeunload", on);
   }, [snap.pending, snap.save]);
 
+  // flags are read once the draft is saved and again when more facts arrive; a failure only leaves them out (they are readings, not needs)
+  const settled = snap.save === "saved" && snap.pending === 0;
+  useEffect(() => {
+    if (!settled || session.status === "declined") return;
+    let live = true;
+    const t = setTimeout(() => { backend.session(id, { flags: true }).then((a) => { if (live) setFlags(a.flags ?? null); }, () => undefined); }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [backend, id, settled, snap.version, factsVersion, session.status]);
+  const flagsByRange = useMemo(() => new Map((flags?.segments ?? []).map((f) => [`${f.level}:${f.start}-${f.end}`, f])), [flags]);
+  const flagsOf = useCallback((s: SegmentRow) => flagsByRange.get(`${s.level}:${s.start}-${s.end}`), [flagsByRange]);
+
   const segRows: SegmentRow[] = useMemo(() => {
     const server = new Map(session.segments.map((s) => [s.start, s]));
     return snap.segs.map((s) => ({ key: s.key, path: s.key, start: s.start, end: s.end, pages: s.end - s.start + 1, level: s.level, parent: "", source: s.start === 1 ? "first" : server.get(s.start)?.source ?? "person", labels: server.get(s.start)?.labels ?? {} }));
@@ -144,7 +181,22 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
   const openSug = session.suggestions.filter((s) => s.state === "open");
   const high = useMemo(() => acceptable(session.suggestions, 0.85), [session.suggestions]);
   const medium = useMemo(() => acceptable(session.suggestions, 0.6), [session.suggestions]);
-  const items = useMemo(() => itemsOf(segRows, session.suggestions, showRejected), [segRows, session.suggestions, showRejected]);
+  const items = useMemo(() => itemsOf(segRows, session.suggestions, showRejected, flagsOf), [segRows, session.suggestions, showRejected, flagsOf]);
+  const flaggedTop = useMemo(() => (flags?.segments ?? []).filter((f) => f.level === 0 && f.flagged).length, [flags]);
+  const startOfKey = useCallback((key: string) => flags?.segments.find((f) => f.segment === key)?.start ?? null, [flags]);
+  const onFlags = useCallback((_s: SegmentRow, no: number, f: SegmentFlags) => setFlagView({ flags: f, no }), []);
+  const startWalk = useCallback((pages: number[], why: string) => {
+    if (!pages.length) return;
+    setReviewing(false); setWalk({ pages, at: 0, why }); setFocus(pages[0]); setViewTo(pages[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const stepWalk = (d: 1 | -1) => {
+    if (!walk) return;
+    const at = Math.max(0, Math.min(walk.pages.length - 1, walk.at + d));
+    setWalk({ ...walk, at });
+    goTo(walk.pages[at], false);
+    setViewTo(walk.pages[at]);
+  };
   const segItems = useMemo(() => items.filter((i) => i.kind === "seg"), [items]);
   const sugItems = useMemo(() => items.filter((i) => i.kind === "sug"), [items]);
   const marks = useMemo(() => marksIn(snap.starts, session.suggestions), [snap.starts, session.suggestions]);
@@ -251,13 +303,13 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
     else setMessage(`This file has ${pages} pages.`);
   };
 
-  const common = { count: pages, snap, facts, loader, focus, selection, confidential, onMenu, onMove, onFocusPage };
+  const common = { count: pages, snap, facts, loader, focus, selection, confidential, turns, onMenu, onMove, onFocusPage };
   const prevPage = focus > 1 ? focus - 1 : null;
   const prevSegFirst = (() => { const at = startOf(focus); if (at <= 1) return null; return startOf(at - 1); })();
   const rail = (
     <div className="split-rail-body">
       <h2>Segments ({topCount}{snap.segs.length > topCount ? `, ${snap.segs.length - topCount} nested` : ""})</h2>
-      <SegmentList items={segItems} loader={loader} tall={phone} compact readOnly={readOnly} confidential={confidential} label="Segments" height={300} currentPage={focus} scrollToPage={viewTo}
+      <SegmentList items={segItems} loader={loader} tall={phone} compact flagLine onFlags={onFlags} readOnly={readOnly} confidential={confidential} label="Segments" height={300} currentPage={focus} scrollToPage={viewTo}
         onGo={(p) => goTo(p, false)} onRemove={(p) => store.unmark([p])} onLevel={(p, l) => store.setLevel(p, l)} onTitle={(p, t) => store.label(p, "title", t)}
         onAccept={(i) => store.accept([i])} onReject={(i) => store.reject([i])} onWhy={(s) => setMenu(s.page)} />
       <h2>Suggestions ({openSug.length} open)</h2>
@@ -278,6 +330,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
       <div className="stack split-view">
         <ScreenHeader title="Split document" summary={label} />
         <SplitReview backend={backend} id={id} by={by} loader={loader} facts={facts} status={session.status} drop={drop} setDrop={setDrop} confidential={confidential}
+          turns={turns} setTurns={setTurns} onReviewPages={startWalk}
           onBack={() => setReviewing(false)} onDone={() => { void store.reload(); }} onRename={async (p, t) => { store.label(p, "title", t); await store.idle(); }} />
       </div>
     );
@@ -290,6 +343,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
       {backend.demo && <p className="notice" role="note"><Badge tone="warn" glyph="info">Demo</Badge> Made-up pages, kept in this tab only; reload to start over. <a href="#/setup/split">Back to the splitter</a></p>}
       <p className="split-counts" aria-label="Draft summary">
         <strong>{pages} pages</strong> · <span role="status" aria-live="polite" data-save={snap.save}>{saveWords}</span> · {topCount} {topCount === 1 ? "segment" : "segments"} · suggestions: {openSug.length} open
+        {flags && flaggedTop > 0 && <> · <span data-flagged={flaggedTop}>flags: {flaggedTop} {flaggedTop === 1 ? "segment" : "segments"} flagged</span></>}
+        {Object.keys(turns).length > 0 && <> · <span>{Object.keys(turns).length} {Object.keys(turns).length === 1 ? "page" : "pages"} to turn</span></>}
         {confidential && <> · <Badge tone="warn" glyph="file-lock">Confidential</Badge></>}
         {session.status !== "draft" && <> · <Badge tone="neutral">{session.status}</Badge></>}
       </p>
@@ -301,6 +356,9 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
       {readOnly && <p className="notice notice-warn" role="note">This split is {session.status}. It can be looked at but not changed.</p>}
       {(prog.pending > 0 || facts.failed) && <p className="muted" role="status">{facts.failed ? `Page facts could not be read: ${facts.failed}` : `Page facts are still being measured (${prog.known - prog.pending} of ${pages} pages ready).`}</p>}
       {session.notes.length > 0 && <ul className="muted split-notes">{session.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+
+      {walk && <WalkBar pages={walk.pages} at={walk.at} why={walk.why} isStart={snap.starts.has(walk.pages[walk.at])} readOnly={readOnly}
+        onStep={stepWalk} onMark={(p) => store.mark([p])} onDone={() => setWalk(null)} />}
 
       <div className="split-toolbar" role="toolbar" aria-label="Splitter controls">
         {phone ? (
@@ -342,6 +400,14 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
             <h3>Page-number restarts</h3>
             <button type="button" disabled={loadingFacts} onClick={findRestarts}>Find where numbering restarts at 1</button>
             {restarts && <div role="status"><p>{restarts.length} pages restart at 1 and are not starts yet.</p><button type="button" disabled={readOnly || restarts.length === 0} onClick={() => { store.mark(restarts); setRestarts(null); }}>Mark {restarts.length} starts</button></div>}
+            <h3>Sideways pages</h3>
+            <button type="button" disabled={loadingFacts} onClick={async () => { await readAll(); setSidewaysSeen(sidewaysIn(facts.all()).length); }}>Find sideways pages</button>
+            {sidewaysSeen !== null && (
+              <div role="status">
+                <p>{sidewaysSeen === 0 ? "No page is measured sideways. A scan with no text layer is never measured." : `${sidewaysSeen} ${sidewaysSeen === 1 ? "page is" : "pages are"} sideways. Turning is done in the new files only; the original is not changed.`}</p>
+                <button type="button" disabled={readOnly || sidewaysSeen === 0} onClick={() => setTurns({ ...turns, ...Object.fromEntries(sidewaysIn(facts.all()).map((x) => [x.page, "fix" as Turn])) })}>Fix all {sidewaysSeen} sideways {sidewaysSeen === 1 ? "page" : "pages"}</button>
+              </div>
+            )}
             <h3>Clear</h3>
             <Confirm label="Clear" summary={<p>Remove all {snap.starts.size - 1} of your starts? Page 1 stays. You can undo this.</p>} onConfirm={() => store.clear()} busy={readOnly}>Clear all my marks</Confirm>
           </div>
@@ -365,7 +431,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
             </div>
           )}
           {view === "list" && (
-            <SegmentList items={items} loader={loader} tall={phone} readOnly={readOnly} confidential={confidential} label="Segments and suggested starts" height={560} currentPage={focus} scrollToPage={viewTo}
+            <SegmentList items={items} loader={loader} tall={phone} flagLine onFlags={onFlags} readOnly={readOnly} confidential={confidential} label="Segments and suggested starts" height={560} currentPage={focus} scrollToPage={viewTo}
               onGo={(p) => { setFocus(p); setViewTo(p); }} onRemove={(p) => store.unmark([p])} onLevel={(p, l) => store.setLevel(p, l)} onTitle={(p, t) => store.label(p, "title", t)}
               onAccept={(i) => store.accept([i])} onReject={(i) => store.reject([i])} onWhy={(s) => setMenu(s.page)} />
           )}
@@ -393,10 +459,18 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
           mark: () => store.mark([menu]), unmark: () => store.unmark([menu]), nest: () => (snap.starts.has(menu) ? store.setLevel(menu, 1) : store.mark([menu], 1)),
           level: (l) => store.setLevel(menu, l), larger: () => { setFocus(menu); setCompare(true); }, accept: () => menuSug && store.accept([menuSug.id]), reject: () => menuSug && store.reject([menuSug.id]),
           retry: () => loader.retry(menu), everyNth: (n) => store.range(lo, hi, n), markEach: () => store.mark(Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)),
+          fact: facts.get(menu), turn: turns[menu], setTurn: (t) => setTurnOf(menu, t),
           mergeSelection: () => store.unmark(Array.from({ length: hi - lo }, (_, i) => lo + 1 + i)), close: () => { const m = menu; setMenu(null); requestAnimationFrame(() => active()?.focusPage(m)); },
         }} />
       )}
       {help && <KeyHelp onClose={() => setHelp(false)} />}
+      {flagView && (
+        <FlagsDialog flags={flagView.flags} no={flagView.no} caveats={flags?.caveats ?? []} a={{
+          readOnly, go: (p) => { setFocus(p); setViewTo(p); active()?.scrollToPage(p, true); }, walk: startWalk,
+          fixSideways: (pages) => setTurns({ ...turns, ...Object.fromEntries(pages.map((p) => [p, "fix" as Turn])) }),
+          segStart: startOfKey, close: () => setFlagView(null),
+        }} />
+      )}
     </div>
   );
 }

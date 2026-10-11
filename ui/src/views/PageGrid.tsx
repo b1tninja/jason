@@ -1,7 +1,7 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Glyph } from "../components/Glyph";
 import type { FactsCache } from "./splitFacts";
-import { cellLabel, lqipUrl, stateWord, type PageFact, type Size, type Suggestion } from "./splitModel";
+import { cellLabel, lqipUrl, stateWord, turnWord, type PageFact, type Size, type Suggestion, type Turn, type Turns } from "./splitModel";
 import type { Snapshot } from "./splitStore";
 import type { ThumbLoader } from "./splitThumbs";
 import {
@@ -50,6 +50,8 @@ export interface PageGridProps {
   focus: number;
   selection: { a: number; b: number } | null;
   confidential: boolean;
+  /** pages a person chose to turn in the new files (shown on the cell; the picture is the original) */
+  turns?: Turns;
   onActivate(page: number, shift: boolean): void;
   onMenu(page: number): void;
   onMove(from: number, to: number): void;
@@ -66,10 +68,10 @@ function bandWord(s: Suggestion | undefined): string { return s ? String(s.band)
 
 interface CellProps {
   page: number; f: PageFact | undefined; start: number; no: number; sug: Suggestion | undefined; selected: boolean; focused: boolean;
-  w: number; h: number; sizes: string; confidential: boolean; loader: ThumbLoader; variant: Variant; readOnly: boolean;
+  w: number; h: number; sizes: string; confidential: boolean; loader: ThumbLoader; variant: Variant; readOnly: boolean; turn: Turn | undefined;
 }
 
-const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, focused, w, h, sizes, confidential, loader, variant, readOnly }: CellProps) {
+const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, focused, w, h, sizes, confidential, loader, variant, readOnly, turn }: CellProps) {
   const img = useRef<HTMLImageElement>(null);
   const note = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -83,7 +85,7 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
   const state = stateWord(f);
   const isStart = start >= 0;
   const open = !!sug && sug.state === "open" && !isStart;
-  const label = cellLabel(page, f, start, no, open ? sug : undefined, confidential);
+  const label = cellLabel(page, f, start, no, open ? sug : undefined, confidential, turn);
   return (
     <div role="gridcell" aria-selected={selected} className="split-cell" data-cell="" data-page={page} data-variant={variant}
       data-start={isStart ? (start > 0 ? "nested" : "top") : undefined} data-sug={open ? bandWord(sug) : undefined} data-band={no % 2} data-selected={selected || undefined}
@@ -95,9 +97,13 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
         </span>
         <span className="split-cell-foot" aria-hidden="true">
           <span className="split-cell-n">{page}</span>
-          {variant !== "strip" && state !== "content" && state !== "not measured yet" && (
+          {variant !== "strip" && f?.sideways && (
+            <span className="split-cell-state split-cell-turn" data-sideways=""><Glyph name="refresh-cw" size={12} /> {turn !== undefined ? `Sideways, ${turnWord(turn, f.fix)}` : "Sideways"}</span>
+          )}
+          {variant !== "strip" && !f?.sideways && state !== "content" && state !== "not measured yet" && (
             <span className="split-cell-state"><Glyph name={f?.blank === "blank" ? "file-minus" : f?.blank === "marked" ? "pencil" : "scan-line"} size={12} /> {state.startsWith("no text") ? "No text" : state === "blank" ? "Blank" : state === "marked" ? "Marked" : state}</span>
           )}
+          {variant !== "strip" && !f?.sideways && turn !== undefined && <span className="split-cell-state split-cell-turn" data-turned=""><Glyph name="refresh-cw" size={12} /> {turnWord(turn, f?.fix)}</span>}
           {variant !== "strip" && no > 0 && <span className="split-cell-seg">S{no}</span>}
         </span>
         {variant !== "strip" && <span className="split-cell-note" ref={note} aria-hidden="true" />}
@@ -372,7 +378,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       cells.push(
         <PageCell key={page} page={page} f={facts.get(page)} start={snap.starts.has(page) ? snap.starts.get(page)! : -1} no={snap.docNo[page] ?? 0}
           sug={snap.sugByPage.get(page)} selected={!!sel && page >= sel.lo && page <= sel.hi} focused={page === focus} w={cw} h={ch} sizes={sizes}
-          confidential={confidential} loader={loader} variant={variant} readOnly={snap.readOnly} />,
+          confidential={confidential} loader={loader} variant={variant} readOnly={snap.readOnly} turn={p.turns?.[page]} />,
       );
     }
     out.push(axis === "y"

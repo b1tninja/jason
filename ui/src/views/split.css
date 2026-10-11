@@ -173,3 +173,44 @@
   .split-keys > div { grid-template-columns: 1fr; }
   .split-row-acts { max-width: 7rem; }
 }
+
+/* flags (docs/pdf-splitter.md, 9.5): a glyph and words each, never a colour alone; a reading, not a decision */
+.split-row-item[data-flagline] { flex-wrap: wrap; align-content: center; row-gap: 2px; }
+.split-row-item[data-flagline] .split-row-main { flex: 1 1 0; }
+.split-flags { flex: 1 0 100%; height: 28px; display: flex; align-items: center; gap: .35rem; overflow: hidden; white-space: nowrap; font-size: .75rem; min-width: 0; }
+.split-flag { display: inline-flex; align-items: center; gap: .25rem; padding: 0 .4rem; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--rule); border-radius: 999px; background: var(--paper); color: var(--ink); }
+.split-flag[data-flag="mayHoldMore"] { border-style: dashed; border-color: var(--accent); }
+.split-flag[data-flag="overLimit"], .split-flag[data-flag="slotFilled"] { border-width: 2px; }
+.split-flag-more { flex: none; padding: 0 .45rem; min-height: 24px; font-size: .72rem; }
+.split-flags-dialog ul { gap: .6rem; }
+.split-flag-item { border-left: 3px solid var(--rule); padding-left: .6rem; display: grid; gap: .3rem; }
+.split-flag-item[data-flag="mayHoldMore"] { border-left-style: dashed; border-left-color: var(--accent); }
+.split-flag-item p { margin: 0; }
+.split-flag-item .row button { min-height: 36px; width: auto; }
+.split-walk { display: grid; gap: .4rem; border: 1px solid var(--accent); border-radius: 8px; padding: .5rem .75rem; background: var(--panel); }
+.split-walk p { margin: 0; }
+.split-cell-turn { color: var(--ink); font-weight: 600; }
+.split-cell-turn[data-sideways] { text-decoration: underline dotted; text-underline-offset: 2px; }
+.split-menu-facts { margin: 0; }
+.split-menu li > button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 650; }
+
+/* the review: where the files go, what is flagged, which pages turn */
+.split-filing { border: 1px solid var(--rule); border-radius: 8px; padding: .6rem .75rem; display: grid; gap: .4rem; background: var(--panel); min-width: 0; }
+.split-filing legend { padding: 0 .35rem; font-weight: 650; }
+.split-filing > * { margin: 0; }
+.split-filing-opts { display: grid; gap: .35rem; }
+.split-filing-opt { display: flex; gap: .5rem; align-items: flex-start; min-height: 32px; }
+.split-filing-opt input { margin-top: .25rem; }
+.split-action { display: block; }
+.split-turned { display: block; margin-top: .2rem; font-size: .85rem; }
+.split-part-filing { display: block; margin-top: .35rem; }
+.split-part-filing select { max-width: 100%; }
+.split-flag-list { list-style: none; margin: .4rem 0 0; padding: 0; display: grid; gap: .3rem; font-size: .85rem; }
+.split-flag-list li { padding-left: .5rem; border-left: 3px solid var(--rule); }
+.split-flag-list li[data-flag="mayHoldMore"] { border-left-style: dashed; border-left-color: var(--accent); }
+.split-flag-list button { padding: .1rem .5rem; font-size: .8rem; }
+.split-plan { list-style: none; margin: 0; padding: .5rem .75rem; display: grid; gap: .25rem; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.split-turn-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+.split-turn-list select { min-width: 12rem; }
+.split-turn-page { min-width: 16rem; }
+@media (pointer: coarse) { .split-walk button, .split-flag-item .row button, .split-flag-list button { min-height: 44px; } }

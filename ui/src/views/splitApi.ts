@@ -16,7 +16,7 @@ export interface SplitBackend {
   readonly demo: boolean;
   thumbUrl(id: string, page: number, size: Size): string;
   list(): Promise<ListAnswer>;
-  session(id: string, q?: { facts?: [number, number]; review?: boolean }): Promise<SessionAnswer>;
+  session(id: string, q?: { facts?: [number, number]; review?: boolean; flags?: boolean }): Promise<SessionAnswer>;
   act(id: string, body: ActBody): Promise<AnyAnswer>;
   open(ref: OpenRef, dryRun: boolean, by?: string): Promise<OpenAnswer>;
 }
@@ -29,6 +29,7 @@ export const realBackend: SplitBackend = {
     const p = new URLSearchParams({ id });
     if (q.facts) p.set("facts", `${q.facts[0]}-${q.facts[1]}`);
     if (q.review) p.set("review", "1");
+    if (q.flags) p.set("flags", "1");
     return getJson<SessionAnswer>(`/api/split-session?${p}`);
   },
   act: (id, body) => postJson<AnyAnswer>(`/api/write/split/${encodeURIComponent(id)}`, body),

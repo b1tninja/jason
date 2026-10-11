@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "../components";
 import { Glyph } from "../components/Glyph";
 import type { FactsCache } from "./splitFacts";
-import { BAND_GLYPH, pageAlt, stateWord, type Size, type Suggestion } from "./splitModel";
+import { BAND_GLYPH, TURN_DEGREES, pageAlt, sidewaysWords, stateWord, turnWord, type PageFact, type Size, type Suggestion, type Turn } from "./splitModel";
 import type { ThumbLoader } from "./splitThumbs";
 
 /** The compare and zoom pane, and the page menu (docs/pdf-splitter.md, sections 5.2 and 5.3). */
@@ -63,6 +63,8 @@ export interface MenuActions {
   isStart: boolean; first: boolean; readOnly: boolean; sug: Suggestion | undefined; selectionSize: number; canNest: boolean; nested: boolean;
   mark(): void; unmark(): void; nest(): void; level(l: number): void; larger(): void; accept(): void; reject(): void; retry(): void;
   everyNth(n: number): void; markEach(): void; mergeSelection(): void; close(): void;
+  /** the page's measured facts, the turn a person chose for it (applied in the new files only), and a way to set or clear it */
+  fact?: PageFact; turn?: Turn; setTurn(t: Turn | null): void;
 }
 
 /** The page menu: a long press, a right click, or `L`. A sheet, not a pop-up at the pointer, so a thumb reaches it. */
@@ -78,6 +80,12 @@ export function PageMenu({ page, a }: { page: number; a: MenuActions }) {
       <div ref={menu} role="dialog" aria-label={`Page ${page}`} className="split-menu" aria-modal="true">
         <h2>Page {page}</h2>
         {a.first && <p className="muted"><Glyph name="lock" size={12} /> The first page always starts a segment.</p>}
+        {a.fact && !a.fact.pending && (
+          <p className="muted split-menu-facts" data-sideways={a.fact.sideways || undefined}>
+            {a.fact.sideways ? <><Glyph name="refresh-cw" size={12} /> {sidewaysWords(a.fact)}.</> : a.fact.has_text && a.fact.turn === 0 ? "Its text is upright." : a.fact.has_text ? "Its text was not read well enough to say which way up it is." : a.fact.blank === "blank" ? "" : "No text layer: nothing was measured, so it is never called sideways."}
+            {a.fact.orientation ? ` Drawn ${a.fact.orientation}.` : ""}
+          </p>
+        )}
         <ul>
           {!a.first && !a.readOnly && !a.isStart && <li><button type="button" onClick={done(a.mark)}>Starts a segment</button></li>}
           {!a.first && !a.readOnly && a.canNest && !a.nested && <li><button type="button" onClick={done(a.nest)}>{a.isStart ? "Make this start nested (inside the one before)" : "Starts a segment inside this one"}</button></li>}
@@ -88,6 +96,9 @@ export function PageMenu({ page, a }: { page: number; a: MenuActions }) {
           {a.sug && <li><button type="button" aria-expanded={why} onClick={() => setWhy(!why)}>Why was this suggested?</button></li>}
           {a.sug && why && <li className="split-menu-why"><Badge tone="neutral">{`${a.sug.band} ${BAND_GLYPH[a.sug.band] ?? ""}`}</Badge> {a.sug.why}
             <ul>{a.sug.signals.map((s) => <li key={s.signal}>{s.said} <span className="muted">({s.signal}, weight {s.weight})</span></li>)}</ul></li>}
+          {!a.readOnly && a.fact?.sideways && <li><button type="button" aria-pressed={a.turn === "fix"} onClick={done(() => a.setTurn("fix"))}>{`${turnWord("fix", a.fact.fix)} in the new files`}</button></li>}
+          {!a.readOnly && TURN_DEGREES.map((d) => <li key={d}><button type="button" aria-pressed={a.turn === d} onClick={done(() => a.setTurn(d))}>{`${turnWord(d)} clockwise in the new files`}</button></li>)}
+          {!a.readOnly && a.turn !== undefined && <li><button type="button" onClick={done(() => a.setTurn(null))}>Do not turn this page</button></li>}
           <li><button type="button" onClick={done(a.larger)}>Show larger (compare)</button></li>
           <li><button type="button" onClick={done(a.retry)}>Load this picture again</button></li>
         </ul>

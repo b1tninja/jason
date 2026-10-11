@@ -1,14 +1,15 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../components";
 import { Glyph } from "../components/Glyph";
-import { BAND_GLYPH, rangeWords, type SegmentRow, type Suggestion } from "./splitModel";
+import { FLAG_LINE_H, FlagChips } from "./SplitFlags";
+import { BAND_GLYPH, rangeWords, type SegmentFlags, type SegmentRow, type Suggestion } from "./splitModel";
 import type { ThumbLoader } from "./splitThumbs";
 
 /** The segment list (docs/pdf-splitter.md, sections 5.3 and 5.4): the table-twin of the whole draft, windowed with a fixed row height, with
  * jason's open suggestions in their page order as dashed rows. The rail is the same list in a compact form. */
 
 export type ListItem =
-  | { kind: "seg"; seg: SegmentRow; no: number }
+  | { kind: "seg"; seg: SegmentRow; no: number; flags?: SegmentFlags }
   | { kind: "sug"; sug: Suggestion };
 
 export const ROW_H = 76;
@@ -18,12 +19,17 @@ export const ROW_H_TALL = 128;
 export const ROW_H_TALL_COMPACT = 112;
 const BUFFER_ROWS = 8;
 
-export function itemsOf(segments: readonly SegmentRow[], suggestions: readonly Suggestion[], showRejected: boolean): ListItem[] {
+/** A row's fixed height (the list is windowed on it): its base, and a line for the segment's flags where the list shows them. */
+export function rowHeight(tall: boolean, compact: boolean, flagLine: boolean): number {
+  return (tall ? (compact ? ROW_H_TALL_COMPACT : ROW_H_TALL) : compact ? ROW_H_COMPACT : ROW_H) + (flagLine ? FLAG_LINE_H : 0);
+}
+
+export function itemsOf(segments: readonly SegmentRow[], suggestions: readonly Suggestion[], showRejected: boolean, flagsOf?: (s: SegmentRow) => SegmentFlags | undefined): ListItem[] {
   const out: ListItem[] = [];
   let no = 0;
   for (const seg of segments) {
     if (seg.level === 0) no += 1;
-    out.push({ kind: "seg", seg, no: seg.level === 0 ? no : 0 });
+    out.push({ kind: "seg", seg, no: seg.level === 0 ? no : 0, flags: flagsOf?.(seg) });
   }
   for (const sug of suggestions) {
     if (sug.state === "open" || (showRejected && sug.state === "rejected")) out.push({ kind: "sug", sug });
@@ -40,14 +46,14 @@ function Chip({ page, loader }: { page: number; loader: ThumbLoader }) {
 }
 
 interface RowProps {
-  item: ListItem; compact: boolean; tall: boolean; loader: ThumbLoader; readOnly: boolean; confidential: boolean; current: boolean; index: number; of: number;
+  item: ListItem; compact: boolean; tall: boolean; flagLine: boolean; loader: ThumbLoader; readOnly: boolean; confidential: boolean; current: boolean; index: number; of: number;
   onGo(page: number): void; onRemove(page: number): void; onLevel(page: number, level: number): void; onTitle(page: number, title: string): void;
-  onAccept(id: string): void; onReject(id: string): void; onWhy(s: Suggestion): void;
+  onAccept(id: string): void; onReject(id: string): void; onWhy(s: Suggestion): void; onFlags?(seg: SegmentRow, no: number, flags: SegmentFlags): void;
 }
 
 const Row = memo(function Row(p: RowProps) {
   const { item, compact, readOnly } = p;
-  const h = p.tall ? (compact ? ROW_H_TALL_COMPACT : ROW_H_TALL) : compact ? ROW_H_COMPACT : ROW_H;
+  const h = rowHeight(p.tall, compact, p.flagLine && item.kind === "seg");
   if (item.kind === "sug") {
     const s = item.sug;
     return (
@@ -70,10 +76,10 @@ const Row = memo(function Row(p: RowProps) {
       </li>
     );
   }
-  const { seg, no } = item;
+  const { seg, no, flags } = item;
   const guess = seg.labels.title || "";
   return (
-    <li className="split-row-item" data-kind="seg" data-level={seg.level} data-current={p.current || undefined} data-tall={p.tall || undefined} style={{ height: h, paddingLeft: seg.level * 18 }} aria-posinset={p.index + 1} aria-setsize={p.of}>
+    <li className="split-row-item" data-kind="seg" data-level={seg.level} data-current={p.current || undefined} data-tall={p.tall || undefined} data-flagline={p.flagLine || undefined} style={{ height: h, paddingLeft: seg.level * 18 }} aria-posinset={p.index + 1} aria-setsize={p.of}>
       <Chip page={seg.start} loader={p.loader} />
       <div className="split-row-main">
         <strong>{seg.level > 0 ? "Nested" : `Segment ${no}`}</strong> <span>{rangeWords(seg.start, seg.end)}</span>
@@ -90,6 +96,7 @@ const Row = memo(function Row(p: RowProps) {
           {!compact && <button type="button" onClick={() => p.onLevel(seg.start, seg.level > 0 ? 0 : 1)} aria-label={seg.level > 0 ? `Make the start at page ${seg.start} a top-level segment` : `Make the start at page ${seg.start} nested`}>{seg.level > 0 ? "Make top-level" : "Make nested"}</button>}
         </>}
       </div>
+      {p.flagLine && <FlagChips flags={flags} no={no} max={compact ? 1 : 2} onOpen={() => flags && p.onFlags?.(seg, no, flags)} />}
     </li>
   );
 });
@@ -108,14 +115,17 @@ function TitleField({ page, value, onCommit }: { page: number; value: string; on
 
 export interface SegmentListProps {
   items: ListItem[]; loader: ThumbLoader; compact?: boolean; tall?: boolean; readOnly: boolean; confidential: boolean; label: string; height?: number;
+  /** a line under each segment for its flags (every row of the list takes the same height) */
+  flagLine?: boolean;
   currentPage: number; scrollToPage?: number;
   onGo(page: number): void; onRemove(page: number): void; onLevel(page: number, level: number): void; onTitle(page: number, title: string): void;
-  onAccept(id: string): void; onReject(id: string): void; onWhy(s: Suggestion): void;
+  onAccept(id: string): void; onReject(id: string): void; onWhy(s: Suggestion): void; onFlags?(seg: SegmentRow, no: number, flags: SegmentFlags): void;
 }
 
 export function SegmentList(p: SegmentListProps) {
   const compact = !!p.compact;
-  const h = p.tall ? (compact ? ROW_H_TALL_COMPACT : ROW_H_TALL) : compact ? ROW_H_COMPACT : ROW_H;
+  const flagLine = !!p.flagLine;
+  const h = rowHeight(!!p.tall, compact, flagLine);
   const box = useRef<HTMLDivElement>(null);
   const [state, setState] = useState({ top: 0, view: p.height ?? 480 });
   const total = p.items.length * h;
@@ -152,7 +162,7 @@ export function SegmentList(p: SegmentListProps) {
   for (let i = first; i <= last; i++) {
     const it = p.items[i];
     rows.push(
-      <Row key={it.kind === "seg" ? `s${it.seg.start}` : `g${it.sug.id}`} item={it} compact={compact} tall={!!p.tall} loader={p.loader} readOnly={p.readOnly} confidential={p.confidential}
+      <Row key={it.kind === "seg" ? `s${it.seg.start}` : `g${it.sug.id}`} item={it} compact={compact} tall={!!p.tall} flagLine={flagLine} onFlags={p.onFlags} loader={p.loader} readOnly={p.readOnly} confidential={p.confidential}
         current={i === curIdx}
         index={i} of={p.items.length} onGo={p.onGo} onRemove={p.onRemove} onLevel={p.onLevel} onTitle={p.onTitle} onAccept={p.onAccept} onReject={p.onReject} onWhy={p.onWhy} />,
     );

@@ -2,6 +2,8 @@
  * segments a set of starts makes (the same reading as `SplitSession.segments`), and the bulk acts a person can preview.
  * Nothing here touches the DOM, the network, or React. */
 
+import type { GlyphName } from "../components/Glyph";
+
 export type Size = "tiny" | "small" | "large";
 export const SIZE_PX: Record<Size, number> = { tiny: 96, small: 200, large: 800 };
 
@@ -10,6 +12,10 @@ export interface PageFact {
   blank: "content" | "blank" | "marked" | string;
   has_text: boolean; words: number; chars?: number; dpi?: number; colour?: string; codec?: string;
   header?: string; footer?: string; label: [number, number] | null; title?: string; date?: string; lang?: string; lqip?: string; pending?: boolean;
+  /** Measured from the text layer (docs/pdf-splitter.md, 9.5): the degrees clockwise the text is turned from upright as displayed (0, 90, 180, 270;
+   * -1 when there is no text layer or too few letters), whether that is sideways (90 or 270), the degrees clockwise that make it upright, and
+   * portrait or landscape as displayed. A scan with no text layer is never called sideways: nothing was measured. */
+  turn?: number; sideways?: boolean; fix?: number; orientation?: string;
 }
 export interface Start { page: number; level: number; by?: string; at?: string; source?: string; suggestion?: string }
 export interface SignalRow { signal: string; weight: number; said: string }
@@ -30,7 +36,7 @@ export interface SessionView {
   confirmed: Record<string, string>; applied: Record<string, unknown>; suggestedAt: string; notes: string[];
 }
 export interface SessionAnswer extends SessionView {
-  renderer?: string; sizes?: string[]; confidential?: boolean; facts?: PageFact[]; review?: Review;
+  renderer?: string; sizes?: string[]; confidential?: boolean; facts?: PageFact[]; review?: Review; flags?: FlagsAnswer;
   limits?: { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number }; caveats?: string[];
 }
 export interface ListedSession {
@@ -39,15 +45,49 @@ export interface ListedSession {
 export interface ReviewPart {
   segment: string; level: number; start: number; end: number; ordinal: number; slot: string; title: string; kind: string | null; pages: [number, number][];
   count: number; name: string; action: string; why?: string; of?: string; sha256?: string; size?: number;
+  /** how the part is to be filed: held, library, or slot (what the server settled on, from the request and the part's own choice) */
+  filing?: string;
+  /** the pages of this part that are turned in the new file, and the ones measured sideways and left as they are */
+  rotated?: TurnedPage[]; sideways?: SidewaysPage[];
+  /** the flags the server repeats in the review (only those that are set) */
+  flags?: Partial<Pick<SegmentFlags, "blankOnly" | "nearDuplicateOf" | "repeatedBy" | "overPartLimit" | "mayHoldMore">>;
 }
+export interface TurnedPage { page: number; degrees: number }
+export interface FilingCounts { asked: string; held: number; library: number; slots: number; collisions: number; duplicates: number }
 export interface Review {
   id: string; status: string; version: number; sourcePages: number; files: number; parts: ReviewPart[]; dropped: number[]; pagesInFiles: number;
   totalsOk: boolean; problems: string[]; collisions: string[]; duplicates: string[]; held: string[]; result: string; caveats?: string[];
+  library?: string[]; filing?: FilingCounts; rotated?: TurnedPage[]; sidewaysLeft?: number;
 }
+export interface LibraryResult { segment: string; action?: string; libraryId?: string; kind?: string; size?: number; ordinal?: number }
 export interface ApplyAnswer {
   dryRun?: boolean; ok?: boolean; note?: string; would?: { act: string; id: string; by: string; files: number }; review?: Review;
-  filled?: unknown[]; held?: { segment: string; ordinal?: number }[]; skipped?: { segment: string; action: string; why?: string; of?: string }[];
+  filled?: unknown[]; held?: { segment: string; ordinal?: number; why?: string }[]; skipped?: { segment: string; action: string; why?: string; of?: string }[];
   failed?: { segment: string; why: string }[]; dropped?: number[]; autoRead?: boolean;
+  library?: LibraryResult[]; rotated?: TurnedPage[];
+  /** only when the server says so (library filing's OCR is a job that may not exist yet): a count or the list of queued parts */
+  ocrQueued?: number | unknown[];
+}
+
+// ---------------------------------------------------------------------------------------------------------------- flags (docs/pdf-splitter.md, 9.5)
+
+export interface SidewaysPage { page: number; turn: number; fix: number }
+export interface MayHoldMore { page: number; score: number }
+/** The server's pre-review reading of one segment: from the draft and the page facts already measured. Readings, not decisions. */
+export interface SegmentFlags {
+  segment: string; level: number; start: number; end: number; pages: number; measured: number;
+  blankOnly: boolean; sideways: SidewaysPage[];
+  /** the file's size in proportion to the pages, against the limit a slot's upload is held to: an estimate */
+  estimatedBytes: number; overPartLimit: boolean; partLimit: number;
+  nearDuplicateOf: string | null; repeatedBy: string[]; mayHoldMore: MayHoldMore[];
+  slot: string; slotFilled: boolean; flagged: boolean;
+}
+export interface FlagsAnswer {
+  id: string; version: number; segments: SegmentFlags[];
+  counts: { blankOnly: number; nearDuplicate: number; sideways: number; overPartLimit: number; mayHoldMore: number; slotFilled: number };
+  measured: { pages: number; of: number; complete: boolean };
+  parts: { count: number; limit: number; over: boolean };
+  caveats: string[];
 }
 export interface ActAnswer {
   ok?: boolean; act: string; version?: number; changed?: boolean; session?: SessionView; accepted?: number; rejected?: number; added?: number;
@@ -205,6 +245,7 @@ export function stateWord(f: PageFact | undefined): string {
   if (f.blank === "blank") parts.push("blank");
   else if (f.blank === "marked") parts.push("marked");
   if (!f.has_text && f.blank !== "blank") parts.push("no text layer");
+  if (f.sideways) parts.push("sideways");
   return parts.join(", ") || "content";
 }
 
@@ -217,8 +258,10 @@ export function pageAlt(n: number, f: PageFact | undefined, confidential: boolea
 }
 
 /** The words for a page's cell: its number, what it is, and whether it starts a segment. */
-export function cellLabel(n: number, f: PageFact | undefined, level: number, no: number, sug: Suggestion | undefined, confidential: boolean): string {
+export function cellLabel(n: number, f: PageFact | undefined, level: number, no: number, sug: Suggestion | undefined, confidential: boolean, turn?: Turn): string {
   const bits = [pageAlt(n, f, confidential)];
+  if (f?.sideways) bits.push(`${sidewaysWords(f)}${f.orientation ? `, drawn ${f.orientation}` : ""}`);
+  if (turn !== undefined) bits.push(`Will be turned in the new files: ${turnWord(turn, f?.fix).toLowerCase()}`);
   if (n === 1) bits.push(`Starts segment 1. The first page always starts a segment`);
   else if (level >= 0) bits.push(level > 0 ? `Starts a nested segment inside segment ${no}. Press Enter to remove the start` : `Starts segment ${no}. Press Enter to remove the start`);
   else if (sug && sug.state === "open") bits.push(`Suggested start, ${String(sug.band).toLowerCase()} confidence. Press A to accept, X to reject, Enter to mark it yourself`);
@@ -236,6 +279,79 @@ export function sizeText(bytes: number): string {
 /** A page range in words: "pages 15-22 (8)" or "page 9". */
 export function rangeWords(start: number, end: number): string {
   return start === end ? `page ${start}` : `pages ${start}-${end} (${end - start + 1})`;
+}
+
+// ---------------------------------------------------------------------------------------------------------------- turning pages
+
+/** A person's choice for one page, applied in the new files only: a number of degrees clockwise, or `fix` (the degrees the page's measured text needs). */
+export type Turn = "fix" | 90 | 180 | 270;
+export type Turns = Readonly<Record<number, Turn>>;
+export const TURN_DEGREES: readonly (90 | 180 | 270)[] = [90, 180, 270];
+
+/** The `rotate` a review or an apply carries: `{ "61": 90, "66": "fix" }`, or undefined when no page is to be turned. */
+export function turnBody(t: Turns): Record<string, Turn> | undefined {
+  const keys = Object.keys(t);
+  if (!keys.length) return undefined;
+  return Object.fromEntries(keys.map((k) => [k, t[Number(k)]]));
+}
+export function isTurn(v: unknown): v is Turn { return v === "fix" || v === 90 || v === 180 || v === 270; }
+
+export function turnWord(t: Turn, fix?: number): string {
+  return t === "fix" ? `Fix sideways${fix ? ` (turn ${fix}°)` : ""}` : `Turn ${t}°`;
+}
+
+/** What a page's measured turn means, in words ("" when it was not measured sideways). */
+export function sidewaysWords(f: PageFact | undefined): string {
+  if (!f?.sideways) return "";
+  return `Sideways: its text is turned ${f.turn}° clockwise${f.fix ? `; turning the page ${f.fix}° clockwise makes it upright` : ""}`;
+}
+
+/** The pages measured sideways in a set of facts that have been read (a scan with no text layer is never one). */
+export function sidewaysIn(facts: readonly (PageFact | undefined)[]): SidewaysPage[] {
+  const out: SidewaysPage[] = [];
+  for (const f of facts) if (f?.sideways) out.push({ page: f.n, turn: f.turn ?? 0, fix: f.fix ?? 0 });
+  return out;
+}
+
+/** Page numbers in a list, at most `max`, with "and N more". */
+export function pagesList(pages: readonly number[], max = 8): string {
+  const shown = pages.slice(0, max).join(", ");
+  return pages.length > max ? `${shown}, and ${pages.length - max} more` : shown;
+}
+
+// ---------------------------------------------------------------------------------------------------------------- flag words
+
+export type FlagKey = "blankOnly" | "nearDuplicate" | "repeated" | "sideways" | "overLimit" | "slotFilled" | "mayHoldMore";
+/** One flag of a segment as words and a glyph (never colour alone): a short form for the rail, a full sentence for the dialog and the review. */
+export interface FlagItem { key: FlagKey; glyph: GlyphName; short: string; long: string; pages?: number[] }
+
+export const segWord = (key: string): string => { const m = /^s(\d+)$/.exec(key); return m ? `segment ${m[1]}` : `segment ${key}`; };
+
+type FlagInput = Partial<Pick<SegmentFlags, "blankOnly" | "nearDuplicateOf" | "repeatedBy" | "overPartLimit" | "mayHoldMore" | "sideways" | "slotFilled" | "slot" | "estimatedBytes" | "partLimit">>;
+
+/** The flags a segment carries, in a fixed order. `partSize` is a part's exact size where the review cut it, which replaces the estimate. */
+export function flagItems(f: FlagInput, partSize?: number): FlagItem[] {
+  const out: FlagItem[] = [];
+  if (f.blankOnly) out.push({ key: "blankOnly", glyph: "file-minus", short: "Blank only", long: "Every page of this segment is blank: it may be a separator or a stray sheet. Nothing is removed unless you leave the pages out." });
+  if (f.nearDuplicateOf) out.push({ key: "nearDuplicate", glyph: "copy", short: `Repeats ${segWord(f.nearDuplicateOf)}`, long: `Most of its pages repeat pages of ${segWord(f.nearDuplicateOf)} (compared by the pages' words, or by their pictures for a scan). It may be the same document scanned twice.` });
+  if (f.repeatedBy?.length) out.push({ key: "repeated", glyph: "copy", short: `Repeated by ${f.repeatedBy.map(segWord).join(", ")}`, long: `Most of the pages of ${f.repeatedBy.map(segWord).join(" and ")} repeat pages of this segment.` });
+  if (f.sideways?.length) {
+    const pages = f.sideways.map((x) => x.page);
+    out.push({ key: "sideways", glyph: "refresh-cw", short: `${f.sideways.length} sideways ${f.sideways.length === 1 ? "page" : "pages"}`, pages,
+      long: `${f.sideways.length === 1 ? "Page" : "Pages"} ${pagesList(pages)} ${f.sideways.length === 1 ? "is" : "are"} sideways: the text runs up or down the page, measured from the text layer. They can be turned in the new files; the original is not changed.` });
+  }
+  if (f.overPartLimit) {
+    const limit = f.partLimit ? ` against the limit of ${sizeText(f.partLimit)}` : "";
+    const size = partSize ? sizeText(partSize) : f.estimatedBytes ? `about ${sizeText(f.estimatedBytes)} (an estimate from the file's size in proportion to its pages)` : "over the limit";
+    out.push({ key: "overLimit", glyph: "triangle-alert", short: partSize ? "Over the size limit" : "May be over the size limit", long: `Cut into its own file it would be ${size}${limit}. A slot's upload is held to that limit; the review cuts each part and says exactly.` });
+  }
+  if (f.slotFilled) out.push({ key: "slotFilled", glyph: "lock", short: "Slot already filled", long: `Its slot${f.slot ? ` (${f.slot})` : ""} already holds a file. The review keeps this part in the store instead; nothing is replaced.` });
+  if (f.mayHoldMore?.length) {
+    const pages = f.mayHoldMore.map((m) => m.page);
+    out.push({ key: "mayHoldMore", glyph: "split", short: "May hold more than one document", pages,
+      long: `${pages.length === 1 ? "Page" : "Pages"} ${pagesList(pages)} inside it ${pages.length === 1 ? "looks" : "look"} like the start of another document, strongest first (the same reading that makes suggestions). Nothing is marked.` });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------- LQIP

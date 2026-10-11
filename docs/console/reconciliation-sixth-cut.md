@@ -139,6 +139,8 @@ One more the design raises by sorting rows: whether a group lists its problems f
 | B12 | The named other editor on a live draft (not only on a 409) | "Another person is editing" | The conflict shows the other copy's `by` and time after a refusal |
 | B13 | A measured time for the model pass | The design's "about 3 minutes for 41 pages" | Nothing measures it, so nothing may say it |
 
+**Status of B3 to B6 (2026-10-10).** The backend serves them ([../pdf-splitter.md](../pdf-splitter.md) 9.5) and the splitter screen uses them: B3 and B4 as per-segment flags on the rail and list and in the review, B5 as the review's Filing choice (held, library, slots, and a part's own), and B6 as the sideways fact on cells and the page menu, a per-page and bulk turn in the review, and `rotate` on the review and apply. [screens/split.md](screens/split.md) says where each shows. Table row 11, the "Slot assignment in the review" decision (its Filing choice) and the held "sideways" review line are therefore adopted; the library's OCR is still not queued by the apply, and the screen says nothing about it unless the server's answer does.
+
 ## 5. The rest of the sixth cut
 
 | Item | Decision for the user |
