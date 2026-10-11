@@ -15,7 +15,7 @@ What is in this unit, which items are original and which were changed, and, when
 - **Owner (later):** keeps their own manual; opens their own packet.
 - **Treasurer:** reads the deductible step and the figures only.
 - **Secretary, counsel:** the packet, as the board's record, with its open questions; counsel for a matter.
-> **Access note (2026-10-11).** Directors and officers have the same access to information; they differ in duties. Where this page narrows a director, the secretary, or the treasurer below `access.SEE_RULES` (manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2), `SEE_RULES` governs and the narrowing here is under review. The levels, field by field, are in [../design-brief-property-and-units.md](../design-brief-property-and-units.md).
+> **Access note (2026-10-11).** Directors and officers have the same access to information; they differ in duties. Where this page narrows a director, the secretary, or the treasurer below `access.SEE_RULES` (manager, president, vice president, director, secretary, and treasurer open P2 and, in the private view, P3), `SEE_RULES` governs and the narrowing here is under review. The levels, field by field, are in [../design-brief-property-and-units.md](../design-brief-property-and-units.md).
 
 ## Data
 

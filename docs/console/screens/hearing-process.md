@@ -16,7 +16,7 @@ One member's hearing from the board's proposal to consider discipline to the wri
 - **Secretary:** records the member's requests, the cure, the decision, and the day the decision notice was delivered.
 - **Director:** reads the run as an officer does (same access to information); decides at the hearing.
 - **Counsel:** reads the requirements and the proof, on grant.
-- **Treasurer:** sees that a hearing is open and its date. No private view, so nothing more.
+- **Treasurer:** reads the run as a director or an officer does (same access to information; the treasurer's office opens P3 in the private view since 2026-10-11).
 
 ## Data
 
@@ -137,7 +137,7 @@ There is no control to impose, fine, suspend, send, or mail. A mailing is a pers
 9. The 5855(g) band lists each requirement as met, open, or not on record, and never says the discipline is effective or void.
 10. No control sends, mails, imposes, or fines; the page shows commands for those.
 11. With the private view off, no address, name, unit, matter, or finding is in the HTML or the URL.
-12. A treasurer sees a hearing's existence and date only. A director and an officer see the same fields.
+12. A treasurer, a director, and an officer see the same fields.
 13. Corporations Code 7341 appears only as "not on the shelf".
 14. Statute words are exactly the stored words (`jason verify-quotes` passes).
 

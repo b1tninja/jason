@@ -41,7 +41,7 @@ All the other pages in [screens/](screens/README.md) are one screen each.
 
 ## 4. Open decisions that change a drawing
 
-- Whether the treasurer opens the private view (P3). Today the access rules give it to the manager, president, vice president, director, and secretary, not the treasurer.
+- Decided 2026-10-11 (no longer open): the treasurer opens the private view (P3), like the manager, president, vice president, director, and secretary; the board decided that directors and officers have the same access to information. Draw one private-view switch for every office that opens P3.
 - Whether a notice letter defaults to first class (it now does) and whether earlier standard mailings need a board look (a board item is proposed).
 - Which store "record a posting" writes (the notice ledger or the schedule's done log), and whether meeting steps m12 and m20 are read-and-link.
 - Whether the Work screen's definitions catalog and the Today "Your work" band ship in the first phase.

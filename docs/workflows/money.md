@@ -337,9 +337,9 @@ Uses the spine's screens: **Work** (`#/work`, rows grouped Yours, Waiting on oth
 | The board's statements, a draft packet's figures | P1 | secretary, treasurer, manager | not delivered to members until the packet is sent |
 | Gmail and mail bodies | never on a list | by explicit draft | headers only by default |
 
-Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, secretary, and treasurer open P2 and, in the private view, P3 (the treasurer since 2026-10-11).
 
-A run's list (the Work screen) never carries an owner's name, address, contact detail, or a delinquency amount; the Work screen shows "3 delinquency runs, 1 waiting on the board". A run's export is a `Doc` with evidence addresses and the same level as its most restricted step. The treasurer alone and an admin with no office cannot open P3 (`access.SEE_RULES`); the money runs open no P3.
+A run's list (the Work screen) never carries an owner's name, address, contact detail, or a delinquency amount; the Work screen shows "3 delinquency runs, 1 waiting on the board". A run's export is a `Doc` with evidence addresses and the same level as its most restricted step. An admin with no office cannot open P3, and every office opens it only in the private view (`access.SEE_RULES`; the treasurer's office since 2026-10-11); the money runs open no P3.
 
 ## 7. What exists now
 

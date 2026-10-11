@@ -105,7 +105,7 @@ SEE_RULES: tuple[SeeRule, ...] = (
     SeeRule("vice president", _levels(Level.P2), _levels(Level.P3)),
     SeeRule("director", _levels(Level.P2), _levels(Level.P3)),
     SeeRule("secretary", _levels(Level.P2), _levels(Level.P3)),
-    SeeRule("treasurer", _levels(Level.P2)),
+    SeeRule("treasurer", _levels(Level.P2), _levels(Level.P3)),
 )
 
 

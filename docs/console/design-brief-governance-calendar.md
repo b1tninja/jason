@@ -108,6 +108,8 @@ Use the glyphs the console already has. `Timeline` already carries the provenanc
 7. **How the packet and drafting marks differ from the law's marks** (a dashed outline, plus the words "proposed, not the law's").
 8. **Print layout** of a meeting's clocks for the board's packet (`{REPORT:schedule}`).
 
+9. **Settled 2026-10-11:** run steps m12 (post the notice) and m20 (make the minutes available) are read-and-link: the record is made on `#/meetings` and the step reads done when it appears; the run offers no "Mark done" for them. A derived "in force" word for a rule change is allowed only as **"adopted and noticed: in force on the board's reading"**, with the line "4360 states no effective date"; the stage words stay the data's (draft, proposed, adopted, distributed).
+
 These are not the design's: who may record a posting, the minutes' availability, or a completion (the assignment's role, enforced by the server); whether the board adopts the assignments and the proposed policies; which store a posting is written to; and whether m12 and m20 are attestations or read-and-link (the user's decisions, below).
 
 ## G. What can be designed now, and what waits

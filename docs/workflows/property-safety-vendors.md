@@ -359,7 +359,7 @@ The dock already counts approvals, tasks, and deadlines (`dock` loader; `Dock`).
 | Pest records, visits, products | P2 (vendors) | manager |
 | Lock-box and panel codes appearing in a record | never shown | none |
 
-Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `jason.web.access.SEE_RULES` the roster sees P0 and P1; manager, president, vice president, director, secretary, and treasurer open P2; P3 opens only in the private view, to all of those but the treasurer. The server enforces who may act (spine, rule 4).
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `jason.web.access.SEE_RULES` the roster sees P0 and P1; manager, president, vice president, director, secretary, and treasurer open P2; P3 opens only in the private view, to all of those (the treasurer since 2026-10-11). The server enforces who may act (spine, rule 4).
 
 ## 7. What exists now
 

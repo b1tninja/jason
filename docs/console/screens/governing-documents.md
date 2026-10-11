@@ -104,7 +104,7 @@ No action on this screen writes. A reading cannot be added here: a board reading
 - **No outline on disk:** "jason has no outline of this document yet. Run `jason outlines KEY`."
 - **Cited by: none found:** "Nothing jason reads names this section." With the caveat: "A reference the grammar missed stays missed."
 - **No adoption found for a change:** "Words changed between Feb 2098 and Jul 2098 with no adoption found in the board's records." A finding, not a conclusion that the change was invalid.
-- **A restricted book with the private view off:** "Restricted (executive session): listed by name only. The association may withhold it. Open the private view to read it here." For a role not entitled: "Not open to the treasurer role."
+- **A restricted book with the private view off:** "Restricted (executive session): listed by name only. The association may withhold it. Open the private view to read it here." For a role not entitled: "An admin with no office or manager role doesn't open …" (the server's reason)
 
 ## Privacy
 

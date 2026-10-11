@@ -123,8 +123,7 @@ Without sign-in set up, or with no one signed in and sign-in not required, the c
 | Who | Opens | In the private view, for a stated reason |
 |---|---|---|
 | anyone on the roster (an officer, a manager, an admin) | P0, P1 | — |
-| manager, president, vice president, director, secretary | P2 | P3 |
-| treasurer | P2 | — |
+| manager, president, vice president, director, secretary, treasurer | P2 | P3 |
 
 - **The rows.** They are `SEE_RULES`, one an office. A person holding several offices gets the union. An admin with no office or manager role holds only the roster row: no P2, no P3. P4 is never served.
 - **Viewing as.** An admin viewing the console as someone (`--dev`) is judged as that someone; the log names both.
@@ -145,7 +144,7 @@ Without sign-in set up, or with no one signed in and sign-in not required, the c
 | manager | All | First signature; one-person kinds | P0 to P2. P3 in the private view |
 | director (president, vice president included) | All but connections | First or second signature | P0 to P2. P3 (executive session) in the private view |
 | secretary | Overview, Governance, Records | Second signature; records the board's vote | P0 to P2. P3 (executive-session minutes) in the private view |
-| treasurer | Overview, Money | Second signature on money kinds | P0 to P2, no private view. Account numbers by last four only |
+| treasurer | Overview, Money | Second signature on money kinds | P0 to P2. P3 in the private view (since 2026-10-11: directors and officers have the same access to information). Account numbers by last four only |
 | reviewer | Approvals waiting on a second person, and their evidence | Second signature only | None as an office: the roster gives anyone P0 and P1 |
 | counsel | Governing documents, conflicts, notices' requirements and proof, granted matters | None | None as an office: P0 and P1 as anyone on the roster; granted P3 matter files are not built |
 
@@ -169,7 +168,7 @@ Without sign-in set up, or with no one signed in and sign-in not required, the c
 
 P3 is shown only in a person's **private view**: a time-limited, logged window they open for themselves (`jason.web.access`; the console's `PrivateSwitch`).
 
-- **Who may open it.** A signed-in person whose offices open P3 in the private view (`SEE_RULES`: manager, president, vice president, director, secretary). The treasurer alone, and an admin with no office, are refused with the reason, and the switch shows disabled with that reason beside it. It is refused while an admin views the console as someone else, and 401 with no one signed in.
+- **Who may open it.** A signed-in person whose offices open P3 in the private view (`SEE_RULES`: manager, president, vice president, director, secretary, treasurer; the treasurer's office joined them on 2026-10-11, the board having decided that directors and officers have the same access to information). An admin with no office, or anyone else whose offices do not open P3, is refused with the reason, and the switch shows disabled with that reason beside it. It is refused while an admin views the console as someone else, and 401 with no one signed in.
 - **Opening it.** The **Private view: off** switch in the header asks "Why" (required, a short phrase such as "executive session prep", 120 characters at most, never an owner's personal details) and "For 15 / 30 / 60 minutes" (30 by default), then confirms "Open the private view as NAME for 30 minutes". It is `POST /api/private` with `{reason, minutes}`, behind the write guard and the token header. An empty reason, a long one, or one that looks like a secret (`intake.secret_reason`) is refused (400) and nothing is kept; contact details in a reason are masked before it is logged.
 - **What it is.** `{id, by, sub, reason, opened, until}` in the signed session cookie; the id is `secrets.token_hex(4)`. It is bound to the account's Google `sub`, so another sign-in in the same browser never inherits it. While an admin views as someone else it is not open for that view.
 - **Closing it.** "Close private view" (`DELETE /api/private`), signing out, a new sign-in, or its time running out: the next request finds it expired. Opening, closing, and expiry are each a line in `access/private.jsonl`.

@@ -153,7 +153,7 @@ No control sends a letter, pays, files, or posts. jason computes no legal conclu
 
 - The record is P1: names of directors and officers, dates, parts, and figures in integer cents. Account numbers by their last four digits only (`··0001`); never a full number.
 - Delinquency is an executive-session subject (CIV 4935). Band `registers` shows totals and counts from `books_report("receivables")` (no names). Unit rows (`collections`) open only to an office that opens them, as `#/liens` does; the unit and owner never enter the record. A held finding is P3.
-- Directors and officers read the same bands. Known gap: `access.SEE_RULES` gives the treasurer P2 and no private view, while the director and secretary open P3 in the private view; it is inconsistent with the 2026-10-11 decision (below). The `collections` loader has no server-side office check ([money.md](../../workflows/money.md) section 8).
+- Directors and officers read the same bands. `access.SEE_RULES` gives the treasurer P2 and, in the private view, P3, as it does the director and secretary (the board's decision of 2026-10-11). The `collections` loader has no server-side office check ([money.md](../../workflows/money.md) section 8).
 - The roster of reviewers is by office and name; the record shows who reviewed, never what a member owes.
 
 ## Acceptance criteria
@@ -175,7 +175,7 @@ No control sends a letter, pays, files, or posts. jason computes no legal conclu
 2. **A director who cannot sign in.** Each director records their own review (recommended: it is a person's act), or the secretary may record one "reported by" with the label? Neither is a legal conclusion.
 3. **Keep figures or digests in the snapshot.** Digest plus headline cents and counts (recommended, so a later sync does not erase what the reviewer saw), or digest only?
 4. **Receivables band.** Totals and counts only on this screen (recommended), with unit rows left to `#/liens`, or by unit here for the offices that open them?
-5. **Access consistency.** Bring the treasurer's `SEE_RULES` row in line with the director's and secretary's (private-view P3), per the 2026-10-11 decision, before held findings ship?
+5. **Access consistency.** Decided 2026-10-11 and built: the treasurer's `SEE_RULES` row opens P3 in the private view, as the director's and secretary's do. Held findings ship with one band for every office.
 6. **Does the profile supply a stricter standard** (`stricter_review()`)? Add the empty-default method now, or leave the band out until a profile needs it?
 7. **The record's month.** One row per calendar month under review (proposed), or per review sitting (a month may have two)?
 8. **Embedding (settled 2026-10-11).** The run page embeds this screen's reads and links its writes ([work.md](work.md), "Where a step's work happens"): the review matrix shows read only in the step panel, and the review, the path, and the ratification are recorded here, or by the secretary in Decisions.

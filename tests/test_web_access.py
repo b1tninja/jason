@@ -40,22 +40,23 @@ def test_every_office_opens_p0_to_p2(role):
         assert may_see(_viewer(role), level) == (True, "")
 
 
-@pytest.mark.parametrize("role, private_p3", [("manager", True), ("president", True), ("vice president", True),
-                                              ("director", True), ("secretary", True), ("treasurer", False)])
-def test_p3_only_in_the_private_view_and_never_for_the_treasurer_alone(role, private_p3):
+@pytest.mark.parametrize("role", ["manager", "president", "vice president", "director", "secretary", "treasurer"])
+def test_p3_only_in_the_private_view_for_every_office(role):
+    # The board's decision of 2026-10-11: directors and officers have the same access to information.
     ok, why = may_see(_viewer(role), P3)
-    assert not ok and "only in the private view" in why if private_p3 else not ok
-    assert may_see(_viewer(role), P3, private=True)[0] is private_p3
+    assert not ok and "only in the private view" in why
+    assert may_see(_viewer(role), P3, private=True) == (True, "")
 
 
-def test_the_treasurer_says_why():
-    assert may_see(_viewer("treasurer"), P3, private=True) == (
-        False, "The treasurer's office doesn't open executive-session and other restricted material (P3).")
+def test_a_person_with_no_office_says_why():
+    assert may_see(_viewer(""), P3, private=True) == (
+        False, "Someone with no office doesn't open executive-session and other restricted material (P3).")
 
 
 def test_a_person_holding_two_offices_gets_the_union():
     assert may_see(_viewer("secretary, treasurer"), P3, private=True) == (True, "")
-    assert may_see(_viewer("treasurer"), P3, private=True)[0] is False
+    assert may_see(_viewer("treasurer"), P3, private=True) == (True, "")
+    assert may_see(_viewer("admin", admin=True), P3, private=True)[0] is False
 
 
 def test_an_admin_with_no_office_opens_p0_and_p1_only():
@@ -356,10 +357,9 @@ def test_an_office_that_does_not_open_the_level_gets_403_with_the_reason(files):
     r = c.get("/api/file?path=mail/106090/scan.pdf")
     assert r.status_code == 403 and "An admin with no office or manager role doesn't open" in r.json["error"]
     assert c.get("/api/file?path=photos/a.png").status_code == 200                      # P1: anyone on the roster
-    t = webclient.sign_in(webclient.client(_app(files)), "Pat Example")
-    r = t.get("/api/file?path=library/files/Confidential/conf.pdf&private=1&reason=board+review")
+    r = c.get("/api/file?path=library/files/Confidential/conf.pdf&private=1&reason=board+review")
     assert r.status_code == 403 and r.json["error"] == (
-        "The treasurer's office doesn't open executive-session and other restricted material (P3).")
+        "An admin with no office or manager role doesn't open executive-session and other restricted material (P3).")
     assert [x["by"] for x in _served(files)] == ["Ada Admin"]                            # refusals are not served
 
 
@@ -388,7 +388,8 @@ def test_an_admin_viewing_as_a_director_is_judged_as_the_director_and_both_are_l
     with c.session_transaction() as s:
         s["acting"] = {"name": "", "role": "treasurer"}
     r = c.get("/api/file?path=library/files/Confidential/conf.pdf&private=1&reason=check")
-    assert r.status_code == 403 and r.json["error"].startswith("The treasurer's office doesn't open")
+    assert r.status_code == 403 and "only in the private view" in r.json["error"]      # the treasurer's office opens P3 there
+    assert c.get("/api/file?path=mail/106090/scan.pdf").status_code == 200              # P2, as the treasurer
 
 
 def test_a_person_taken_off_the_roster_is_signed_out(files):
@@ -414,8 +415,10 @@ def test_the_librarys_confidential_rows_are_held_back_without_the_private_view(d
     assert r.json["heldBack"] == 2 and r.json["note"] == HELD_BACK.format(n=2) == (
         "2 held back (confidential); open the private view to see them.")
     assert r.json["heldBackWhy"] == SIGN_IN
+    admin = webclient.sign_in(webclient.client(app), "Ada Admin").get("/api/library?confidential=1&reason=x")
+    assert admin.json["heldBack"] == 2 and "admin with no office" in admin.json["heldBackWhy"]
     treasurer = webclient.sign_in(webclient.client(app), "Pat Example").get("/api/library?confidential=1&reason=x")
-    assert treasurer.json["heldBack"] == 2 and "treasurer" in treasurer.json["heldBackWhy"]
+    assert treasurer.json["heldBack"] == 2 and "only in the private view" in treasurer.json["heldBackWhy"]
     manager = webclient.sign_in(webclient.client(app), "A Manager")
     held = manager.get("/api/library?confidential=1&reason=records+request")             # no private view open
     assert held.json["heldBack"] == 2 and "only in the private view" in held.json["heldBackWhy"]

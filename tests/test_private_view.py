@@ -94,15 +94,15 @@ def test_opening_again_closes_the_first(files, clock):
 
 # --- who is refused ------------------------------------------------------------------------------------------------------
 
-def test_the_treasurer_alone_is_refused_with_the_reason(files, clock):
+def test_the_treasurer_opens_it_like_every_office(files, clock):
+    # The board's decision of 2026-10-11: directors and officers have the same access to information.
     c = webclient.sign_in(webclient.client(_app(files)), "Pat Example")
+    assert c.get("/api/session").json["private"]["mayOpen"] is True
     r = _open(c)
-    assert r.status_code == 403 and r.json["error"] == (
-        "The treasurer's office doesn't open executive-session and other restricted material (P3).")
-    assert _log(files) == []
-    s = c.get("/api/session").json["private"]
-    assert s["mayOpen"] is False and s["why"] == r.json["error"] and s["open"] is False
-    tess = webclient.sign_in(webclient.client(_app(files)), "Tess Two")                  # secretary too: may
+    assert r.status_code == 200 and r.json["private"]["open"] is True
+    assert [x["by"] for x in _log(files)] == ["Pat Example"]
+    assert c.get(FILE).status_code == 200
+    tess = webclient.sign_in(webclient.client(_app(files)), "Tess Two")                  # secretary too
     assert _open(tess).status_code == 200
 
 
@@ -299,8 +299,8 @@ def test_a_confidential_document_is_viewed_in_the_window_and_logged_p3(confident
     assert c.get(r.json["url"]).status_code == 403                                       # the link needs the window too
 
 
-def test_the_treasurer_does_not_see_confidential_evidence(confidential, clock):
-    t = webclient.sign_in(webclient.client(confidential.app), "Pat Example")
+def test_an_admin_with_no_office_does_not_see_confidential_evidence(confidential, clock):
+    t = webclient.sign_in(webclient.client(confidential.app), "Ada Admin")
     assert _open(t).status_code == 403
     assert [d["id"] for d in _documents(t)] == ["section", "library:d1"]
 

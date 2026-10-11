@@ -72,7 +72,7 @@ Every variant handles each state with words, never a broken image or an empty bo
 |---|---|
 | Loading | The frame with "Opening…" (`aria-busy`) |
 | Signed out | "Sign in with Google to open this", with the link (`signInHref`) |
-| Not allowed | The server's reason: "The treasurer's office doesn't open …" |
+| Not allowed | The server's reason: "An admin with no office or manager role doesn't open …" |
 | Needs the private view | "Confidential: open the private view to see it", with the switch's action when the person may open it |
 | No copy yet | "No copy yet", with ↻ when refreshable, else the command that fills it |
 | Stale | The `stale` line in the warn tone, beside the age |

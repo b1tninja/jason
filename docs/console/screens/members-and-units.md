@@ -17,7 +17,7 @@ Who owns each unit, how notices reach each owner, and where each owner stands in
 - **Treasurer:** reads balances and delinquency by unit. No contact details.
 - **Secretary:** reads a unit as an officer does (the board's record keeper); delivery standing is also on the Notices screen.
 - **Reviewer, counsel:** no access.
-> **Access note (2026-10-11).** Directors and officers have the same access to information; they differ in duties. Where this page narrows a director, the secretary, or the treasurer below `access.SEE_RULES` (manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2), `SEE_RULES` governs and the narrowing here is under review. The levels, field by field, are in [../design-brief-property-and-units.md](../design-brief-property-and-units.md).
+> **Access note (2026-10-11).** Directors and officers have the same access to information; they differ in duties. Where this page narrows a director, the secretary, or the treasurer below `access.SEE_RULES` (manager, president, vice president, director, secretary, and treasurer open P2 and, in the private view, P3), `SEE_RULES` governs and the narrowing here is under review. The levels, field by field, are in [../design-brief-property-and-units.md](../design-brief-property-and-units.md).
 
 ## Data
 

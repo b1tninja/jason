@@ -223,7 +223,7 @@ def test_the_loader_shows_the_executive_log_only_in_the_private_view(web):
     assert held["executive"]["note"] == "Executive session: the record is kept apart (open the private view to see it)."
     assert TITLE not in json.dumps(held) and MOTION not in json.dumps(held)
     treasurer = webclient.sign_in(webclient.client(web.app), "Pat Example").get(f"/api/meeting-room?date={DAY}").json
-    assert treasurer["executive"]["record"] is None
+    assert treasurer["executive"]["record"] is None                                          # signed in, no private view
     director = webclient.sign_in(webclient.client(web.app), "Dana Director")
     assert director.get(f"/api/meeting-room?date={DAY}").json["executive"]["record"] is None   # signed in, no private view
     assert _served(web.root) == []

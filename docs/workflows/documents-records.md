@@ -370,7 +370,7 @@ The common screens are those of workflows-design.md section 4 (Work list, Run pa
 | Executive-session records, the membership list, ballots, election materials | P3, listed by kind only; the request's restricted kinds are counted, not named | M, with counsel |
 | Records requests | a member's name is never the key; day and unit; P2 contact details not shown | M; B, T read |
 
-Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2. A director acting as the second person (R) sees the question and the answer to be confirmed.
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, secretary, and treasurer open P2 and, in the private view, P3 (the treasurer since 2026-10-11). A director acting as the second person (R) sees the question and the answer to be confirmed.
 
 A run's list never carries an owner's contact details or an answer. A URL carries a slot's key, a draft's id, or a run id, never a file name, a Drive id, or search words (searches are POSTs). The pin store and `data/spec` are never served as files.
 

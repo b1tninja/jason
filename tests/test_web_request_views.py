@@ -64,15 +64,16 @@ def test_an_arrivals_own_words_are_held_back_outside_the_private_view(app, monke
     assert served == []
 
 
-def test_in_the_private_view_the_president_opens_it_and_it_is_logged(app, monkeypatch):
+def test_in_the_private_view_the_president_and_the_treasurer_open_it_and_it_is_logged(app, monkeypatch):
     served = []
     monkeypatch.setattr(access, "private_window", lambda: {"id": "w", "reason": "reviewing"})
     monkeypatch.setattr(access, "served", lambda viewer, level, **k: served.append((viewer.name, level.value, k)))
     out = _as(app, "Lee President").get("/api/response?id=gmail:abc").json
     assert out["held"] is False and out["reading"] == {"fields": [1]} and out["acts"] == [{"by": "A"}]
     assert served == [("Lee President", "P3", {"address": "api/response/gmail:abc"})]
-    treasurer = _as(app, "Pat Example").get("/api/response?id=gmail:abc").json         # the treasurer's office never opens P3
-    assert treasurer["held"] is True
+    treasurer = _as(app, "Pat Example").get("/api/response?id=gmail:abc").json         # the treasurer's office opens P3 there too
+    assert treasurer["held"] is False and treasurer["reading"] == {"fields": [1]}
+    assert served[-1] == ("Pat Example", "P3", {"address": "api/response/gmail:abc"})
 
 
 def test_an_opening_that_cannot_be_logged_is_not_served(app, monkeypatch):

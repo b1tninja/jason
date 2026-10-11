@@ -383,7 +383,7 @@ The notice run (`#/work/notice-delivery/KEY`) is the six bands of [screens/notic
 | A notice's text as sent | P1 (the text sent to all; a member's fills are not in it) | roster |
 | Plan items | P1 (names, tags); masked where a value looks like an address | M, one named person, 2P where the kind needs it |
 
-Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, secretary, and treasurer open P2 and, in the private view, P3 (the treasurer since 2026-10-11).
 
 Per step, who acts and at what level it reads (a step shows at the level of what it touches):
 

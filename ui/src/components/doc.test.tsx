@@ -49,10 +49,10 @@ describe("Doc chip", () => {
   });
 
   it("not allowed: the server's reason, in words", async () => {
-    const onView = vi.fn(async () => { throw new ApiError("The treasurer's office doesn't open executive-session and other restricted material (P3).", 403); });
+    const onView = vi.fn(async () => { throw new ApiError("An admin with no office or manager role doesn't open executive-session and other restricted material (P3).", 403); });
     render(<Doc doc={letter} signedIn by="Pat Example" onView={onView} />);
     await userEvent.click(screen.getByRole("button", { name: "Open Letter from a vendor" }));
-    expect(await screen.findByText(/The treasurer's office doesn't open/)).toBeInTheDocument();
+    expect(await screen.findByText(/An admin with no office or manager role doesn't open/)).toBeInTheDocument();
   });
 
   it("P3 marks the chip and needs the private view, with the switch's action when the person may open it", async () => {

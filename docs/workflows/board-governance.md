@@ -92,6 +92,8 @@ A `decision` step is done when a decision with a final outcome is on record in `
 | m21 | The board approves the minutes | decision | board at the next meeting | m20 | decision on that meeting's approval item; stage "approved: stated" | `jason record-stages --meeting DATE` | the next meeting | "listed, not stated" keeps it `waiting` |
 | m22 | Close the run | check | jason | m1 to m21 | run `done` | none | none | a late-found fact reopens it |
 
+**m12 and m20 are read-and-link (decided 2026-10-11).** The posting and the minutes' availability are recorded on `#/meetings`; each step reads done when that record appears, and the run offers no "Mark done" for them.
+
 ### 2.2 `rule-change` (SOP `rule-change`, then `owners-manual`; docs/rule-records.md)
 
 The subject is a `RuleChange` row in the profile (`Community.rule_changes()`), or a proposal built from the manual (`--from-manual`). The rule-records proposal store and event log are phases 2 and 3 of docs/rule-records.md and are not built; until they are, the run log is the record of who drafted, checked, and acknowledged.
@@ -336,7 +338,7 @@ Levels are `jason.web.access` (P0 public, P1 names and units, P2 contact details
 | duty-schedule | duties, roles, standings: P0 or P1; people's own task titles masked to the rule's label | each assignment's role; manager |
 | owners-manual | rules and manual text: P0; open questions: P1 | manager |
 
-Directors and officers have the same access to information (the board's decision of 2026-10-11): they differ in duties, not in what they may read. A director sees what an officer sees at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
+Directors and officers have the same access to information (the board's decision of 2026-10-11): they differ in duties, not in what they may read. A director sees what an officer sees at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, secretary, and treasurer open P2 and, in the private view, P3 (the treasurer since 2026-10-11).
 
 Roles come from the signed-in person's offices; the server enforces them (`access.SEE_RULES`). A step shows a person their own steps first and the rest as "waiting on the secretary". No role may skip a legal step: its absence is recorded as a finding for the board (recommendation of the spine; a decision for the user).
 

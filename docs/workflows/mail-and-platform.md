@@ -297,7 +297,7 @@ All routes sit under `#/work`, consistent with [../workflows-design.md](../workf
 | Heartbeat `dataDir`, lanes, host | machine detail | administrator | administrator only |
 | `check-in` | developer's terminal | developer | developer |
 
-Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, and secretary open P2 and, in the private view, P3; the treasurer opens P2.
+Directors and officers have the same access to information (the board's decision of 2026-10-11): a director reads what an officer reads at the same level. By `access.SEE_RULES` the roster opens P0 and P1; the manager, president, vice president, director, secretary, and treasurer open P2 and, in the private view, P3 (the treasurer since 2026-10-11).
 
 - A signed-in write replaces `by` with the signed-in name (the sign-in layer), so the triage screen's typed-name field is only for an installation with no sign-in.
 - A run never shows an email address, phone number, or mailing address on a list. An owner's name appears only where the viewer opens P1 or P2, and only where the step needs it.
