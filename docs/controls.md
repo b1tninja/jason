@@ -77,7 +77,8 @@ The adoption is a `decision` step in a **control-adoption** run, one run per con
 | The documents' duties, read and checked | built in part (`document_duties`, `careful-reading`, the key documents); no extraction of signers or limits |
 | Board items and the board's decisions, recorded by the secretary | built (`jason board`, `decisions.json`) |
 | Rule rows with an `adoption` board item (the response rules) | built; the model for "a row the board has adopted" |
-| The `Control` and `ControlType` records, the catalog, the suggestion reader, the effective-approver lookup, the Controls screen, the `control-adoption` run | not built |
+| The `Control` and `ControlType` records, the catalog of nine control types with floors, the append-only act log (`data/controls/acts.jsonl`), the effective-approver lookup (stricter-of, binding from the effective date, refusing an act the roster cannot satisfy) and its hook in the approvals engine (`jason.controls`) | built (step 1, 2026-10-11); signer identity is not yet enforced |
+| The suggestion reader, the Controls screen, the `control-adoption` run | not built |
 
 **Build order:** (1) the catalog and the record, with the effective-approver lookup in the approvals engine (a control may only tighten), tested on made-up controls; (2) the suggestion reader for the first three families (payment and reserve signers, contract authorization, review cadence), quoting from the stored governing documents; (3) the `control-adoption` run and the board item; (4) the Controls screen and the onboarding step.
 

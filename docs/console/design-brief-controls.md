@@ -134,7 +134,7 @@ All of these exist in the console's glyph set (`ui/src/lib/glyphData.ts`): `shie
 
 1. **Where the list sits and whether a card is a page or a drawer:** a page (`?key=`, recommended: six bands and a long recitation need room).
 2. **How six bands fold on a narrow screen:** all open with a sticky band index (recommended) versus an accordion with the open question first.
-3. **How the two kinds of "not in force" read apart** (the date has not come; the roster cannot): a word and a glyph each (`calendar-clock`, `user-x`), never colour alone.
+3. **How the two states read apart** (settled 2026-10-11): "adopted, takes effect DATE" (the date has not come; at most a warning that the roster could not satisfy it) and "in force, the roster cannot satisfy it" (the date has come; acts it governs are refused with the reason, never relaxed): a word and a glyph each (`calendar-clock`, `user-x`), never colour alone.
 4. **Whether `ControlNotice` shows a control not yet effective** ("Takes effect Nov 14; not yet required"). Recommended: yes, in the muted form, and never as required; a suggestion or a proposal never.
 5. **The amendment banner:** generalize `ChangedBanner` or build `ControlChangedBanner`; and whether old and new words sit side by side or stacked.
 6. **The `Confirm` wording** for "Propose to the board", and whether it previews the board item.
@@ -168,7 +168,7 @@ These are not the design's: which families are offered first, whether a control 
 | Payment countersign | money | retired Sep 5, replaced by Payment signers | History keeps it |
 | Contract authorization | contracts | adopted Sep 5, in force Sep 20: a resolution on record before an officer signs | The step gate notice |
 | Contract term check | contracts | proposed Oct 9 by A. Secretary, item `control-contract-term`, next meeting Oct 24 | The Work row in The board |
-| Monthly review | reviews | adopted Oct 3, effective Oct 10; needs the treasurer and the vice president; the vice president's office is vacant | Adopted, not in force: roster |
+| Monthly review | reviews | adopted Oct 3, effective Oct 10; needs the treasurer and the vice president; the vice president's office is vacant | In force, cannot be satisfied: acts it governs are refused until the seat is filled |
 | Delivery class | notices | adopted Oct 3, takes effect Nov 14 (the board's date): first class for notice letters | Adopted, not yet in force: date; the send notice before and after |
 | Recorder | notices | deferred Oct 3; look again Jan 15, 2100 | Deferred, with the date |
 | Second person, other kinds | onboarding | suggested | Built for onboarding answers; offered for other kinds |

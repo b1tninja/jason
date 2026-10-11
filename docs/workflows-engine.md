@@ -136,6 +136,13 @@ The pure library is in `src/jason/workflows/` with 65 tests (`tests/test_workflo
 - SOP addresses are `key#N` counted from 1, as `jason sop` numbers them. `--start` and `--open` both need `--yes` when the run has a legal clock.
 - Cancel is the secretary or the manager with a reason and `yes` (`CANCEL_ROLES`, one constant).
 
+### Step 3 (2026-10-11): store-backed readers and the first definition
+
+- `jason.workflows.readers.StoreReaders` reads the approvals store, the job queue's database, the response inbox, the follow-ups, and the notice ledger, and writes nothing (a test pins the data folder byte-identical after every call). `jason.workflows.definitions_general.register_general()` registers the general definitions; `jason workflow` calls it, never an import. The first is `owner-info-cycle` (27 steps: the table's 25 plus the board decision and the tags plan under group IN), with its date slots asked at start and one law clock, the entry day (30 days before the reports are mailed, `CIV 4041(b)(1)`).
+- **A reader adopts; it does not make.** Planning an approval or queueing a job reads the live system, so the reader links the newest plan of the step's kind made since the run opened, or a queued job it recorded, and a person plans or queues. This replaces section 4's "a `job` or `plan` step finds its earlier job or plan by a key before it makes another" for plans.
+- **Edge modules.** `readers` and `definitions_general` import the approvals store, the job queue, and read functions of the tasks; the boundary test gives them an allow-list of read-only stores. The core modules still import none.
+- **Open:** per-step item sets for `PER_ITEM` (one list per run today); a `second` role on a step for the "2P" steps; a recorded `campaign` or `notice_key` on the run (derived today from the dates); children `owner-document` and `notice-delivery` are not defined, so `spawns` is empty.
+
 ## 11. Decisions for you
 
 - **One file per run or one folder per definition** (recommended above: a file per run, a folder per definition).
