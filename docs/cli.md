@@ -6,20 +6,20 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-181 commands, by area:
+189 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (26)
 - [Meetings, board & minutes](#meetings-board--minutes) (12)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (28)
-- [Law, legal, insurance & claims](#law-legal-insurance--claims) (14)
+- [Law, legal, insurance & claims](#law-legal-insurance--claims) (15)
 - [Google Workspace](#google-workspace) (8)
 - [Mail, email, Zoom & vendors](#mail-email-zoom--vendors) (12)
-- [Property records & county](#property-records--county) (19)
+- [Property records & county](#property-records--county) (22)
 - [Local AI & search](#local-ai--search) (4)
 - [Setup & maintenance](#setup--maintenance) (12)
-- [Other](#other) (19)
+- [Other](#other) (23)
 
 ## PayHOA & finance
 
@@ -439,6 +439,9 @@ Classify the PayHOA document library (names, text, a local model), store it in d
 | `--vision` | VISION | Read these kinds' files (comma-separated) again with the local vision model, as a second text layer |
 | `--pages` | PAGES | With --vision, read only the first N pages (default: every page) |
 | `--limit` | LIMIT | With --vision, at most this many files |
+| `--ocr-doc` | ID | OCR one library file with the engines on this machine and keep its words (the job jason split --apply --filing library queues; needs --yes --by NAME) |
+| `--by` | BY | With --ocr-doc, who is doing this |
+| `--yes` |  | With --ocr-doc, make the change |
 
 ### `jason packet`
 
@@ -1621,6 +1624,26 @@ Written provisions a higher authority displaces: what still governs and what yie
 | `--since` | SINCE | with --leads: only changes operative on or after this date (2026-01-01: this year's laws) |
 | `--json` |  | print JSON |
 
+### `jason life-safety`
+
+The deficiency register: propose from the reports' readings, then a person confirms, says whether it impairs a safeguard, links what cleared it, and records that the insurer was told (append only, with who and when)
+
+| Option | Value | Help |
+|---|---|---|
+| `--list` |  | list the register (the default) |
+| `--system` | KEY | with --list: one system |
+| `--json` |  | print JSON |
+| `--propose` |  | add a proposed row for each open deficiency in the readings |
+| `--confirm` | ID | accept a proposed row (with --by) |
+| `--impairs` | ID | whether it impairs a safeguard (with --value and --by) |
+| `--value` | {yes,no} | with --impairs |
+| `--cleared` | ID | link the record that cleared it (with --record, --kind, --on, --by) |
+| `--insurer-told` | ID | record that a person told the insurer (with --record, --on, --by) |
+| `--record` | REF | the record's id (a library id, or gmail:ID for a message) |
+| `--kind` | {invoice line items,AES 10,later passing report,other record} | with --cleared: what kind of record cleared it |
+| `--on` | DATE | the day it was cleared or the insurer told (YYYY-MM-DD) |
+| `--by` | NAME | who records this (kept with when) |
+
 ## Google Workspace
 
 ### `jason gmail`
@@ -2082,6 +2105,51 @@ Sync Sacramento County property tax for community parcels into the local catalog
 |---|---|---|
 | `--parcel` | PARCEL | One parcel number (default: every community parcel) |
 
+### `jason hoa-reports`
+
+A page for every owners' association on the county's map: parcels, maps, documents, changes
+
+| Option | Value | Help |
+|---|---|---|
+| `--county` | COUNTY | the county (default sacramento) |
+| `--only` | ONLY | only associations whose names hold these words |
+| `--limit` | LIMIT | at most this many pages |
+| `--tied-only` |  | only associations whose land is tied (by deed, plan, or name) |
+| `--resume` |  | keep the pages already written (a run the county's services cut short) |
+| `--no-shapes` |  | do not read shapes from the county's map (no map.svg or KML) |
+| `--map-books` |  | download the assessor's map book pages as PDFs |
+| `--deeds` |  | read every parcel's last deed from the recorder (slow; cached) |
+| `--names` |  | name owners from their deeds (P1; needs --deeds); default: none |
+| `--out` | OUT | the folder to write (default data/reports/hoa) |
+| `--verbose` |  | print a line per page |
+
+### `jason land-sync`
+
+Bring the county's land store current: plans, maps, parcels, deeds, and the recorder watch
+
+| Option | Value | Help |
+|---|---|---|
+| `--county` | COUNTY | the county (default sacramento) |
+| `--full` |  | read every parcel (about a minute), finding retired ones |
+| `--no-watch` |  | skip the recorder watch |
+| `--units` |  | read every unit's last deed in the associations' footprints (hours the first time; then new ones only) |
+| `--since` | SINCE | read the watch from this day (YYYY-MM-DD) instead of its last read |
+
+### `jason county-tax`
+
+Keep a county payment receipt or bill PDF a person saved from the tax collector's site (read only; contacts nothing)
+
+| Option | Value | Help |
+|---|---|---|
+| `--list` |  | list the receipts held and which stored bills have a PDF (the default) |
+| `--json` |  | with --list: print JSON |
+| `--import-receipts` | FILE | a saved receipt document, or a list of them (with --by) |
+| `--import-bill` | FILE | a bill PDF a person downloaded (with --apn, --year, and --by) |
+| `--apn` | APN | with --import-bill: the parcel number |
+| `--year` | YEAR | with --import-bill: the bill's tax year |
+| `--bill` | NUMBER | with --import-bill: the bill number, when the parcel has several that year |
+| `--by` | NAME | who imports this (kept with when) |
+
 ## Local AI & search
 
 ### `jason read-documents`
@@ -2499,21 +2567,93 @@ The record checklist: a slot for each record the association must hold, with wha
 | `--slot` | KEY | show one slot: its law, holders, library reading, candidates, and trail |
 | `--pins` |  | list what the specification itself pins for each slot |
 | `--pick` | KEY | name a file for this slot (with --file and --by); a dry run without --yes |
-| `--file` | LINK_OR_ID | a Drive link or file id, or library:ID, for --pick |
+| `--file` | LINK_OR_ID | a Drive link or file id, or library:ID, for --pick; a path on this computer for --upload |
+| `--also` | LINK_OR_ID | with --pick: another file for the same act (repeat); each is its own pin and is checked against what the slot holds first. A series takes the same --period for each |
+| `--current` | KEY | when a slot has two holders, say which is current (--pin ID, --reason TEXT, --by); the other person's pins are unpinned and a specification pin comes back as a patch |
+| `--bindings` | KEY | the counts for each folder bound to this slot, from its last listing (reads disk, never Drive) |
 | `--period` | P | with --pick on a series slot: the year (2099), month (2099-06), or quarter (2099-Q2) |
 | `--entry` | NUMBER | with --pick on a recorded-instruments slot: the instrument's recording number |
-| `--resolve` |  | with --pick: read the file's name in Drive first (read-only) |
+| `--resolve` |  | with --pick or --bind: read the name in Drive first (read-only) |
 | `--answer` | KEY | record a person's word on this slot (with one of the three flags, --reason, --by) |
 | `--not-applicable` |  | with --answer: it does not apply to this association |
 | `--none` |  | with --answer: the association holds none (say where you looked) |
 | `--waiting` |  | with --answer: someone else has it (say who with --who) |
-| `--reason` | TEXT | with --answer: why, or where you looked |
+| `--reason` | TEXT | with --answer or --keep: why, or where you looked |
 | `--who` | NAME | with --answer --waiting: who has it |
 | `--unpin` | KEY | mark a person's pin on this slot removed (the file stays) |
-| `--pin` | ID | with --unpin: which pin, when the slot has several |
-| `--note` | TEXT | a few words kept with a pick or an unpin |
+| `--pin` | ID | with --unpin, --keep, --repin, --read: which pin, when the slot has several |
+| `--note` | TEXT | a few words kept with a pick, an unpin, or another act |
+| `--bind` | KEY | name a Drive folder for this slot (with --folder and --by); its files are candidates |
+| `--folder` | LINK_OR_ID | a Drive folder's link or id, for --bind |
+| `--keep` | KEY | keep a pick in this slot although jason reads the file as another kind (with --reason, --by) |
+| `--repin` | KEY | move a pick from this slot to another (with --to, --by) |
+| `--to` | SLOT | with --repin: the slot the pick moves to |
+| `--more` | KEY | answer 'is there another?' for a set that grows (with --value yes\|no, --by) |
+| `--value` | yes\|no | with --more: yes (add another) or no (this is all) |
+| `--reopen` | KEY | take back the standing answer on this slot, or a closed set (with --by) |
+| `--read` | KEY | read the file(s) pinned for this slot; a dry run without --yes fetches nothing |
+| `--force` |  | with --read: read again although the file's bytes are unchanged |
+| `--no-ocr` |  | with --read: leave a scan unread by OCR |
+| `--upload` | KEY | keep a file from this computer in jason's store and pin it to this slot (with --file PATH, --by) |
+| `--override` | KEY=VALUE | with --upload: allow this one file past a limit the row lets a community administrator pass once (upload.max_bytes=200MB; with --reason and --by; a dry run without --yes) |
+| `--replace` | KEY | swap this slot's file for a new one: pin or upload the new (--file), then unpin the old (--pin) |
+| `--split` | KEY | confirm parts of a combined scan's proposal into slots (with --part SEGMENT=SLOT, --by) |
+| `--part` | SEGMENT=SLOT | with --split: a part and the slot it fills (SEGMENT=SLOT@2099-06 for a series, SEGMENT=SLOT#NUMBER for a repeating row); repeat |
+| `--decline` |  | with --split: you want none of the proposed split |
+| `--ack` | KEY | record that you have seen that a pinned file changed since it was read (with --by) |
 | `--by` | NAME | the person making the write (required for every write) |
 | `--yes` |  | make the write; without it every write is a dry run |
+
+### `jason limits`
+
+The bounded numbers jason runs on: the value in force and its source; --set/--reset change one (a dry run until --yes)
+
+| Option | Value | Help |
+|---|---|---|
+| `key` | optional (?) | one limit (none: all) |
+| `--json` |  | print JSON |
+| `--scope` | {instance,community} | the layer: with --set/--reset the layer changed; alone, instance prints the instance layer |
+| `--set` | KEY=VALUE | set a limit in the layer (50MB, 30m, on); repeat for several, one write |
+| `--ceiling` | CEILING | with one --set at the instance layer: the highest a community may set |
+| `--reset` | KEY | remove the layer's value so the layer above is in force |
+| `--reason` | REASON | why (required with --set/--reset; kept in the trail, so put no names in it) |
+| `--by` | BY | who is changing it (a claim on a terminal; required with --set/--reset) |
+| `--yes` |  | apply the change (without it, a dry run) |
+| `--log` |  | print the layer's trail of changes |
+
+### `jason split`
+
+Split a large combined PDF into the documents it holds: boundaries a person marks, jason's suggestions with reasons, and a confirmed write (a dry run until --yes)
+
+| Option | Value | Help |
+|---|---|---|
+| `target` | optional (?) | a PDF on this machine, a library file (library:ID), or a split id |
+| `--list` |  | list the splits |
+| `--suggest` |  | run the cheap rule pass again |
+| `--facts` |  | measure every page (the job a long file's open queues) |
+| `--boundaries` | BOUNDARIES | set the boundaries: 1,15,23,40 (the whole set; page 1 is always one) |
+| `--mark` | PAGES | mark pages (12 or 12-14) as the first page of a segment |
+| `--unmark` | PAGES | remove a mark |
+| `--accept` | ID\|all | accept suggestions: g12,g20, or all (High and better) |
+| `--reject` | ID | reject suggestions: g12,g20 |
+| `--undo` |  | undo the last change to the draft |
+| `--redo` |  | redo it |
+| `--review` |  | the review of what an apply would do (counts, collisions, duplicates); writes nothing |
+| `--apply` |  | write the files (only with --yes --by NAME; the only command that writes PDFs) |
+| `--part` | SEGMENT=SLOT[@PERIOD][#ENTRY] | assign a segment to a record slot, as `jason records --split` |
+| `--filing` | {held,library,slots} | how the parts are filed: held in jason's store, taken in by the library intake, or each into the slot it names (without it, a part with a slot fills it and any other is held) |
+| `--no-ocr` |  | with --filing library: do not queue OCR for the parts filed to the library (default: one background job a part, in your name, at most split.ocr_queue_max) |
+| `--rotate` | PAGE=DEGREES,...\|sideways | turn pages in the new files only: 61=90,66=fix (degrees clockwise, or fix for the measured turn), or `sideways` for every page measured sideways; the original is never changed |
+| `--flags` |  | the flags of each segment before the review (blank only, near-duplicate, sideways, over the part limit, may hold more than one document); reads disk, writes nothing |
+| `--drop` | DROP | pages to leave out of every file: 7,29 (the totals are checked) |
+| `--keep-copies` |  | write a part even if jason already holds an identical file |
+| `--decline` |  | record that a person wants none of this split |
+| `--purge` |  | drop a draft (or --all-drafts) with its copy and page pictures; never an original |
+| `--all-drafts` |  | with --purge: every draft |
+| `--sweep` |  | the retention sweep: drafts older than split.draft_days |
+| `--by` | BY | who is doing this (a claim on a terminal; never jason) |
+| `--yes` |  | make the change (without it, a dry run) |
+| `--json` |  | print JSON |
 
 ### `jason instrument-graph`
 
@@ -2562,11 +2702,11 @@ The passage index: build it, report it, or search it by scope
 | `--search` | QUESTION | rank the passages for a question |
 | `--mode` | {keyword,exact,dense,hybrid} |  |
 | `-k` | K |  |
-| `--catalog` | CATALOG | only this catalog (repeat) |
+| `--catalog` | CATALOG | search only this catalog (repeat); a build refuses it |
 | `--standing` | STANDING | authority, record, reference, or page (repeat) |
 | `--kind` | KIND | only this document kind (repeat) |
 | `--folder` | FOLDER | only under this data folder (repeat) |
-| `--confidential` |  | include the files held back unless asked |
+| `--confidential` |  | include the files held back unless asked (a search) |
 | `--json` |  |  |
 
 ### `jason verify-quotes`
@@ -2595,22 +2735,19 @@ A community's own Google Workspace: OAuth client, sign-in, status
 | `--name` | {drive,tasks,vault,photos,all} | sign-in: which token (default drive) |
 | `--again` |  | sign-in: consent anew although a token is held |
 
-### `jason life-safety`
+### `jason use`
 
-The deficiency register: propose from the reports' readings, then a person confirms, says whether it impairs a safeguard, links what cleared it, and records that the insurer was told (append only, with who and when)
+The community this machine's commands serve: show it and where it came from; `use KEY` saves it in the user config (JASON_COMMUNITY); `--list` the installed ones
 
 | Option | Value | Help |
 |---|---|---|
-| `--list` |  | list the register (the default) |
-| `--system` | KEY | with --list: one system |
-| `--json` |  | print JSON |
-| `--propose` |  | add a proposed row for each open deficiency in the readings |
-| `--confirm` | ID | accept a proposed row (with --by) |
-| `--impairs` | ID | whether it impairs a safeguard (with --value and --by) |
-| `--value` | {yes,no} | with --impairs |
-| `--cleared` | ID | link the record that cleared it (with --record, --kind, --on, --by) |
-| `--insurer-told` | ID | record that a person told the insurer (with --record, --on, --by) |
-| `--record` | REF | the record's id (a library id, or gmail:ID for a message) |
-| `--kind` | {invoice line items,AES 10,later passing report,other record} | with --cleared: what kind of record cleared it |
-| `--on` | DATE | the day it was cleared or the insurer told (YYYY-MM-DD) |
-| `--by` | NAME | who records this (kept with when) |
+| `key` | optional (?) | the profile to make current (no key: show the current one) |
+| `--list` |  | the installed profiles, the current one marked |
+
+### `jason which`
+
+The community in use, where the choice came from, and its data folder
+
+### `jason communities`
+
+The profiles installed on this machine, the current one marked
