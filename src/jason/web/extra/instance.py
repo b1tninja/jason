@@ -12,7 +12,8 @@ opened read-only. They call no Google, PayHOA, Keeper, or network, write nothing
 whose scheduler has not run is "never seeded", with the command that seeds it).
 
 **No secret is read or returned.** An integration row carries its vault *path* (a name) and whether a credential is set,
-never a value. The vault is asked only with ``?vault=1``, by the administrator, and answers names only; without it a
+never a value. The vault is asked only with ``?vault=1``, by the administrator, only under ``jason-web --dev`` (it is the development
+environment's store), and answers names only; without it a
 credential held only in the vault reads "not set" from the ``.env`` test, and the row says the vault was not asked.
 """
 
@@ -28,6 +29,8 @@ SERVICE_COMMAND = "jason serve"
 SEED_COMMAND = "jason cadence"
 VAULT_NOT_ASKED = ("The vault was not asked: a credential held only in the vault reads \"not set\" here. Ask it with "
                    "the vault button, or `jason vault status` at a terminal.")
+VAULT_DEV_ONLY = ("The vault (Keeper) is the development environment's store. The console asks it only under jason-web --dev; "
+                  "a production installation reads its credentials from its own secret store, chosen when it is hosted.")
 CAVEATS = (
     "Read from disk only: heartbeats, locks, the connections' stored rows, and the schedules table opened read-only. "
     "Nothing here calls Google, PayHOA, Keeper, or the network, and nothing here writes.",
@@ -45,6 +48,13 @@ def _profiles() -> dict[str, Path]:
     from jason import serve
 
     return {name: serve.profile_data_dir(name) for name in serve.profile_names()}
+
+
+def _dev() -> bool:
+    """Whether jason-web runs with --dev (the same flag that lets an admin view the console as someone else)."""
+    from flask import current_app
+
+    return bool(getattr(current_app.extensions.get("jason_sign_in"), "dev", False))
 
 
 def _admin() -> None:
@@ -84,7 +94,8 @@ def integrations(args: Args) -> dict[str, Any]:
         settings = None
     root = data_dir()
     vault = None
-    asked = (args.get("vault") or "") in ("1", "true", "yes")
+    requested = (args.get("vault") or "") in ("1", "true", "yes")
+    asked = requested and _dev()                  # the vault is the development environment's store: see VAULT_DEV_ONLY
     if asked:
         from jason.vault.keeper import vault_names
 
@@ -94,7 +105,7 @@ def integrations(args: Args) -> dict[str, Any]:
     answered = bool(asked and vault is not None and vault.answered)
     return {"found": True, "asOf": _now(), "community": key, "scope": scope.value, "integrations": rows,
             "vault": {"asked": asked, "answered": answered,
-                      "why": "" if answered else (vault.problem if asked else VAULT_NOT_ASKED)},
+                      "why": "" if answered else (vault.problem if asked else VAULT_DEV_ONLY if requested else VAULT_NOT_ASKED)},
             "caveats": list(CAVEATS)}
 
 

@@ -143,7 +143,7 @@ The cut flags that its sample counts outstanding as owners less answered less un
 - **Invented capabilities and sources:** Google scopes `gmail.metadata` and `calendar.readonly` (the registry's are `gmail.readonly` and `calendar.events.readonly`, and it has 16 capabilities, not 4); PayHOA's card omits "Bulk writes"; a `payhoa-owners` source and "7 schedules paused"; per-portal sources (the registry has the single `vendor-portals` source); `county-recorder`, `owner-workbook`, `mailroom-send`, `fax-inbox`, and a retired row.
 - **Wrong cadences and floors:** Drive is "every 2h, floor 15m" (every 15 minutes 07-22, hourly outside, floor 5m); Calendar every 1h (30m); the PayHOA ledger "every 6h, floor 1h" (weekly and on the 5th, floor 1d).
 - **Heartbeat and service:** `draining` is missing; "stopped after a drain request by NAME", "started by Task Scheduler", and "waiting: another community's job" are not in the data (the loader is disk-only; the GPU lock records a pid and a time); the 6:00 AM failure is a scheduled run, but the card calls it "Last checked", and a check is a person's act.
-- **The vault's default state, "not asked"** is not drawn. `?vault=1` makes the console ask Keeper for names, non-interactively: built, but a console-initiated call to Keeper. **A decision for you.**
+- **The vault's default state, "not asked"** is not drawn. `?vault=1` makes the console ask Keeper for names, non-interactively: built, but a console-initiated call to Keeper. Decided: dev only (section 8).
 - **Clean:** no secret is shown or taken, there is no connect or OAuth flow in the browser, no start or stop button, no live-check button.
 
 **The build must add:** a per-community integration read for the dots; a vault JSON route (names, owner groups, the migration plan's states); draining and the other part states; a queued-GPU-job read for "waiting"; a never-seeded state for schedules; a rate-limit URL field if the link stays; and the Integrations, Service, and Vault views (none exist in `ui/src`; only the three loaders do).
@@ -161,7 +161,7 @@ The cut flags that its sample counts outstanding as owners less answered less un
 
 ## 8. Decisions for you
 
-1. **The vault's names:** should the console ask Keeper for names (`?vault=1`, built, non-interactive), or should the vault panel show only what a terminal command wrote to disk?
+1. **The vault's names: decided.** The vault (Keeper) is the development environment's store, so the console asks it only under `jason-web --dev`; elsewhere the vault panel says it was not asked and why, and a production installation reads its credentials from its own secret store, chosen when it is hosted ([integrations-design.md](../integrations-design.md)). The design draws three states: asked and answered, asked and could not be answered, and not asked (not in dev).
 2. **A director's view of follow-ups:** counts only, enforced on the server (the build's loaders return names to an office that opens P2)?
 3. **Draft an email:** may the console ever create a Gmail draft, or does Save stay a terminal command?
 4. **Which glyphs** break one-glyph-one-meaning in Limits and the admin page: keep the build's set, or give the new meanings new glyphs?

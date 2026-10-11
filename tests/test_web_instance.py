@@ -93,6 +93,24 @@ def test_the_vault_is_asked_only_on_request(app, monkeypatch):
     assert calls == [1] and out["vault"] == {"asked": True, "answered": False, "why": "timeout"}
 
 
+def test_outside_dev_the_console_never_asks_the_vault(tmp_path, monkeypatch, root):
+    from jason.vault.resolver import VaultNames
+    from jason.web.app import create_app
+
+    calls = []
+    monkeypatch.setattr("jason.vault.keeper.vault_names", lambda settings: calls.append(1) or VaultNames(None, "timeout"))
+    monkeypatch.setattr(inst, "_profiles", lambda: {"alpha": root})
+    monkeypatch.setattr("jason.config.data_dir", lambda env_file=None: root)
+    monkeypatch.setattr("jason.integrations.connections.store_path", lambda community, env_file=None: root / "integrations.json")
+    dist = tmp_path / "dist2"
+    dist.mkdir()
+    app = create_app(dist, ROUTES, approvals_live=None, extra_writes=False, sign_in=webclient.roster_sign_in(dev=False))
+    admin = webclient.sign_in(webclient.client(app), "Ada Admin")
+    out = admin.get("/api/instance-integrations?vault=1")
+    assert out.status_code == 200 and calls == []
+    assert out.json["vault"]["asked"] is False and "development environment" in out.json["vault"]["why"]
+
+
 # --- the schedules -----------------------------------------------------------------------------------------------------
 
 def test_schedules_never_seeded_are_said_so_and_no_store_is_created(app, root):
