@@ -3,6 +3,7 @@ in, the scoping rules and the basis each gives, the ambiguity state that names e
 a document prints twice, and jason's own rule rows cited as a plan item writes them."""
 
 import json
+import re
 
 import pytest
 
@@ -317,9 +318,18 @@ def test_every_plan_kinds_rule_is_an_address_the_approvals_screen_recites():
     from jason.approvals import registry
     from jason.web import approvals
 
+    from jason.config import data_dir
+
+    statutes = (data_dir() / "authorities" / "CIV").is_dir()
+    unread = []
     for kind in registry.kinds():
         r = approvals.recite(kind.rule)
+        if not r["found"] and not statutes and re.match(r"^[A-Z]{2,4} \d", kind.rule):
+            unread.append(kind.key)                  # a statute address needs the shelf, which a clean checkout lacks
+            continue
         assert r["found"], (kind.key, kind.rule, r.get("reason"))
+    if unread:
+        pytest.skip(f"the statutes are not exported here (jason export-authorities): {', '.join(unread)}")
 
 
 def test_the_approvals_screen_recites_a_row_as_it_recites_a_section():
