@@ -2475,6 +2475,36 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("an-http-client-logs-the-urls-it-fetches", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A Drive request's URL contains the file id, and the HTTP client logs request URLs at INFO, so a flow that "
+           "promised no ids in logs would have written them.",
+           "The promise covered jason's own lines, not a library's.",
+           "The client's loggers are silenced while a pick is read, and a test asserts it; a proxy's own access log is "
+           "outside jason.",
+           Status.FIXED, guards=("tests/test_drive_pick.py",), docs=("docs/google-picker.md",)),
+    Lesson("a-used-once-state-must-be-claimed-on-the-server", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A pick's state kept only in a cookie session could be replayed from a copied cookie.",
+           "The session is the person's, not the server's.",
+           "The callback claims a server-side record by atomic rename, so the state works once.",
+           Status.FIXED, guards=("tests/test_drive_pick.py",), docs=("docs/google-picker.md",)),
+    Lesson("a-merge-does-not-reload-a-running-server", date(2026, 10, 11), (Area.REPOSITORY,),
+           "After a backend merge the console was rebuilt but jason-web kept running the old Python, so the page showed new "
+           "screens and the server answered with the old refusal; a restart also mints a new write token.",
+           "A merge changes files, not the running process.",
+           "Restart jason-web after any backend merge; a write refused for a stale token now retries once with a fresh one.",
+           Status.FIXED, guards=("ui/src/lib/api.test.ts",), docs=("docs/web-ui.md",)),
+    Lesson("a-pinned-refusal-goes-stale-when-the-feature-lands", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A test asserted the old 'Drive file is split from a copy' refusal and failed only in the full run after the "
+           "feature was built.",
+           "The message was pinned in a test of a different feature.",
+           "The assertion was updated; run the whole suite before committing a feature that removes a refusal.",
+           Status.FIXED, guards=("tests/test_split_apply.py",), docs=("docs/pdf-splitter.md",)),
+    Lesson("a-new-loader-needs-its-gate-row", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A new loader failed the loader-gate test because another session had just required every loader to be listed.",
+           "The rule landed on master while the loader was being built.",
+           "Add the loader's row to tests/fixtures/loader_gates.json in the same commit; rebase onto master before the "
+           "final run.",
+           Status.FIXED, guards=("tests/test_loaders_are_gated.py",), docs=("docs/web-ui.md",)),
     Lesson("a-resource-loader-must-not-abort-on-unmount", date(2026, 10, 11), (Area.REPOSITORY,),
            "In the album, marking a start re-keyed every row below it, so every in-flight page picture was aborted and asked "
            "for again; with a slow server the last pages never finished.",
