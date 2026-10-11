@@ -177,6 +177,8 @@ The band shows while any stage gate is closed (`onboarding.GATES`: its checks ha
 | Filter by group, stage | the loader's `group`, `stage` | No | `jason onboard --questions --group G --stage S` |
 | Read a proposal | Shows the patch file, read-only | No | — |
 
+**Controls jason suggests (proposed).** After the governing documents are ingested and a person confirms their duties were read, the session offers one optional step, "Controls jason suggests from your documents": the same rows as [controls.md](controls.md) (signers, contract authorization, limits, review cadence), each with its provision quoted, "Take these to the board" (one board item listing them) and "Not now". Closing it records that the suggestions were seen, never that anything was adopted. It is never required for a gate to open.
+
 **Applying answers stays in the terminal in phase 2.** `jason onboard --apply` merges private facts (with a backup and a diff), writes Keeper notes, and writes profile proposals. The console shows the count and the command. Whether the console should offer it, as a signed job with the diff shown first, is open.
 
 **A secret is refused, and nothing is kept.** When `intake.secret_reason` flags the answer, the form shows: "This looks like a secret: it gives a password. jason keeps no secrets. Put it in Keeper, and answer with the Keeper record's name." The typed value is cleared from the field and never stored or logged.

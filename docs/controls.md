@@ -50,7 +50,7 @@ A suggestion shows: the provision's words whole with the citation (quoted from t
 
 `suggested` (jason found the provision) → `proposed` (a person puts it before the board; it becomes a board item with the quoted provision as its evidence) → the board decides at a meeting (the secretary records the decision) → `adopted` (with an effective date), `declined`, or `deferred` (with a reason and a date to look again). An adopted control is reviewed each year with the board's other standing decisions (the duty schedule). Retiring a control is a decision too.
 
-The adoption is a `decision` step in a **control-adoption** run, one run per control (a family of the workflows, [workflows/README.md](workflows/README.md)): suggest, put it before the board, decide, record, set the effective date, check the roster can satisfy it, and turn it on.
+The adoption is a `decision` step in a **control-adoption** run, one run per control (a family of the workflows, [workflows/README.md](workflows/README.md)): suggest, put it before the board, decide, record, set the effective date, check the roster can satisfy it, and wait for the effective date, from which it is in force (jason turns nothing on; the date and the check do).
 
 ## 5. Enforcement
 
