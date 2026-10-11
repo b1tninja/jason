@@ -934,8 +934,12 @@ EXTRA_LOADERS: dict[str, str] = {
     "split-sessions": "jason.web.extra.split:split_sessions",  # the PDF splitter's drafts: id, status, pages, counts; a confidential file masked; the board's
     "split-session": "jason.web.extra.split:split_session",  # ?id=&facts=1-200&review=1 one draft: boundaries, segments, suggestions with reasons, version; the board's
     "instance-limits": "jason.web.extra.limits_view:instance_limits",  # Instance > Limits: the instance layer (value, ceiling, who, why); an admin as themselves only; never a community's values
+    "controls": "jason.web.extra.controls:controls",  # ?family=&state=: the safeguards the board opts into and jason suggests, by family, with the provision whole, the floor, the roster check; P2
+    "control": "jason.web.extra.controls:control",  # ?key=: one control, six bands, with its provision as the documents hold it now; P2
+    "control-notices": "jason.web.extra.controls:control_notices",  # ?subject=KIND: the effective rule and the controls waiting or refused, for the one-line notice; read only, P2
 }
 EXTRA_WRITERS: dict[str, str] = {
+    "controls": "jason.web.extra.controls:write",  # <control key> {act: propose}: a board item with the provision as evidence, in the signer's name (P2); adopts nothing
     "registers": "jason.web.extra.registers:write",
     "life-safety": "jason.web.extra.life_safety:write",  # <deficiency id> {act}: confirm, impairs, cleared, insurer-told, or propose; append only, in the signer's name (P2)
     "bill-investigation": "jason.web.extra.bill_investigation:write",  # <tx> {outcome, doc?, note?}: a person's outcome, append only, in the signer's name; attaches and approves nothing

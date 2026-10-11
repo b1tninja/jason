@@ -78,7 +78,8 @@ The adoption is a `decision` step in a **control-adoption** run, one run per con
 | Board items and the board's decisions, recorded by the secretary | built (`jason board`, `decisions.json`) |
 | Rule rows with an `adoption` board item (the response rules) | built; the model for "a row the board has adopted" |
 | The `Control` and `ControlType` records, the catalog of nine control types with floors, the append-only act log (`data/controls/acts.jsonl`), the effective-approver lookup (stricter-of, binding from the effective date, refusing an act the roster cannot satisfy) and its hook in the approvals engine (`jason.controls`) | built (step 1, 2026-10-11); signer identity is not yet enforced |
-| The suggestion reader, the Controls screen, the `control-adoption` run | not built |
+| The suggestion reader (`jason.controls.suggest`: general phrase evidence on each catalog type, the provision whole, a floor only where one count is certain, a question where the match is weak; it runs only after the duties are confirmed read, `Community.duties_read()`), `jason controls` (list, show, suggest and record, roster check, propose), the loaders `controls`, `control`, `control-notices` and the writer `POST /api/write/controls/<key>` (`{act: "propose"}` only) | built (steps 2 and 3, 2026-10-11); a scope of all binds nothing until the approval kinds carry categories (none does yet) |
+| The Controls screen, the `control-adoption` run | not built |
 
 **Build order:** (1) the catalog and the record, with the effective-approver lookup in the approvals engine (a control may only tighten), tested on made-up controls; (2) the suggestion reader for the first three families (payment and reserve signers, contract authorization, review cadence), quoting from the stored governing documents; (3) the `control-adoption` run and the board item; (4) the Controls screen and the onboarding step.
 

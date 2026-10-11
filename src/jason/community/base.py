@@ -1563,6 +1563,12 @@ class Community(ABC):
         specification records some."""
         return ()
 
+    def duties_read(self) -> bool:
+        """Whether a person confirmed that the governing documents' duties and limits were read and are right
+        (``jason.controls.suggest`` suggests a control only after this, so a misread provision is never suggested). False
+        until the specification says so."""
+        return False
+
     def limits(self) -> dict:
         """The association's own values for jason's limits (``jason.limits``): a mapping of a limit's key to its value, such
         as ``{"upload.max_bytes": 52428800}``. A setting in the environment or the machine's config comes first; a value

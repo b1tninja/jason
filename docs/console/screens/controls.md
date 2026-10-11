@@ -1,6 +1,6 @@
 # Controls
 
-A new screen, `#/controls`, in the Governance group · phase 3 · no CLI yet (`jason controls`, to add) · design: [../../controls.md](../../controls.md)
+A new screen, `#/controls`, in the Governance group · phase 3 · CLI `jason controls` and the loaders `controls`, `control`, `control-notices` and writer built; the screen is not · design: [../../controls.md](../../controls.md)
 
 ## In the console
 

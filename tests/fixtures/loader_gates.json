@@ -81,6 +81,18 @@
    "gate": "open",
    "why": "the public owner page's content: names, site pages, contact groups; the owner view reads it before any sign-in"
   },
+  "control": {
+   "gate": "p2",
+   "why": "one control with its provision and history; the board's own safeguards, read by the offices that open P2 (the loader gates itself)"
+  },
+  "control-notices": {
+   "gate": "p2",
+   "why": "the one-line notice data: the effective rule of a kind and the controls waiting or refused; read only, P2 (the loader gates itself)"
+  },
+  "controls": {
+   "gate": "p2",
+   "why": "the safeguards the board opts into and jason suggests, by family; the offices that open P2 (the loader gates itself)"
+  },
   "decisions": {
    "gate": "p2",
    "why": "the board's recorded decisions, which can name an owner (executive rows are held back further)"

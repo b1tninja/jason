@@ -311,6 +311,36 @@ def _summary(c: Control, second: bool, threshold: int | None, must: tuple[Office
     return ", ".join(bits) or c.type.title.lower()
 
 
+def touches(control: Control, kinds: Iterable[Any] | None = None) -> list[dict[str, Any]]:
+    """Where the control would bite once in force: each approval kind it applies to (with the kind's own rule beside what
+    the control asks, and whether that is stricter), and each workflow step, send, or spend its type governs. Works for any
+    state, a suggestion included ("what turning it on changes"): it reads the registry and the control, and nothing else.
+    A governed category no registered kind carries is listed as such, never dropped."""
+    out: list[dict[str, Any]] = []
+    second, threshold, c_roles, c_must = _asks(control)
+    ask = _summary(control, second, threshold, c_must)
+    for g in control.type.governs:
+        if g.kind is not GovernsKind.APPROVAL_KIND:
+            out.append({"kind": g.kind.value, "what": g.what})
+            continue
+        found = False
+        for kind in (kinds if kinds is not None else registry.kinds()):
+            if not applies(control, kind, None, getattr(kind, "categories", ()) or ()):
+                continue
+            found = True
+            two = kind.approver is Approver.TWO_PERSON
+            row = {"kind": g.kind.value, "key": kind.key, "title": kind.title,
+                   "builtin": "two persons" if two else "one person",
+                   "with": ask, "changes": bool((second and not two) or c_roles or c_must)}
+            if row not in out:
+                out.append(row)
+        if not found:
+            out.append({"kind": g.kind.value, "key": None, "what": g.what,
+                        "note": "no registered approval kind carries this category, so a control scoped to all binds "
+                                "nothing yet; scope it to a kind or a family"})
+    return out
+
+
 def signature_problems(effective: Effective, signers: Iterable[str], roster: Iterable[Any] | None) -> list[str]:
     """Why these named signers do not meet the effective rule's offices, empty when they do. Not wired into the engine
     yet: the engine records names, and the offices come from the roster."""
@@ -377,4 +407,4 @@ def _community_roster() -> tuple[Any, ...] | None:
 
 
 __all__ = ["BOARD_ROLES", "Effective", "InForce", "Waiting", "applies", "effective_approver", "ensure_valid", "in_force",
-           "refusals", "requires_second", "roster_problem", "signature_problems", "validate"]
+           "refusals", "requires_second", "roster_problem", "signature_problems", "touches", "validate"]

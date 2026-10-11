@@ -71,10 +71,44 @@ class ParamSpec:
 
 
 @dataclass(frozen=True)
+class Cue:
+    """One kind of words a provision uses. ``name`` is how the reading calls it; ``pattern`` is a regular expression
+    matched without regard to case. Cues are general language ("shall be signed by"), never one association's words."""
+
+    name: str
+    pattern: str
+
+
+@dataclass(frozen=True)
+class FloorRead:
+    """How the floor a provision sets on a COUNT parameter is read from its words, where one count is certain. Each
+    pattern has a group ``n`` for the count (a number word or digits). The reader uses it only when every read in the
+    sentence agrees and nothing offers an alternative (``or``) after the count; otherwise the floor is a person's to read."""
+
+    param: str
+    patterns: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """When a provision speaks to a control type. Every cue in ``cues`` found in one sentence is a match; found only
+    across the section, a question. A cue of ``unless`` found in the same sentence turns the match away (the words belong
+    to another type). ``floor`` says how a count is read."""
+
+    cues: tuple[Cue, ...]
+    unless: tuple[Cue, ...] = ()
+    floor: tuple[FloorRead, ...] = ()
+
+
+@dataclass(frozen=True)
 class ControlType:
     """A safeguard the catalog offers. ``floor`` is what the law or a built-in rail already requires, as data keyed by
     parameter: a control may not go below it. A floor that is one association's (what its bylaws require) is the
-    control's own ``Basis.floor``, never the catalog's. ``sources`` are the kinds of provision that suggest it."""
+    control's own ``Basis.floor``, never the catalog's. ``sources`` are the kinds of provision that suggest it.
+
+    ``evidence`` is the words (any one ``Evidence`` row) that suggest the type (``jason.controls.suggest``); a type with
+    none is never suggested from the documents. ``proposal`` is jason's proposal for the parameters, labeled as one wherever
+    it is shown; ``board_sets`` are the parameters it leaves to the board (an amount is never invented)."""
 
     key: str
     title: str
@@ -83,6 +117,9 @@ class ControlType:
     parameters: tuple[ParamSpec, ...]
     floor: Mapping[str, Any] = field(default_factory=dict)
     sources: tuple[str, ...] = ()
+    evidence: tuple[Evidence, ...] = ()
+    proposal: Mapping[str, Any] = field(default_factory=dict)
+    board_sets: tuple[str, ...] = ()
 
     def spec(self, key: str) -> ParamSpec:
         for p in self.parameters:
@@ -370,7 +407,8 @@ def from_dict(raw: Mapping[str, Any]) -> Control:
                    tuple(history_from_dict(h) for h in raw.get("history") or ()))
 
 
-__all__ = ["Basis", "Control", "ControlAct", "ControlFamily", "ControlRefused", "ControlState", "ControlType", "Governs",
-           "GovernsKind", "HistoryEntry", "MOVES", "ParamKind", "ParamSpec", "Scope", "ScopeKind", "floor_of",
+__all__ = ["Basis", "Control", "ControlAct", "ControlFamily", "ControlRefused", "ControlState", "ControlType", "Cue",
+           "Evidence", "FloorRead", "Governs", "GovernsKind", "HistoryEntry", "MOVES", "ParamKind", "ParamSpec", "Scope",
+           "ScopeKind", "floor_of",
            "from_dict", "meets", "normalize", "parameters_from_dict", "parameters_to_dict", "stricter", "to_dict",
            "with_state"]
