@@ -213,16 +213,18 @@ Plans of writes outside jason, approved item by item by a named person
 
 | Option | Value | Help |
 |---|---|---|
-| `action` | {list,kinds,plan,show,decide,submit,confirm,decline,withdraw,apply,audit} | list (default), kinds, plan KIND, show ID, decide ID, submit ID, confirm ID, decline ID, withdraw ID, apply ID, audit [ID] |
+| `action` | {list,kinds,plan,show,decide,refer,exceptions,submit,confirm,decline,withdraw,apply,audit} | list (default), kinds, plan KIND, show ID, decide ID, refer ID, exceptions [ID], submit ID, confirm ID, decline ID, withdraw ID, apply ID, audit [ID] |
 | `ref` | optional (?) | the kind (plan) or the approval's id or a unique prefix |
 | `--by` | NAME | the person deciding, submitting, confirming, or applying |
-| `--items` | ITEM | with decide: item ids or unique prefixes (6+ characters) |
+| `--items`, `--item` | ITEM | with decide: item ids or unique prefixes (6+ characters); with refer: the one flagged item |
+| `--exception` |  | with decide: decide a flagged item (held for the board) as a one-off exception, never a rule; needs --reason in words, and a second person signs before it applies |
+| `--finding` | RULE | with exceptions: only the decisions made under this finding |
 | `--all` |  | with decide: every approvable item |
 | `--hold` |  | with decide: hold the items (needs --reason) |
 | `--reject` |  | with decide: leave the items out (needs --reason) |
 | `--reason` | REASON | why: a hold, a rejection, a decline, or a withdrawal |
 | `--yes` |  | with apply: apply the approved items (without it: re-plan and compare, writing nothing) |
-| `--json` |  | with show: the approval as JSON |
+| `--json` |  | with show or exceptions: the approval, or the log, as JSON |
 | `--scope` | JSON | with plan: the kind's scope as a JSON object (a kind that needs one, such as gmail-drafts, says what it takes) |
 | `--status` | STATUS | with list: only this status (planned, in_review, approved, ...) |
 | `--kind` | KIND | with list: only this kind |
