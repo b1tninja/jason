@@ -14,5 +14,5 @@ Importing this package loads no profile and no client that sends, files, or writ
 from jason.workflows.types import (  # noqa: F401
     CheckResult, Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Event, EventKind, InvalidWorkflow, Link, LinkKind,
     OnWithdrawn, Phase, Problem, Repeat, Role, RunChanged, RunState, RunView, SkipRule, StepDef, StepKind, StepRefused,
-    StepState, StepView, Workflow, WorkflowError,
+    StepState, StepView, Visibility, Workflow, WorkflowError,
 )

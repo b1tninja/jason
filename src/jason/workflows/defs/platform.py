@@ -1,20 +1,20 @@
 """The platform family: paper mail, email, and running jason itself (docs/workflows/mail-and-platform.md; the disconnect
 step is docs/console/screens/integration-disconnect.md).
 
-Seven definitions are built here and four are registered (``BUILDERS``):
+Seven definitions are built here and registered (``BUILDERS``): the first four (``BOARD_BUILDERS``) are the manager's and the
+board's, the last three (``ADMIN_BUILDERS``) the administrator's.
 
 - ``mail-triage``: a period of paper mail, a letter at a time (the manager's).
 - ``email-conversation``: one Gmail thread, from the sync to the answer (the manager's).
 - ``gmail-draft``: a Gmail draft from an item, never sent (the approvals kind ``gmail-drafts``).
 - ``response-inbox``: a returned form, recognized, read, and confirmed; the run ends at the hand-over.
 
-``integration-connect``, ``service-run``, and ``check-in`` are built (``integration_connect``, ``service_run``, ``check_in``,
-listed in ``ADMIN_BUILDERS``) and LEFT OUT of ``BUILDERS`` on purpose. The page makes the first two the administrator's alone
-("never in the owner view, never to a director, secretary, treasurer, or manager, not even by count") and the third a
-developer's terminal procedure that "the console never offers". The Work backend (``jason.web.extra.work``) lists every
-registered run to every viewer whose offices open P2 and has no per-definition visibility, so registering them would put an
-administrator's runs in the manager's and the board's Work list. Add ``ADMIN_BUILDERS`` to ``BUILDERS`` when the backend can
-hide a definition from any viewer who is not an administrator signed in as themselves.
+``integration-connect``, ``service-run``, and ``check-in`` (``integration_connect``, ``service_run``, ``check_in``) are
+``Visibility.ADMIN``. The page makes the first two the administrator's alone ("never in the owner view, never to a director,
+secretary, treasurer, or manager, not even by count") and the third a developer's terminal procedure that "the console never
+offers". The Work backend (``jason.web.extra.work``) therefore lists, reads, and starts an ADMIN definition and its runs for an
+administrator only, and a non-administrator gets neither the definition nor a run of it (404). ``check-in`` also has
+``console_start`` False: the console never starts it (a terminal procedure; ``jason workflow`` does).
 
 This module is pure data: it imports only ``jason.workflows.types``, ``named_check``, and the standard library, and loads no
 profile, store, or client. It names no association, person, address, or id. A run's subject is an opaque id and its label carries no sender
@@ -37,7 +37,7 @@ from typing import Any, Callable
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
+    Choice, ClockBasis, ClockDef, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
 )
 
 P, B, D, W, PL, C = StepKind.PERSON, StepKind.BRANCH, StepKind.DECISION, StepKind.WAIT, StepKind.PLAN, StepKind.CHECK
@@ -110,7 +110,8 @@ def _built(key: str, title: str, subject: str, steps: tuple[StepDef, ...], phase
     assert all(x in ids for p in phases for x in p.steps), key
     assert {x for p in phases for x in p.steps} == ids, f"{key}: every step is in a phase"
     return Workflow(key=key, title=title, family="platform", subject=subject, steps=steps, dates=(), phases=phases,
-                    procedure=procedure)
+                    procedure=procedure, visibility=Visibility.ADMIN if key in ADMIN_KEYS else Visibility.BOARD,
+                    console_start=key != CI)
 
 
 STALE_PROPOSED = "proposed policy: the cadence and its stale-after are proposed, and nothing runs until a person adopts them"
@@ -564,12 +565,16 @@ def check_in() -> Workflow:
     return _built(CI, "Check work in", "change", steps, phases, procedure=CI)
 
 
-BUILDERS: tuple[Callable[[], Workflow], ...] = (mail_triage, email_conversation, gmail_draft, response_inbox)
-"""The definitions ``register_general`` registers: the manager's mail and email runs."""
+BOARD_BUILDERS: tuple[Callable[[], Workflow], ...] = (mail_triage, email_conversation, gmail_draft, response_inbox)
+"""The manager's mail and email runs (``KEYS``): every office that opens P2 sees them."""
 
 ADMIN_BUILDERS: tuple[Callable[[], Workflow], ...] = (integration_connect, service_run, check_in)
-"""Built and left out of ``BUILDERS`` (see the module note): the administrator's and the developer's."""
+"""The administrator's (``ADMIN_KEYS``, ``Visibility.ADMIN``): listed, read, and started by an administrator only. ``check_in``
+is a terminal procedure the console never starts (``console_start`` is False)."""
+
+BUILDERS: tuple[Callable[[], Workflow], ...] = BOARD_BUILDERS + ADMIN_BUILDERS
+"""The definitions ``register_general`` registers: the four above and the three of the administrator."""
 
 
-__all__ = ["ADMIN_BUILDERS", "ADMIN_KEYS", "BUILDERS", "CASES", "KEYS", "WANTED", "check_in", "email_conversation", "gmail_draft",
+__all__ = ["ADMIN_BUILDERS", "ADMIN_KEYS", "BOARD_BUILDERS", "BUILDERS", "CASES", "KEYS", "WANTED", "check_in", "email_conversation", "gmail_draft",
            "integration_connect", "mail_triage", "response_inbox", "service_run"]

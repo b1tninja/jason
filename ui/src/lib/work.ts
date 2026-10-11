@@ -115,11 +115,14 @@ export interface RunAge { days: number | null; opened: string | null; idleDays: 
 
 export interface RowCurrent { id: string; title: string; n: number; of: number; kind: string; state: string; role: string }
 
-/** One row of the list (`_row`). No subject, no item, no name. */
+/** One row of the list (`_row`). No subject, no item, no name. A `held` row is a run of a held definition (a hearing, a
+ * delinquent account, a records request) seen outside the private view: its `label` is the definition's general words
+ * (`heldTitle`), its `handle` is the run id, and it opens only in the private view (`jason.web.extra.work_scope`). */
 export interface WorkRow {
   id: string; definition: string; definitionTitle: string; family: string; subjectKind: string; label: string; state: string;
   group: GroupKey | "closed" | string; current: RowCurrent; owner: string; waitingOn: WaitingOn | null; mine: boolean;
   due: WorkDue | null; pastLaw: boolean; age: RunAge; paused: boolean; pausedReason: string; torn?: boolean; corrupt?: number | null;
+  held?: boolean; handle?: string; visibility?: "board" | "admin" | "held" | string;
 }
 
 export interface WorkCounts {
@@ -200,6 +203,7 @@ export interface RunDateSlot {
 
 export interface Run {
   id: string; definition: string; definitionTitle: string; family: string; label: string; subject: string; subjectKind: string;
+  handle?: string; due?: WorkDue | null;
   state: RunState | string; n: number; updated: string; opened: string; openedBy: string; dates: Record<string, string>;
   itemCount: number; parent: string | null; children: string[]; pausedReason: string; cancelledReason: string;
   torn: boolean; corrupt: number | null; orphans: string[]; pastLaw: string[]; age: RunAge;
@@ -209,9 +213,10 @@ export interface Run {
   cancelWill: { openSteps: string[]; childRuns: string[] };
 }
 
-/** `GET /api/work-run`. */
+/** `GET /api/work-run`. `held` is a held run outside the private view (`held_page`): the same shape with nothing in it but the
+ * state, the general title, and the date and its basis word; `heldWhy` says where it opens. */
 export interface RunPage {
-  found: boolean; asOf: string; caveats: string[]; run: Run; phases: { key: string; title: string; steps: string[] }[];
+  found: boolean; asOf: string; caveats: string[]; run: Run; held?: boolean; heldTitle?: string; heldWhy?: string; phases: { key: string; title: string; steps: string[] }[];
   steps: RunStep[]; clocks: RunClock[]; links: RunLink[]; history: HistoryEvent[]; changed: ChangedRow[];
   pending: { kind: string; step: string; stepTitle: string }[]; viewer: { roles: string[] }; problems: Problem[]; notComposed: Problem[];
 }
@@ -226,6 +231,8 @@ export interface DefinitionRow {
   phases: { key: string; title: string; steps: number }[]; dates: DefinitionDate[]; legalClock: boolean; procedure: string;
   procedureSteps: number | null; drift: { ok: boolean; why: string[] }; cadence: string; startable: boolean; startedBy: string[];
   needsYes: boolean; roles: string[]; mySteps: boolean; lessons: { key: string; status: string }[];
+  /** `held`: a held definition (it starts only in the private view); `startableWhy` says why `startable` is false. */
+  held?: boolean; heldTitle?: string; visibility?: "board" | "admin" | "held" | string; startableWhy?: string;
 }
 
 export interface DefinitionClock extends BasisInfo { slot: string; days: number | null; label: string; cite: string; law?: LawWords }
@@ -323,6 +330,9 @@ export const writeUrl = (definition: string, id: string) =>
 export const startUrl = (definition: string) => `/api/write/work/${encodeURIComponent(definition)}/start`;
 
 // -- small rules ------------------------------------------------------------------------------------------------------------
+
+/** What a held run says in place of its details (the server sends its own sentence on a held page; this is for a row). */
+export const HELD_WORDS = "Open the private view to see this run.";
 
 /** The first ten characters of a day: `2099-10-23T08:12:00Z` is `2099-10-23`. */
 export const dayOf = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "");

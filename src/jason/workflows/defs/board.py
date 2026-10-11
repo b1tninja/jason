@@ -1,12 +1,11 @@
 """The board family's general workflow definitions (docs/workflows/board-governance.md, sections 2.1 to 2.7).
 
-``BUILDERS`` lists the definitions the Work backend can hold today: ``board-meeting``, ``rule-change``, ``election``,
-``law-review``, ``duty-schedule``, ``document-duties``, and ``owners-manual``. ``hearing`` (a member's discipline, CIV
-5855) is built by ``hearing()`` and **left out of ``BUILDERS``**: ``jason.web.extra.work`` says executive-session handling
-(CIV 4935(e)) is "not composed" (no step can be marked executive, so a run shows in full and no opening is logged), and a
-hearing's matter, member, and unit are exactly what must not show in a run list. Add it to ``BUILDERS`` when a step can be
-marked held. Even then its run id is opaque and its subject is a handle, never an address (docs/workflows/board-
-governance.md, section 5).
+``BUILDERS`` lists the definitions the Work backend holds: ``board-meeting``, ``rule-change``, ``election``, ``hearing``,
+``law-review``, ``duty-schedule``, ``document-duties``, and ``owners-manual``. ``hearing`` (a member's discipline, CIV 5855) is
+a **held** definition (``Visibility.HELD``, held title "A member's hearing"): a hearing's matter, member, and unit are exactly
+what must not show in a run list, so outside the private view (CIV 4935(e)) a run shows its general title and its state only,
+and each opening in the private view is logged. Its run id is random and its subject is a handle, never an address
+(docs/workflows/board-governance.md, section 5).
 
 Pure data, like ``definitions_general``: it imports only the engine's types and ``named_check`` (a name, not a read), and no
 store, client, or profile. The reads themselves are ``jason.workflows.checks.board``. Nothing here
@@ -37,7 +36,7 @@ from typing import Any, Callable
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
+    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
 )
 
 P, PL, D, W, B, C = StepKind.PERSON, StepKind.PLAN, StepKind.DECISION, StepKind.WAIT, StepKind.BRANCH, StepKind.CHECK
@@ -450,16 +449,16 @@ def election() -> Workflow:
                     phases=phases, procedure="election")
 
 
-# --- hearing (2.4): built, not in BUILDERS ---------------------------------------------------------------------------
+# --- hearing (2.4): a held definition ---------------------------------------------------------------------------------
 
 HR = "hearing"
 
 
 def hearing() -> Workflow:
-    """A hearing on a member's discipline or a damage charge (CIV 5855). **Not in ``BUILDERS``**: the Work backend cannot hold
-    such a run (``jason.web.extra.work``: executive-session handling is not composed, so no step can be marked held and every
-    run shows in full at P2). Its subject is an opaque handle (a digest), never an address or a name, and no step's words
-    carry a unit, a member, or the matter. There is no SOP ``hearing`` yet (the page's gap), so no step has a ``sop``."""
+    """A hearing on a member's discipline or a damage charge (CIV 5855). **Held** (``Visibility.HELD``): outside the private
+    view the Work screens show a run as "A member's hearing" with its state and nothing else (``jason.web.extra.work``). Its
+    subject is an opaque handle, never an address or a name, and no step's words carry a unit, a member, or the matter. There
+    is no SOP ``hearing`` yet (the page's gap), so no step has a ``sop``."""
     sid, step = _ids(HR)
     skip = SkipRule()
     notice_by = _law("CIV 5855(a)", "written notice to the member by", "hearing_on", -10)
@@ -528,7 +527,7 @@ def hearing() -> Workflow:
     return Workflow(key=HR, title="A hearing", family="board", subject="hearing", steps=steps,
                     dates=(DateSlot("hearing_on", "The hearing day"),
                            DateSlot("action_on", "The day the board acts", required=False, after="hearing_on")),
-                    phases=phases, procedure="")
+                    phases=phases, procedure="", visibility=Visibility.HELD, held_title="A member's hearing")
 
 
 # --- law-review (2.5) ------------------------------------------------------------------------------------------------
@@ -727,12 +726,13 @@ def owners_manual() -> Workflow:
                     procedure="owners-manual")
 
 
-BUILDERS: tuple[Callable[[], Workflow], ...] = (board_meeting, rule_change, election, law_review, duty_schedule, document_duties,
-                                                owners_manual)
-"""What ``register_general`` registers for this family. ``hearing`` is built by ``hearing()`` and left out: the Work backend
-cannot hold an executive-session run (``jason.web.extra.work``: 'not composed')."""
+BUILDERS: tuple[Callable[[], Workflow], ...] = (board_meeting, rule_change, election, hearing, law_review, duty_schedule,
+                                                document_duties, owners_manual)
+"""What ``register_general`` registers for this family. ``hearing`` is a held definition: the Work backend shows its runs by a
+general title outside the private view."""
 
-LEFT_OUT: tuple[Callable[[], Workflow], ...] = (hearing,)
+LEFT_OUT: tuple[Callable[[], Workflow], ...] = ()
+"""Nothing is left out any more (``hearing`` moved into ``BUILDERS`` as a held definition)."""
 
 __all__ = ["BUILDERS", "LEFT_OUT", "WANTED", "board_meeting", "document_duties", "duty_schedule", "election", "hearing",
            "law_review", "owners_manual", "rule_change"]

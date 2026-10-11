@@ -9,7 +9,8 @@ legal step (a law clock, or ``legal=True``) with a skip rule; a ``plan`` step wh
 ``job`` step whose job is not; a ``spawns`` that names no definition; a ``law`` clock that cites nothing or whose section
 does not resolve; a step whose ``roles`` are not distinct ``Role`` values (the primary ``role`` is not repeated among them);
 a ``na`` (not-applicable outcome) on a branch or with bad roles (a legal step may carry one though it has no skip rule); a
-``waits_on_child`` with no ``spawns``; a date slot that repeats, or has a bad timing or roles. Each registry (the approvals kinds, the jobs, the definitions, the statutes) is an argument, so a test
+``waits_on_child`` with no ``spawns``; a date slot that repeats, or has a bad timing or roles; a held definition with no ``held_title`` (or one with a digit or ``@``
+in it, or on a definition that is not held); a ``public_title`` step on a definition that is not held. Each registry (the approvals kinds, the jobs, the definitions, the statutes) is an argument, so a test
 supplies its own; with none given, the approvals kinds are read from ``jason.approvals.registry`` when first needed, and
 a registry that is not given and cannot be read is skipped, never guessed. A definition that fails does not register,
 and the failure names the row.
@@ -17,10 +18,11 @@ and the failure names the row.
 
 from __future__ import annotations
 
+import re
 from typing import Callable, Collection, Iterable
 
 from jason.workflows.types import (
-    ClockBasis, DateTiming, InvalidWorkflow, Problem, Role, StepKind, Workflow, parse_sop,
+    ClockBasis, DateTiming, InvalidWorkflow, Problem, Role, StepKind, Visibility, Workflow, parse_sop,
 )
 
 LawResolver = Callable[[str], "bool | None"]
@@ -54,6 +56,7 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
 
     if not key:
         bad("(definition)", "key", "a definition has a key")
+    _visibility(workflow, bad)
     seen: set[str] = set()
     for s in workflow.steps:
         if s.id in seen:
@@ -140,6 +143,31 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
     for sid in needs:
         visit(sid, [])
     return out
+
+
+HELD_TITLE_CHARS = 80
+_HELD_TITLE_FORBIDDEN = re.compile(r"[\d@\n\r]")
+
+
+def _visibility(workflow: Workflow, bad) -> None:
+    """Who sees the definition and its runs. A ``held`` definition names the general words it shows outside the private view
+    (``held_title``: one short line with no digit or ``@``, so no address, parcel, or case number can ride in it); only a
+    held definition has one, and only a held definition may mark a step's title public."""
+    key = workflow.key
+    if not isinstance(workflow.visibility, Visibility):
+        bad(key, "visibility", f"{workflow.visibility!r} is not a Visibility")
+        return
+    held = workflow.visibility is Visibility.HELD
+    title = (workflow.held_title or "").strip()
+    if held and not title:
+        bad(key, "held", "a held definition gives the general words it shows outside the private view (held_title)")
+    if title and not held:
+        bad(key, "held", "held_title belongs to a held definition only")
+    if title and (len(title) > HELD_TITLE_CHARS or _HELD_TITLE_FORBIDDEN.search(title)):
+        bad(key, "held", f"held_title is one line of at most {HELD_TITLE_CHARS} characters with no digit or @: {title!r}")
+    for s in workflow.steps:
+        if s.public_title and not held:
+            bad(s.id, "held", "public_title is for the steps of a held definition")
 
 
 def _roles(row, code, roles, bad, primary=None) -> None:

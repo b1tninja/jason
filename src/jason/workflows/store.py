@@ -41,10 +41,13 @@ def folder(data_dir: Path | str) -> Path:
     return Path(data_dir) / ROOT
 
 
-def run_id(definition: str, subject: str, opened_at: str) -> str:
-    """Opaque: ``run-`` and ten hex characters from the hash of the definition, the subject key, and the open time."""
-    digest = hashlib.sha256(f"{definition}\0{subject}\0{opened_at}".encode("utf-8")).hexdigest()
-    return "run-" + digest[:10]
+def run_id(definition: str, subject: str, opened_at: str, salt: str = "") -> str:
+    """Opaque: ``run-`` and ten hex characters from the hash of the definition, the subject key, the open time, and, when given,
+    a ``salt``. Without a salt the id can be recomputed by anyone who tries the subjects (a unit or a parcel is a few hundred
+    values, and the open day shows on the run), so ``api.start`` always gives one: a random string kept nowhere, which makes
+    the id a handle that says nothing of its subject."""
+    text = f"{definition}\0{subject}\0{opened_at}" + (f"\0{salt}" if salt else "")
+    return "run-" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:10]
 
 
 def path(data_dir: Path | str, definition: str, rid: str) -> Path:
@@ -143,11 +146,11 @@ def _write_line(file: Path, line: str) -> None:
 
 
 def create(data_dir: Path | str, definition: str, subject: str, *, by: str, label: str = "",
-           detail: Mapping[str, Any] | None = None, at: str = "") -> Run:
-    """Start a run: its first event, ``opened``. The id comes from the definition, the subject, and the open time; a run
-    that already exists is not overwritten."""
+           detail: Mapping[str, Any] | None = None, at: str = "", salt: str = "") -> Run:
+    """Start a run: its first event, ``opened``. The id comes from the definition, the subject, the open time, and a
+    ``salt`` (``api.start`` gives a random one); a run that already exists is not overwritten."""
     at = at or now()
-    rid = run_id(definition, subject, at)
+    rid = run_id(definition, subject, at, salt)
     file = path(data_dir, definition, rid)
     body = {"definition": definition, "subject": subject, "label": label, **dict(detail or {})}
     event = Event(n=1, kind=EventKind.OPENED, by=by, at=at, detail=body, prev="")

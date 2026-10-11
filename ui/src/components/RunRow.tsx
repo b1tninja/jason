@@ -2,7 +2,7 @@ import { Glyph } from "./Glyph";
 import { BasisPill } from "./BasisPill";
 import { DueDate } from "./DueDate";
 import { Pill } from "./Pill";
-import { runHref, type WorkRow } from "../lib/work";
+import { HELD_WORDS, runHref, type WorkRow } from "../lib/work";
 
 /** Whose move it is, in words, for the group the run is in: "Your move: the manager", "Waiting on the member's reply". */
 export function moveWords(r: WorkRow): string {
@@ -19,20 +19,21 @@ export function moveWords(r: WorkRow): string {
 export const isPastLegal = (r: WorkRow): boolean => r.pastLaw || !!(r.due && r.due.legal && r.due.days !== null && r.due.days < 0);
 
 /** One open run in the list. The whole width is the link to the run. It carries the run's own label, the step and where it
- * stands, whose move it is, the due date with its basis, and the age; never a subject, an item, or a name. */
+ * stands, whose move it is, the due date with its basis, and the age; never a subject, an item, or a name. A held run seen
+ * outside the private view (`row.held`) carries the definition's general title and its state, and says where it opens. */
 export function RunRow({ row, today }: { row: WorkRow; today?: Date }) {
   const past = isPastLegal(row);
   const c = row.current;
   const due = row.due;
   return (
-    <li className={`work-row${past ? " work-row-past" : ""}`} data-run={row.id}>
+    <li className={`work-row${past ? " work-row-past" : ""}`} data-run={row.id} data-held={row.held ? "true" : undefined}>
       <a className="work-row-link" href={runHref(row.definition, row.id)}>
         <span className="work-row-main">
           <span className="work-row-label">{row.label || row.id}</span>
-          <span className="work-row-def muted">{row.definitionTitle}</span>
+          <span className="work-row-def muted">{row.held ? HELD_WORDS : row.definitionTitle}</span>
         </span>
         <span className="work-row-step">
-          {c.title ? <>Step {c.n} of {c.of}: {c.title}</> : <>No open step</>}
+          {c.title ? (row.held && !c.n ? <>{c.title}</> : <>Step {c.n} of {c.of}: {c.title}</>) : <>No open step</>}
         </span>
         <span className="work-row-move"><Pill word={row.state} /> <span>{moveWords(row)}</span></span>
         <span className="work-row-due">

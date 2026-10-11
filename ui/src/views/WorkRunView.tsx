@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
-  Caveats, Card, ChangedSince, ClockStrip, Confirm, EmptyState, Glyph, Loading, Pill, RunHistory, RunStepPanel, ScreenHeader, WorkflowRail,
+  BasisPill, Caveats, Card, ChangedSince, ClockStrip, Confirm, DueDate, EmptyState, Glyph, Loading, Pill, RunHistory, RunStepPanel, ScreenHeader,
+  WorkflowRail,
 } from "../components";
 import { ActDialog, ActStatus, TextConfirm, useActs } from "../components/RunActs";
 import { LinkButton, WorkCrumbs, WorkNav, WorkNotes, WorkProblem } from "../components/WorkParts";
 import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import {
-  WORK_HREF, asOfDate, dayOf, maskContact, openingStep, pastLegal, runHref, useRunDefinitions, useWorkApi, useWorkViewer, workRunUrl,
+  HELD_WORDS, WORK_HREF, asOfDate, dayOf, maskContact, openingStep, pastLegal, runHref, useRunDefinitions, useWorkApi, useWorkViewer, workRunUrl,
   type RunLink, type RunPage, type WorkViewer,
 } from "../lib/work";
 import "../styles/work.css";
@@ -147,7 +148,7 @@ export function WorkRunView({ definition, id }: { definition: string; id: string
       <WorkCrumbs here={run ? run.label || run.id : id} />
       <ScreenHeader glyph="list-checks"
         title={<span ref={head} tabIndex={-1} className="work-focus">{run ? run.label || run.id : id}</span>}
-        summary={run ? <>{run.definitionTitle} · Opened {dayOf(run.opened)} by {run.openedBy}{run.subject ? <> · about <code>{run.subject}</code></> : null}</> : undefined}
+        summary={run ? (d?.held ? <>{HELD_WORDS}</> : <>{run.definitionTitle} · Opened {dayOf(run.opened)} by {run.openedBy}{run.subject ? <> · about <code>{run.subject}</code></> : null}</>) : undefined}
         actions={run ? <Pill word={run.state} /> : undefined} />
       <WorkNav current="runs" />
       {r.status === "loading" && <Loading label="Reading the run on disk…" />}
@@ -156,7 +157,24 @@ export function WorkRunView({ definition, id }: { definition: string; id: string
           ? <EmptyState glyph="list-checks">{r.error} <a href={WORK_HREF}>Back to the open runs</a></EmptyState>
           : <WorkProblem r={r} what="This run" onRetry={r.reload} />
       )}
-      {d && run && (
+      {d && run && d.held && (
+        <>
+          <p className="notice notice-warn work-banner" role="note" data-held="true"><Glyph name="lock" size="1em" /> {d.heldWhy || HELD_WORDS}</p>
+          <Card title={d.heldTitle || run.label}>
+            <ul className="work-links">
+              <li className="work-link-row"><span className="muted">state</span> <Pill word={run.state} /></li>
+              <li className="work-link-row"><span className="muted">step</span> {run.current?.title || "No open step"}</li>
+              <li className="work-link-row">
+                <span className="muted">next date</span>{" "}
+                {run.due ? <><DueDate iso={run.due.date} today={today} /> <BasisPill basis={run.due.basis} label={run.due.basisLabel} /></> : <span className="muted">No date</span>}
+              </li>
+            </ul>
+          </Card>
+          <Caveats items={d.caveats} />
+          <p><LinkButton href={WORK_HREF}>Back to the open runs</LinkButton></p>
+        </>
+      )}
+      {d && run && !d.held && (
         <>
           <RunControls page={d} viewer={viewer} acts={runActs} printing={printing} onPrint={() => { setPrinting((p) => !p); }} />
           <StateBanner page={d} />

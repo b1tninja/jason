@@ -36,7 +36,7 @@ function DefinitionItem({ d }: { d: DefinitionRow }) {
         <span className="work-def-acts">
           {d.startable
             ? <LinkButton href={startHref(d.key)} primary>Start</LinkButton>
-            : <span className="muted">{startedByWords(d.startedBy)}</span>}
+            : <span className="muted">{d.startableWhy || startedByWords(d.startedBy)}</span>}
           <LinkButton href={definitionHref(d.key)}>Read</LinkButton>
         </span>
       </div>
@@ -146,7 +146,7 @@ function DefinitionPage({ dkey }: { dkey: string }) {
       <WorkCrumbs trail={[{ label: "What can be run", href: "#/work/definitions" }]} here={def?.title ?? dkey} />
       <ScreenHeader glyph="book-open" title={<span ref={head} tabIndex={-1} className="work-focus">{def?.title ?? dkey}</span>}
         summary={def ? `${titleCase(def.family)} · ${def.steps.length} steps · about a ${def.subjectKind || "subject"}` : undefined}
-        actions={def && (def.startable ? <LinkButton href={startHref(def.key)} primary>Start</LinkButton> : <span className="muted">{startedByWords(def.startedBy)}</span>)} />
+        actions={def && (def.startable ? <LinkButton href={startHref(def.key)} primary>Start</LinkButton> : <span className="muted">{def.startableWhy || startedByWords(def.startedBy)}</span>)} />
       <WorkNav current="definitions" />
       {r.status === "loading" && <Loading />}
       {r.status === "error" && (r.code === 404

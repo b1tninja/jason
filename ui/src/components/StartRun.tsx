@@ -54,7 +54,7 @@ export function StartRun({ definitions, initial = "", by, actingAs = "", onStart
   const used = new Set(problems.filter((p) => owner(p)));
   const rest = problems.filter((p) => !used.has(p) && !(def?.legalClock && /needs yes/.test(p)));
   const missing = (def?.dates ?? []).filter((d) => d.required && !dates[d.name]);
-  const ready = !!def && !!subject.trim() && !missing.length && checked?.ok === true && (!def.legalClock || yes);
+  const ready = !!def && def.startable !== false && !!subject.trim() && !missing.length && checked?.ok === true && (!def.legalClock || yes);
   const name = by || "the signed-in person";
 
   const start = async () => {
@@ -87,6 +87,7 @@ export function StartRun({ definitions, initial = "", by, actingAs = "", onStart
           ))}
         </select>
         {def && <p className="muted">{def.steps} steps{def.procedure ? `, built from the procedure ${def.procedure}` : ""}.</p>}
+        {def && def.startable === false && def.startableWhy && <p className="notice notice-warn" role="note" data-held={def.held ? "true" : undefined}>{def.startableWhy}</p>}
       </div>
       {def && (
         <>

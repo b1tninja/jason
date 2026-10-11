@@ -106,6 +106,18 @@ LESSONS: tuple[Lesson, ...] = (
            "individual delivery).",
            Status.DECISION, docs=("docs/console/screens/mailroom.md",),
            notes=("Guard so far: the preview note and the checks; nothing refuses a standard send.",)),
+    Lesson("run-id-derivable-from-its-subject", date(2026, 10, 12), (Area.ENFORCEMENT, Area.GOVERNING),
+           "A workflow run's id was a hash of its definition, its subject, and the day it opened. A unit or a parcel is a few "
+           "hundred values and the day is shown on the run, so an id shown outside the private view could be recovered by "
+           "trying the association's addresses.",
+           "The id was built to be stable and unique, and nobody asked whether it had to be unguessable too.",
+           "Every new run gets a random salt kept nowhere, so its id cannot be recomputed from its subject. Runs started "
+           "before the change keep their old ids. A held run (a member's discipline, a parcel and balance, restricted "
+           "records) shows only a general title outside the private view.",
+           Status.FIXED,
+           guards=("workflows.api.start salts every run id",
+                   "tests/test_web_work_held.py::test_a_run_id_is_not_derived_from_its_subject_and_cannot_be_recovered_by_trying_addresses",
+                   "workflows.definitions.validate: a held definition needs a general title with no digit or @")),
     Lesson("paper-cannot-require", OCT_2026, (Area.FORMS, Area.OWNER_INFO),
            "A returned PDF left the occupancy question, required by law, blank.",
            "No PDF or paper form can refuse to be sent; the question sat at number 12, after the optional sections.",

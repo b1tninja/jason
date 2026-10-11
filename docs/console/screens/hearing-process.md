@@ -144,7 +144,7 @@ There is no control to impose, fine, suspend, send, or mail. A mailing is a pers
 ## Decisions for the user
 
 1. **One decision store.** Recommended: `board/decisions.json` holds the vote and the findings; the run record holds `decisionId` and nothing of the decision. Alternative: one file for both. Either removes the `decision` block from `zoom/hearings.json`.
-2. **The run id.** [board-governance.md](../../workflows/board-governance.md#5-the-screens) says a digest of the key; a digest of day and address can be recovered by trying the association's few addresses. Recommended: a random id.
+2. **The run id.** [board-governance.md](../../workflows/board-governance.md#5-the-screens) says a digest of the key; a digest of day and address can be recovered by trying the association's few addresses. Recommended: a random id. *Built for every run:* `api.start` salts the id with a random string kept nowhere, and the Work screens show a hearing run outside the private view as "A member's hearing" with its state only ([work.md](work.md), Privacy).
 3. **Where the schedule lives.** A `Community` method returning versions with distribution dates, or a register the board keeps. Without it, the penalty check can only say "no schedule on file".
 4. **The open-session finding (5850(d)(2)).** Two items (finding in open session, discussion in executive session), or counsel's reading first.
 5. **Suspension.** Keep `--suspension` hidden until Corporations Code 7341 is added to the shelf, or retire the constant.

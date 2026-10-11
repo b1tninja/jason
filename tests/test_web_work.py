@@ -118,14 +118,27 @@ def snapshot(root: Path):
 
 
 @pytest.mark.parametrize("name", LOADERS)
-def test_signed_out_is_a_401_and_a_roster_person_with_no_office_or_an_admin_with_none_is_a_403(app, world, name):
+def test_signed_out_is_a_401_and_a_roster_person_with_no_office_is_a_403(app, world, name):
     rid = start(world)
     url = f"/api/{name}?definition=example-cycle&id={rid}"
     assert webclient.client(app).get(url).status_code == 401
-    for who in ("Rae Roster", ADMIN):
-        r = as_(app, who).get(url)
-        assert r.status_code == 403, who
-        assert "open contact details and members' submissions (P2)" in r.json["error"]        # access.may_see's sentence
+    r = as_(app, "Rae Roster").get(url)
+    assert r.status_code == 403
+    assert "open contact details and members' submissions (P2)" in r.json["error"]        # access.may_see's sentence
+
+
+@pytest.mark.parametrize("name", LOADERS)
+def test_an_admin_with_no_office_passes_the_gate_and_reads_the_board_s_runs_not_at_all(app, world, name):
+    """The administrator's own definitions need the administrator; the board's runs stay the board's (``work_scope``)."""
+    rid = start(world)
+    r = as_(app, ADMIN).get(f"/api/{name}?definition=example-cycle&id={rid}")
+    assert r.status_code == (404 if name == "work-run" else 200), r.get_data(as_text=True)[:200]
+    admins = {"integration-connect", "service-run", "check-in"}
+    if name == "work":
+        assert r.json["runs"] == [] and r.json["counts"]["open"] == 0
+        assert {d["key"] for d in r.json["definitions"]} == admins
+    if name == "work-definitions":
+        assert {d["key"] for d in r.json["definitions"]} == admins
 
 
 @pytest.mark.parametrize("who", ("Pat Example", "Dana Director", "Sam Secretary", "Lee President", "Vic Vice", "Tess Two", "A Manager"))
@@ -609,8 +622,8 @@ def test_the_writer_needs_a_sign_in_and_an_office(app, world):
     n = store.read(world, "example-cycle", rid).n
     body = {"act": "note", "text": "hello"}
     assert post(webclient.client(app), f"example-cycle/{rid}", body).status_code == 401
-    for who in ("Rae Roster", ADMIN):
-        assert post(as_(app, who), f"example-cycle/{rid}", body).status_code == 403
+    assert post(as_(app, "Rae Roster"), f"example-cycle/{rid}", body).status_code == 403
+    assert post(as_(app, ADMIN), f"example-cycle/{rid}", body).status_code == 404       # an administrator with no office: not the board's run
     assert store.read(world, "example-cycle", rid).n == n
 
 

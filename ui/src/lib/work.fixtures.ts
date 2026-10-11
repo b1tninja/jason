@@ -399,3 +399,37 @@ export const START_BAD: StartDry = {
   problems: ["answer_by may not come before send: leave room for one correction before the answer-by date"],
 };
 export const START_DONE: StartAnswer = { ok: true, act: "start", by: MANAGER, id: "run-9d0e1f2a3b", definition: "owner-info-cycle", run: RUN_PAGE };
+
+// -- a held run, outside the private view ------------------------------------------------------------------------------------
+
+/** A run of a held definition seen outside the private view (`_held_row`): the definition's general words, the state, the
+ * date and its basis word, and an opaque handle. No label, subject, step title, or citation. */
+export const HELD_ROW = row({
+  id: "run-9e8d7c6b5a", handle: "run-9e8d7c6b5a", definition: "hearing", definitionTitle: "A member's hearing", label: "A member's hearing",
+  family: "board", subjectKind: "", group: "others", held: true, visibility: "held",
+  current: { id: "", title: "a step", n: 0, of: 0, kind: "", state: "waiting", role: "secretary" },
+  owner: "secretary", waitingOn: { kind: "arrival", word: "an arrival", role: "secretary", detail: "" },
+  due: due("2099-11-02", "law", 24), age: { days: 8, opened: null, idleDays: 1, updated: "" },
+});
+
+/** The reduced page `held_page` answers: the run's shape with nothing in it. */
+export const HELD_PAGE: RunPage = runPage({
+  held: true, heldTitle: "A member's hearing", heldWhy: "Open the private view to see this run.",
+  run: {
+    ...OWNER_INFO_RUN, id: "run-9e8d7c6b5a", handle: "run-9e8d7c6b5a", definition: "hearing", definitionTitle: "A member's hearing",
+    family: "board", label: "A member's hearing", subject: "", subjectKind: "", opened: "", openedBy: "", dates: {}, children: [], updated: "",
+    current: { id: "", title: "a step", n: 0, of: 0 }, due: due("2099-11-02", "law", 24), age: { days: 8, opened: null, idleDays: 1, updated: "" },
+    acts: {
+      open: { offered: false, why: "Open the private view to see this run." }, pause: { offered: false, why: "Open the private view to see this run." },
+      resume: { offered: false, why: "Open the private view to see this run." }, note: { offered: false, why: "Open the private view to see this run." },
+      cancel: { offered: false, why: "Open the private view to see this run.", legal: false },
+    },
+    cancelWill: { openSteps: [], childRuns: [] },
+  },
+  phases: [], steps: [], clocks: [], links: [], history: [], changed: [], pending: [], notComposed: [], problems: [],
+});
+
+export const HELD_DEF = definitionRow({
+  key: "hearing", title: "A hearing", family: "board", steps: 16, held: true, heldTitle: "A member's hearing", visibility: "held", startable: false,
+  startableWhy: "A run of this kind concerns a member's discipline, an account, or a restricted record, so it starts only in the private view.",
+});

@@ -17,10 +17,10 @@ page's ``check`` or ``job`` row with no read yet is a ``person`` step whose ``wh
 ``plan`` the approvals registry has no kind for. Plans used: ``payhoa-attach-bills`` (the bill, once matched, is attached
 after a person decides) and ``payhoa-mailroom-send`` (a mailed notice, charged to the association, two people).
 
-**Not here.** ``delinquency_account`` is built and validates but is left out of ``BUILDERS``: a run about one parcel and one
-owner's balance is an executive-session matter (CIV 4935), and the Work backend (src/jason/web/extra/work.py) cannot yet hold
-such a run ("executive handling not composed"). A run's id is opaque and never a parcel; until a step can be marked
-executive, the definition is not offered. Add it to ``BUILDERS`` when the backend can.
+**Held.** ``delinquency_account`` is a held definition (``Visibility.HELD``): a run about one parcel and one owner's balance is
+an executive-session matter (CIV 4935), so the Work backend (src/jason/web/extra/work.py) shows it outside the private view as
+"A delinquent account" with its state and nothing else, and logs each opening in the private view. A run's id is random and
+never a parcel.
 
 **Clocks.** A ``law`` clock is on the shelf (data/authorities) or it is not a law clock. The Revenue and Taxation Code
 installment sections are not on the shelf, so the ``county-tax-cycle`` clocks are ``documents`` clocks, "from the county's
@@ -33,7 +33,7 @@ from typing import Any, Callable, NamedTuple
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
+    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
 )
 
 COMPUTED = "computed by jason from the statute's day-count, the earliest day"
@@ -147,7 +147,8 @@ def _ids(key: str, rows: tuple[_Row, ...]) -> dict[str, str]:
 
 
 def _assemble(key: str, title: str, subject: str, rows: tuple[_Row, ...], *, dates: tuple[DateSlot, ...] = (),
-              phases: tuple[tuple[str, str, str], ...] = (), clocks: tuple[ClockDef, ...] = ()) -> Workflow:
+              phases: tuple[tuple[str, str, str], ...] = (), clocks: tuple[ClockDef, ...] = (),
+              visibility: Visibility = Visibility.BOARD, held_title: str = "") -> Workflow:
     ids = _ids(key, rows)
     steps = []
     for r in rows:
@@ -157,7 +158,7 @@ def _assemble(key: str, title: str, subject: str, rows: tuple[_Row, ...], *, dat
         steps.append(StepDef(ids[r.tid], r.title, r.kind, role=r.role, needs=tuple(ids[n] for n in r.needs), **more))
     built = tuple(Phase(k, t, tuple(ids[x] for x in words.split())) for k, t, words in phases)
     return Workflow(key=key, title=title, family="money", subject=subject, steps=tuple(steps), dates=dates, phases=built,
-                    procedure="", clocks=clocks)
+                    procedure="", clocks=clocks, visibility=visibility, held_title=held_title)
 
 
 def _law(cite: str, slot: str = "", days: int = 0, label: str = "") -> ClockDef:
@@ -361,7 +362,7 @@ def monthly_review() -> Workflow:
                 ("review", "Review and ratify", "path rev rat rec")))
 
 
-# --- 2.4 delinquency-account (built, left out of BUILDERS) -------------------------------------------------------------
+# --- 2.4 delinquency-account (a held definition) -------------------------------------------------------------
 
 DA = "delinquency-account"
 
@@ -448,11 +449,12 @@ def _delinquency_rows() -> tuple[_Row, ...]:
 
 def delinquency_account() -> Workflow:
     """One unit's assessment account under Civil Code 5650 to 5720 (money.md, section 2.4;
-    docs/console/screens/delinquency-process.md). **Built but left out of ``BUILDERS``**: see the module docstring. Subject: an
-    account, named by an opaque run id and never by a parcel. The lien and foreclosure decisions are the board's and not
-    delegated; jason records what the board did, and submits to no agency, records no lien, and forecloses on nothing."""
+    docs/console/screens/delinquency-process.md). **Held** (``Visibility.HELD``, held title "A delinquent account"): see the
+    module docstring. Subject: an account, named by an opaque run id and never by a parcel. The lien and foreclosure
+    decisions are the board's and not delegated; jason records what the board did, and submits to no agency, records no lien,
+    and forecloses on nothing."""
     return _assemble(
-        DA, "A delinquent account", "account", _delinquency_rows(),
+        DA, "A delinquent account", "account", _delinquency_rows(), visibility=Visibility.HELD, held_title="A delinquent account",
         dates=(DateSlot("notice_mailed", "The pre-lien notice was mailed (certified)", required=False),
                DateSlot("request_postmarked", "A payment plan request was postmarked", required=False, after="notice_mailed"),
                DateSlot("recorded_on", "The notice of delinquent assessment was recorded", required=False, after="notice_mailed"),
@@ -765,12 +767,14 @@ KEYS: tuple[str, ...] = tuple(_ROWS)
 
 
 BUILDERS: tuple[Callable[[], Workflow], ...] = (
-    bill_attach, payment_investigation, monthly_review, fiscal_year, reserve_borrowing, insurance_renewal, county_tax_cycle,
+    bill_attach, payment_investigation, monthly_review, delinquency_account, fiscal_year, reserve_borrowing, insurance_renewal,
+    county_tax_cycle,
 )
-"""The definitions ``register_general`` registers. ``delinquency_account`` is built (``LEFT_OUT``) and not listed: an executive
-matter about one parcel and one owner's balance, which the Work backend cannot hold yet ("executive handling not composed")."""
+"""The definitions ``register_general`` registers. ``delinquency_account`` is a held definition: an executive matter about one
+parcel and one owner's balance, shown outside the private view by its general title only."""
 
-LEFT_OUT: tuple[Callable[[], Workflow], ...] = (delinquency_account,)
+LEFT_OUT: tuple[Callable[[], Workflow], ...] = ()
+"""Nothing is left out any more (``delinquency_account`` moved into ``BUILDERS`` as a held definition)."""
 
 
 __all__ = ["BUILDERS", "COMPUTED", "KEYS", "LEFT_OUT", "WANTED", "bill_attach", "county_tax_cycle", "delinquency_account",

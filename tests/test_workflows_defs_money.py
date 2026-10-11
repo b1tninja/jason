@@ -20,7 +20,7 @@ from jason.workflows import api, definitions
 from jason.workflows import definitions_general as general
 from jason.workflows.defs import all_builders, money
 from jason.workflows.readers import CHECKS, JOBS, StoreReaders
-from jason.workflows.types import CheckResult, ClockBasis, Elapsed, Repeat, Role, StepKind as K, StepRefused, parse_sop
+from jason.workflows.types import CheckResult, ClockBasis, Elapsed, Repeat, Role, StepKind as K, StepRefused, Visibility, parse_sop
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 P, C, J, PL, D, W, B = K.PERSON, K.CHECK, K.JOB, K.PLAN, K.DECISION, K.WAIT, K.BRANCH
@@ -74,11 +74,9 @@ EXPECTED = {
 COUNTS = {"bill-attach": 9, "payment-investigation": 11, "monthly-review": 13, "delinquency-account": 22, "fiscal-year": 33,
           "reserve-borrowing": 9, "insurance-renewal": 8, "county-tax-cycle": 10}
 
-LEFT_OUT = {"delinquency-account"}
-
 
 def build(key: str):
-    for b in (*money.BUILDERS, *money.LEFT_OUT):
+    for b in money.BUILDERS:
         wf = b()
         if wf.key == key:
             return wf
@@ -133,10 +131,11 @@ def test_titles_and_whys_are_words_and_ids_are_unique(key):
     assert not any(s.why != s.why.strip() for s in wf.steps)
 
 
-def test_the_keys_are_the_pages_and_the_family_is_the_builders_plus_the_left_out():
+def test_the_keys_are_the_pages_and_the_family_is_the_builders_with_the_delinquency_account_held():
     assert set(money.KEYS) == set(COUNTS)
-    assert [b().key for b in money.BUILDERS] == [k for k in COUNTS if k not in LEFT_OUT]
-    assert [b().key for b in money.LEFT_OUT] == sorted(LEFT_OUT)
+    assert [b().key for b in money.BUILDERS] == list(COUNTS) and money.LEFT_OUT == ()
+    held = [b().key for b in money.BUILDERS if b().visibility is Visibility.HELD]
+    assert held == ["delinquency-account"] and build("delinquency-account").held_title == "A delinquent account"
 
 
 # --- validity against the real registries ----------------------------------------------------------------------------------
@@ -384,14 +383,14 @@ def test_the_fiscal_year_branches_the_increase_and_the_reviewed_statement():
 
 # --- registering ---------------------------------------------------------------------------------------------------------
 
-def test_register_general_registers_them_beside_the_existing_two_and_leaves_the_delinquency_account_out():
+def test_register_general_registers_them_beside_the_existing_two_with_the_delinquency_account_held():
     assert definitions.find("bill-attach") is None                           # importing registered nothing
     first = general.register_general()
     keys = [w.key for w in first]
     assert keys[:2] == ["owner-info-cycle", "control-adoption"]
     mine = [b().key for b in money.BUILDERS]
     assert all(k in keys for k in mine)
-    assert "delinquency-account" not in keys and definitions.find("delinquency-account") is None
+    assert definitions.find("delinquency-account").visibility is Visibility.HELD
     assert [k for k in keys if k in COUNTS] == mine
     again = general.register_general()
     assert [w.key for w in again] == keys
@@ -409,11 +408,11 @@ def test_register_general_checks_the_money_rows_against_the_registries():
     assert "CIV 5300(a)" in str(bad.value)
 
 
-def test_the_left_out_definition_still_validates_and_would_register_if_asked():
+def test_the_held_definition_validates_and_registers():
     wf = money.delinquency_account()
     assert definitions.validate(wf, jobs=set(JOBS)) == []
     assert definitions.register(wf, jobs=set(JOBS)) is wf and definitions.find("delinquency-account") is wf
-    assert wf.subject == "account" and "executive" in money.__doc__.lower()
+    assert wf.subject == "account" and "executive" in money.__doc__.lower() and not any(s.public_title for s in wf.steps)
 
 
 def test_the_definitions_name_no_association_and_no_parcel_or_person():

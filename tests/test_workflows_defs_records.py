@@ -20,7 +20,7 @@ from jason.workflows import api, definitions
 from jason.workflows import definitions_general as general
 from jason.workflows.defs import records
 from jason.workflows.readers import CHECKS, JOBS, StoreReaders
-from jason.workflows.types import ClockBasis, Role, StepKind, StepRefused, parse_sop
+from jason.workflows.types import ClockBasis, Role, StepKind, StepRefused, Visibility, parse_sop
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -166,8 +166,7 @@ EXPECTED = {
         10 wait   wait   M 1""",
 }
 PROCEDURE = {"document-intake": "document-intake", "ingest": "ingest", "onboard": "onboard", "careful-reading": "careful-reading"}
-OFFERED = [k for k in EXPECTED if k != "records-production"]
-LEFT_OUT = ["records-production"]
+OFFERED = list(EXPECTED)
 STEPS = {"document-intake": 21, "ingest": 10, "record-slot": 12, "split-document": 8, "onboard": 36, "founding-documents": 6,
          "key-document": 7, "parcel-title": 5, "careful-reading": 10, "records-production": 10}
 SUBJECT = {"document-intake": "document", "ingest": "source", "record-slot": "association", "split-document": "draft",
@@ -184,7 +183,7 @@ def table(key):
 
 
 def everything():
-    return {w.key: w for w in (b() for b in (*records.BUILDERS, *records.NOT_OFFERED))}
+    return {w.key: w for w in (b() for b in records.BUILDERS)}
 
 
 def offered():
@@ -206,9 +205,10 @@ def registries():
 
 # --- the definitions against the page ---------------------------------------------------------------------------------
 
-def test_the_builders_are_the_nine_offered_definitions_and_the_tenth_is_built_and_left_out():
-    assert list(offered()) == OFFERED and len(records.BUILDERS) == 9
-    assert [b().key for b in records.NOT_OFFERED] == LEFT_OUT
+def test_the_builders_are_the_ten_definitions_and_the_tenth_is_held():
+    assert list(offered()) == OFFERED and len(records.BUILDERS) == 10 and records.NOT_OFFERED == ()
+    assert [k for k, w in offered().items() if w.visibility is Visibility.HELD] == ["records-production"]
+    assert offered()["records-production"].held_title == "A records request"
     assert list(everything()) == list(EXPECTED)
     for key, w in everything().items():
         assert w.family == "records" and w.subject == SUBJECT[key], key
@@ -231,7 +231,7 @@ def test_each_definition_has_the_tables_steps_kinds_roles_and_needs(key):
 
 def test_the_step_count_is_the_sum_of_the_tables():
     assert sum(len(table(k)) for k in EXPECTED) == sum(len(w.steps) for w in everything().values()) == 125
-    assert sum(len(w.steps) for w in offered().values()) == 115
+    assert sum(len(w.steps) for w in offered().values()) == 125
     assert len(everything()["onboard"].steps) == 36                      # "about 35 steps by gate", with the start fork
 
 
@@ -507,14 +507,13 @@ def test_no_title_or_subject_names_a_confidential_kind_and_no_text_names_an_exec
             assert d.name and "name" not in d.name
 
 
-def test_the_records_production_run_is_built_and_left_out_and_its_stated_reason_is_in_the_module():
-    assert "records-production" not in offered()
-    assert records.NOT_OFFERED[0]().key == "records-production"
+def test_the_records_production_run_is_held_and_its_stated_reason_is_in_the_module():
+    assert "records-production" in offered()
     doc = records.records_production.__doc__
-    assert "Built and left out" in doc and "executive-session" in doc
-    assert all(s.title for s in records.records_production().steps)
+    assert "Held" in doc and "executive-session" in doc
+    assert all(s.title and not s.public_title for s in records.records_production().steps)
     got = [w.key for w in general.register_general()]
-    assert "records-production" not in got
+    assert "records-production" in got and definitions.find("records-production").visibility is Visibility.HELD
 
 
 def test_the_definitions_name_no_association_street_or_person():
@@ -566,7 +565,6 @@ def test_register_general_registers_the_offered_ones_with_the_two_built_before_a
     assert got.count("owner-info-cycle") == 1 and got.count("control-adoption") == 1
     for key in OFFERED:
         assert got.count(key) == 1 and definitions.find(key) is not None, key
-    assert "records-production" not in got and definitions.find("records-production") is None
     assert len(set(got)) == len(got)
     assert [w.key for w in general.register_general()] == got                              # idempotent
     known = {w.key for w in definitions.all_definitions()}
@@ -583,7 +581,6 @@ def test_workflow_definitions_lists_the_family(data, capsys, monkeypatch):
     out = capsys.readouterr().out
     for key in OFFERED:
         assert key in out, key
-    assert "records-production" not in out
 
 
 # --- runs over them ---------------------------------------------------------------------------------------------------

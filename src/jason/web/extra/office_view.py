@@ -21,7 +21,10 @@ administrator who holds no office. Where console sign-in is not set up it answer
 - ``needsAttention`` and ``comingUp``: the schedule's occurrences (``jason.tasks.schedule.agenda``) for the duties the
   profile's assignments give the office, or the board, or name it as the backup: overdue and due soon, then the next weeks;
   and a count of the dock's open tasks the office owns.
-- ``work``: the workflow runs whose current step's ``role`` is the office (``jason.workflows``).
+- ``work``: the workflow runs whose current step's ``role`` is the office (``jason.workflows``). The Work screens' rules hold
+  here (``jason.web.extra.work_scope``): a run of an administrator's definition is listed for an administrator only, and a
+  held run (a hearing, a delinquent account, a records request) outside the private view is its general title and state
+  with no label or step; inside it the run is named in full and the reading is logged in ``access/served.jsonl``.
 
 ``notComposed`` says plainly what the page could not build and why. Rows hold offices, counts, kinds, and titles of items
 (contact details masked); an owner's name or unit never. Disk only: nothing here calls PayHOA, Google, or a model.
@@ -293,23 +296,34 @@ def _tasks(root: Path, reading: list[str], officers: tuple[Any, ...], today: dat
     return out
 
 
-def runs_for(root: Path, reading: list[str]) -> list[dict[str, Any]]:
+def runs_for(root: Path, reading: list[str], scope: Any = None) -> list[dict[str, Any]]:
     """The open workflow runs whose current step's role is one of ``reading``. A run is its id, definition, label, step,
-    state, and next date; the label is the run's own words (never an owner's name)."""
+    state, and next date; the label is the run's own words (never an owner's name). With a ``scope``
+    (``jason.web.extra.work_scope``): a run of a definition the viewer may not know of (``Visibility.ADMIN`` for a
+    non-administrator) is not here, and a held run outside the private view is its general title, its state, and its date,
+    with no label, no step id, and a step title only where the definition marks it public (``held`` is true)."""
     from jason.workflows import api, definitions
 
     out = []
     for r in api.runs(root, state="open"):
         wf = definitions.find(str(r.get("definition") or ""))
+        if wf is not None and scope is not None and not scope.reads(wf):
+            continue
         step = wf.step(str(r.get("current") or "")) if wf is not None else None
         held = [role.value for role in step.acting_roles if role.value in reading] if step is not None else []
         if not held:                    # a step several roles may act on is the dock of each of them
             continue
-        out.append({"type": "run", "office": held[0], "id": str(r.get("id") or ""),
-                    "definition": str(r.get("definition") or ""), "title": wf.title if wf is not None else "",
-                    "label": str(r.get("label") or ""), "step": step.id, "stepTitle": step.title,
-                    "state": str(r.get("state") or ""), "due": str(r.get("due") or "") or None, "screen": "",
-                    "text": f"{r.get('label') or r.get('id')}: {step.title}"})
+        row = {"type": "run", "office": held[0], "id": str(r.get("id") or ""),
+               "definition": str(r.get("definition") or ""), "title": wf.title if wf is not None else "",
+               "label": str(r.get("label") or ""), "step": step.id, "stepTitle": step.title,
+               "state": str(r.get("state") or ""), "due": str(r.get("due") or "") or None, "screen": "",
+               "text": f"{r.get('label') or r.get('id')}: {step.title}",
+               "visibility": wf.visibility.value, "held": False}
+        if scope is not None and scope.holds_back(wf):
+            title = step.title if step.public_title else "a step"
+            row.update(title=wf.held_title, label=wf.held_title, step="", stepTitle=title, text=f"{wf.held_title}: {title}",
+                       held=True)
+        out.append(row)
     out.sort(key=lambda r: (r["due"] or "9999", r["id"]))
     return out
 
@@ -347,8 +361,9 @@ def not_composed(errors: dict[str, str], reading: list[str]) -> list[dict[str, s
     return out
 
 
-def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today: date) -> dict[str, Any]:
-    """The bands for the offices in ``reading``, each built alone, with what could not be built."""
+def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today: date, scope: Any = None) -> dict[str, Any]:
+    """The bands for the offices in ``reading``, each built alone, with what could not be built. ``scope`` is the viewer's
+    (``jason.web.extra.work_scope``): what the Work band may name of a held or administrator run."""
     errors: dict[str, str] = {}
     coming: list[dict[str, Any]] = []
 
@@ -364,7 +379,7 @@ def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today:
         errors["comingUp"] = errors["needsAttention"]
     needs = needs + _band("needsAttention", lambda: _tasks(root, reading, officers, today), errors)
     needs.sort(key=lambda r: (r["rank"], r.get("due") or "9999", r.get("title") or r["text"]))
-    work = _band("work", lambda: runs_for(root, reading), errors)
+    work = _band("work", lambda: runs_for(root, reading, scope), errors)
     counts = {"waitingOnOffice": len(waiting), "needsAttention": len(needs), "comingUp": len(coming), "work": len(work)}
     return {"bands": {"waitingOnOffice": waiting[:LIMIT], "needsAttention": needs[:LIMIT], "comingUp": coming[:LIMIT],
                       "work": work[:LIMIT]},
@@ -390,7 +405,13 @@ def office_view(args: Args) -> dict[str, Any]:
         out.update(bands={b: [] for b in BANDS}, counts={b: 0 for b in BANDS}, bandErrors={}, notComposed=[],
                    note=MINE_EMPTY)
         return out
-    out.update(compose(reading, root=_root(), officers=officers, today=_today()))
+    from jason.web.extra import work_scope
+
+    scope = work_scope.scope_of(viewer)
+    out.update(compose(reading, root=_root(), officers=officers, today=_today(), scope=scope))
+    opened_held = sum(1 for r in out["bands"]["work"] if r.get("visibility") == "held" and not r.get("held"))
+    if opened_held:                      # held runs named in full (the private view): the reading is logged
+        work_scope.log_opening(scope, "api/office-view", runs=opened_held)
     return out
 
 

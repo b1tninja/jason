@@ -136,7 +136,7 @@ Six bands. The rail and the step panel are the page; the others read from them.
 - **Start** opens `StartRun` (the Start-a-run form above) with the definition chosen. A definition the viewer's office cannot start shows the role that can ("Started by the manager or the secretary") and no Start button.
 - **Filters:** family, a word in the title or a step, and "my office" (the definitions that have a step for it).
 - **Empty:** "No workflows are registered." **Drift:** the heading counts it and each row says it.
-- **Loader:** `GET /api/work-definitions` (above). Privacy: P0; a definition holds no owner's data.
+- **Loader:** `GET /api/work-definitions` (above). Privacy: P0; a definition holds no owner's data. An administrator's definition is listed to an administrator only.
 - Definitions are jason's procedures, the lowest authority: a step that conflicts with the law or a rule is corrected in the definition and the lesson recorded. The catalog shows the definition's `lessons`, and gives no control to edit it.
 
 ## Components
@@ -175,7 +175,7 @@ One rule settles it for every family: **the run page embeds reads and links writ
 - **No open runs:** "No runs are open. Start one from [Start a run]."
 - **Loading:** a skeleton and "reading the runs on disk".
 - **A run whose store cannot be read:** the step shows "could not read the store" with the loader's reason; the run is not marked failed.
-- **A run held:** an executive-session matter (CIV 4935(e)) appears by its general words and its state only; the run page shows no details outside the private view, and each opening is logged (`access/served.jsonl`), as the board items are.
+- **A run held:** a run of a held definition (a hearing, a delinquent account, a records request: CIV 4935(e)) appears outside the private view by the definition's general words ("A member's hearing"), its state, its group, and its date with the basis word; the row says "Open the private view to see this run." and the run page shows only that, with no steps, links, evidence, or history. Inside the private view the whole run shows, and each opening is logged (`access/served.jsonl`), as the board items are.
 - **Paused:** a banner with the reason, who, and when; no clock is hidden.
 - **Failed:** the failing step's message and the person who may resolve it; nothing is retried by a click.
 - **Changed since:** a banner above the rail; the affected step reads "changed since" with the difference.
@@ -183,7 +183,10 @@ One rule settles it for every family: **the run page embeds reads and links writ
 ## Privacy
 
 - Directors and officers have the same access to information. A step reads and shows at the level of what it touches (P0 to P3, `jason.web.access`); a viewer who may see P2 sees the names and units a step touches, and the private view (P3) opens an owner's answer for the offices that open it, each opening logged.
-- A run's list and a URL carry an id or a filter, never a name, an email, or an address.
+- A run's list and a URL carry an id or a filter, never a name, an email, or an address. A run's id is random (a salt `api.start` gives and keeps nowhere), so it cannot be recovered by trying the association's units or parcels.
+- **Held runs** (`Visibility.HELD`; `jason.web.extra.work_scope`). Outside the private view a held run is its `held_title`, its state, its group, whose move it is by office, the date and its basis word (no clock label, no citation), and its id as an opaque handle. The text filter matches only the general title. The run page is `held_page`: the run's shape with nothing in it. An act on a held run is the 404 a missing run gets; starting one is a 403, a dry run too. In the private view (open, for an office that opens P3 in it) the run shows whole and each list, page, act, and start that shows it is a line in `access/served.jsonl`, under the run id; a log that cannot be written serves nothing. Directors and officers have the same access; `SEE_RULES` is unchanged. A step's title shows on a held run outside the private view only where its definition sets `public_title`.
+- **Administrator runs** (`Visibility.ADMIN`: `integration-connect`, `service-run`, `check-in`). Only an administrator sees the definition in the catalog or its runs in the list, its counts, or the office views; for anyone else a read is the 404 a missing run gets and a start is the refusal an unknown definition gets. An administrator who holds no office reaches the three loaders for these alone. `check-in` is a terminal procedure (`console_start` false): the catalog lists it with the sentence and the console never starts it.
+- The catalog (`work-definitions`) otherwise shows a held definition and its steps to every office that opens P2 (it is jason's procedure, not a run); its `startable` is false outside the private view, with `startableWhy`.
 - The owner view never reads `work` or `work-run` (`OWNER_SOURCES` does not list them).
 - Counsel reads a run's evidence on grant, not its list.
 

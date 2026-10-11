@@ -9,7 +9,7 @@ import pytest
 
 from jason.workflows import definitions
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, InvalidWorkflow, Phase, Role, SkipRule, StepDef, StepKind, Workflow,
+    Choice, ClockBasis, ClockDef, DateSlot, InvalidWorkflow, Phase, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
 )
 from test_workflows_support import C1, C2, C3, C4, C5, C6, example_cycle
 
@@ -100,6 +100,22 @@ def test_roles_phases_branches_and_dates_are_checked():
     assert (branch.id, "choice") in codes(check(Workflow("b", "B", "f", "unit", steps=(branch,))))
     assert (branch.id, "choice") in codes(check(Workflow("b", "B", "f", "unit", steps=(replace(branch, choices=()),))))
     assert (C1, "sop") in codes(check(with_step(wf, C1, sop="not an address")))
+
+
+def test_visibility_a_held_definition_names_its_general_title_and_only_it_does():
+    base = example_cycle()
+    assert base.visibility is Visibility.BOARD and base.held_title == "" and base.console_start is True
+    held = replace(base, visibility=Visibility.HELD, held_title="A member's matter")
+    assert check(held) == []
+    assert codes(check(replace(held, held_title=""))) == [("example-cycle", "held")]                 # a held definition has a title
+    assert codes(check(replace(base, held_title="A member's matter"))) == [("example-cycle", "held")]  # only a held one does
+    for bad in ("Hearing for 123 Main St", "Matter a@b.org", "two\nlines", "x" * 81):
+        assert codes(check(replace(held, held_title=bad))) == [("example-cycle", "held")], bad          # no address, mail, or long text
+    assert codes(check(replace(base, visibility="held"))) == [("example-cycle", "visibility")]       # an enum, not a string
+    assert check(replace(base, visibility=Visibility.ADMIN, console_start=False)) == []
+    public = with_step(held, C2, public_title=True)
+    assert check(public) == []
+    assert codes(check(with_step(base, C2, public_title=True))) == [(C2, "held")]                    # public_title is for held steps
 
 
 def test_a_definition_that_fails_does_not_register_and_the_failure_names_the_row():

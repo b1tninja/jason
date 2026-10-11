@@ -6,7 +6,7 @@ import { BasisPill, OfficeRowItem, WorkflowRail } from "../components";
 import { resetServerSession } from "../lib/api";
 import {
   ACT_ANSWER, ACTING, ACTING_PAGE, BILL_PAGE, CONTACT_EVENT, DEFINITION_PAGE, DEFINITIONS_PAGE, ELECTION_PAGE, EMPTY_PAGE, MANAGER, PAGE, PAUSED_PAGE,
-  PENDING_PAGE, QUIET_RUN_PAGE, RUN_PAGE, START_BAD, START_DONE, START_OK, ROWS, definitionsPage, due, manyYours, row, runPage, step, workPage,
+  HELD_DEF, HELD_PAGE, HELD_ROW, PENDING_PAGE, QUIET_RUN_PAGE, RUN_PAGE, START_BAD, START_DONE, START_OK, ROWS, definitionsPage, due, manyYours, row, runPage, step, workPage,
 } from "../lib/work.fixtures";
 import { parseRoute, headingLine, runHref } from "../lib/work";
 import owned from "../ownerScreens.json";
@@ -608,6 +608,55 @@ describe("Work, start a run", () => {
     render(<WorkView />);
     expect(await screen.findByText(/Viewing as A\. Secretary \(admin view\): go back to yourself first/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start the run" })).toBeNull();
+  });
+});
+
+describe("Work, a held run", () => {
+  it("lists a held run by the definition's general title, its state, and where it opens, with no step number, label, or citation", async () => {
+    serve({ list: { body: workPage([...ROWS, HELD_ROW]) } });
+    await list();
+    const held = screen.getByRole("link", { name: /A member's hearing/ });
+    expect(held).toHaveAttribute("href", "#/work/hearing/run-9e8d7c6b5a");
+    expect(held.closest("li")).toHaveAttribute("data-held", "true");
+    expect(held).toHaveTextContent("Open the private view to see this run.");
+    expect(held).toHaveTextContent("a step");
+    expect(held).not.toHaveTextContent(/Step \d+ of/);
+    expect(held).toHaveTextContent("LEGAL");
+    const plain = screen.getByRole("link", { name: /Owner information 2099/ });
+    expect(plain.closest("li")).not.toHaveAttribute("data-held");
+    expect(plain).toHaveTextContent("Step 6 of 12: Read the returned forms");
+  });
+
+  it("opens a held run as a note, its state, and its date, with no steps, no acts, and no history", async () => {
+    serve({ runs: { "run-9e8d7c6b5a": { body: HELD_PAGE } } });
+    await open("run-9e8d7c6b5a", "hearing", "A member's hearing");
+    expect(screen.getByRole("note")).toHaveTextContent("Open the private view to see this run.");
+    expect(screen.getByRole("note")).toHaveAttribute("data-held", "true");
+    expect(screen.getByText("a step")).toBeInTheDocument();
+    for (const name of ["Pause", "Note", "Cancel", "Open the run", "Print the history"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "History" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Clocks" })).toBeNull();
+    expect(document.body).not.toHaveTextContent(/Opened \d/);
+  });
+
+  it("names the sentence that says a held definition starts only in the private view, and offers no Start", async () => {
+    serve({ definitions: { body: definitionsPage([HELD_DEF, ...DEFINITIONS_PAGE.definitions]) } });
+    window.location.hash = "#/work/definitions";
+    render(<WorkView />);
+    await screen.findByRole("heading", { level: 1, name: "What can be run" });
+    const held = document.querySelector<HTMLElement>('[data-key="hearing"]')!;
+    expect(within(held).queryByRole("link", { name: "Start" })).toBeNull();
+    expect(held).toHaveTextContent("starts only in the private view");
+  });
+
+  it("does not let the start form go on for a definition the server says is not startable here", async () => {
+    serve({ definitions: { body: definitionsPage([HELD_DEF]) } });
+    window.location.hash = "#/work/start?definition=hearing";
+    render(<WorkView />);
+    await screen.findByRole("heading", { level: 1, name: "Start a run" });
+    expect(await screen.findByText(/starts only in the private view/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("What it is about"), "hearing:H-1");
+    expect(screen.getByRole("button", { name: "Start the run" })).toBeDisabled();
   });
 });
 

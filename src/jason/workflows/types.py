@@ -133,6 +133,17 @@ def is_system(by: str) -> bool:
     return by.strip().lower() in SYSTEM_NAMES
 
 
+class Visibility(Enum):
+    """Who the Work screens show a definition and its runs to. ``BOARD``: every office that opens P2. ``ADMIN``: an
+    administrator only (the definition is not listed, read, or started for anyone else). ``HELD``: the run concerns a
+    member's discipline, a parcel and a balance, or restricted records (CIV 4935(e): the open record names the matter
+    generally), so outside the private view a run shows only its ``held_title`` and its state."""
+
+    BOARD = "board"
+    ADMIN = "admin"
+    HELD = "held"
+
+
 class Repeat(Enum):
     ONCE = "once"
     PER_ITEM = "per item"
@@ -282,6 +293,7 @@ class StepDef:
     roles: tuple[Role, ...] = ()           # further roles that may act on the step; ``role`` stays the primary, the one listed
     na: NotApplicable | None = None        # the not-applicable outcome; a legal step may carry it though it cannot be skipped
     waits_on_child: bool = False           # not done until every child run spawned from this step is done or cancelled
+    public_title: bool = False             # a ``held`` run may show this step's title outside the private view (it names no matter)
 
     @property
     def is_legal(self) -> bool:
@@ -304,6 +316,9 @@ class Workflow:
     phases: tuple[Phase, ...] = ()
     procedure: str = ""
     clocks: tuple[ClockDef, ...] = ()      # deadlines on the whole run
+    visibility: Visibility = Visibility.BOARD
+    held_title: str = ""                   # the general words a ``held`` run shows outside the private view ("A member's hearing")
+    console_start: bool = True             # whether the console may start a run (False: a terminal procedure the console never starts)
 
     def step(self, step_id: str) -> StepDef | None:
         return next((s for s in self.steps if s.id == step_id), None)

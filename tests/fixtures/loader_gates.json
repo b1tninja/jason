@@ -442,16 +442,16 @@
    "why": "the life-safety items with their standing in words"
   },
   "work": {
-   "gate": "p2",
-   "why": "the open workflow runs by whose move it is: a run's label, step, role, and dated deadline with its basis, never a subject, item, or name; the offices that open P2 (the loader gates itself)"
+   "gate": "p2+admin",
+   "why": "the open workflow runs by whose move it is: a run's label, step, role, and dated deadline with its basis, never a subject, item, or name; the offices that open P2 read the board's and the held runs (a held run in full only in the private view), an administrator with no office reads the administrator's definitions alone (the loader gates itself, jason.web.extra.work_scope)"
   },
   "work-definitions": {
-   "gate": "p2",
-   "why": "the catalog of workflows jason has, with drift from their procedures and the statutes their clocks cite; read only, the offices that open P2 (the loader gates itself)"
+   "gate": "p2+admin",
+   "why": "the catalog of workflows jason has, with drift from their procedures and the statutes their clocks cite; read only, the offices that open P2, and an administrator (who alone sees the administrator's definitions; the loader gates itself)"
   },
   "work-run": {
-   "gate": "p2",
-   "why": "one run: its steps, evidence addresses, clocks, links, and history by the signed-in accounts that acted; the offices that open P2 (the loader gates itself)"
+   "gate": "p2+admin",
+   "why": "one run: its steps, evidence addresses, clocks, links, and history by the signed-in accounts that acted (a held run in full only in the private view, logged); the offices that open P2, and an administrator for the administrator's own runs (the loader gates itself)"
   }
  }
 }

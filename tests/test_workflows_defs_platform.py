@@ -26,7 +26,7 @@ import jason.workflows.defs.platform as platform
 from jason.workflows import api, checks, definitions
 from jason.workflows import definitions_general as general
 from jason.workflows.readers import CHECKS, JOBS, NamedCheck, StoreReaders
-from jason.workflows.types import ClockBasis, Role, StepKind, StepRefused, parse_sop
+from jason.workflows.types import ClockBasis, Role, StepKind, StepRefused, Visibility, parse_sop
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 MANAGER, SECRETARY, ADMIN = "J. Manager", "S. Secretary", "A. Admin"
@@ -90,7 +90,7 @@ SOPS = {  # step id -> the procedure step it addresses, by what the step says
     "check-in": {f"check-in.{i}": f"check-in#{i}" for i in range(1, 6)},
 }
 
-BUILT = {**{b().key: b for b in platform.BUILDERS}, **{b().key: b for b in platform.ADMIN_BUILDERS}}
+BUILT = {b().key: b for b in platform.BUILDERS}
 
 
 @pytest.fixture(autouse=True)
@@ -110,10 +110,11 @@ def shelf():
 
 # --- the definitions ------------------------------------------------------------------------------------------------------
 
-def test_the_family_builds_seven_definitions_and_registers_the_managers_four():
+def test_the_family_builds_seven_definitions_and_registers_the_managers_four_and_the_administrators_three():
     assert set(BUILT) == set(EXPECTED) == set(platform.KEYS) | set(platform.ADMIN_KEYS)
-    assert [b().key for b in platform.BUILDERS] == list(platform.KEYS)
+    assert [b().key for b in platform.BOARD_BUILDERS] == list(platform.KEYS)
     assert [b().key for b in platform.ADMIN_BUILDERS] == list(platform.ADMIN_KEYS)
+    assert [b().key for b in platform.BUILDERS] == [*platform.KEYS, *platform.ADMIN_KEYS]
     assert not set(platform.KEYS) & set(platform.ADMIN_KEYS)
     assert all(isinstance(w, str) and w for w in platform.WANTED) and len(set(platform.WANTED)) == len(platform.WANTED)
 
@@ -329,20 +330,22 @@ def test_the_disconnect_is_a_branch_of_four_ordered_person_steps_and_jason_revok
     assert "not built" in branch.why
 
 
-def test_the_administrators_runs_are_built_but_not_registered():
-    registered = {b().key for b in platform.BUILDERS}
-    assert registered.isdisjoint(platform.ADMIN_KEYS)
+def test_the_administrators_runs_are_registered_as_admin_definitions_and_check_in_is_not_started_from_the_console():
+    vis = {key: BUILT[key]().visibility for key in BUILT}
+    assert {k for k, v in vis.items() if v is Visibility.ADMIN} == set(platform.ADMIN_KEYS)
+    assert {k for k, v in vis.items() if v is Visibility.BOARD} == set(platform.KEYS)
+    assert [k for k in BUILT if not BUILT[k]().console_start] == ["check-in"]
     assert all(s.role is Role.ADMINISTRATOR or s.kind in (StepKind.DECISION, StepKind.CHECK)
                for key in platform.ADMIN_KEYS for s in BUILT[key]().steps)
 
 
 # --- registration ---------------------------------------------------------------------------------------------------------
 
-def test_register_general_registers_the_four_beside_the_existing_two_and_leaves_the_administrators_out():
+def test_register_general_registers_the_seven_beside_the_existing_two_the_administrators_three_as_admin_definitions():
     keys = [w.key for w in general.register_general(REPO / "data")]
-    assert {"owner-info-cycle", "control-adoption", *platform.KEYS} <= set(keys)
-    assert not set(platform.ADMIN_KEYS) & set(keys)
-    assert all(definitions.find(k) is not None for k in platform.KEYS)
+    assert {"owner-info-cycle", "control-adoption", *platform.KEYS, *platform.ADMIN_KEYS} <= set(keys)
+    assert all(definitions.find(k) is not None for k in (*platform.KEYS, *platform.ADMIN_KEYS))
+    assert all(definitions.find(k).visibility is Visibility.ADMIN for k in platform.ADMIN_KEYS)
     assert len(keys) == len(set(keys))                                                  # no key is taken twice
 
 

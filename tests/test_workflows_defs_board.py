@@ -18,7 +18,7 @@ from jason.workflows import definitions_general as general
 from jason.workflows.defs import all_builders, board
 from jason.workflows.readers import CHECKS, JOBS
 from jason.workflows.resume import Readers
-from jason.workflows.types import CheckResult, ClockBasis, Role, StepKind, StepState, parse_sop
+from jason.workflows.types import CheckResult, ClockBasis, Role, StepKind, StepState, Visibility, parse_sop
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 REPO = Path(__file__).resolve().parents[1]
@@ -86,8 +86,7 @@ LAW = {
     "law-review": {}, "duty-schedule": {}, "document-duties": {}, "owners-manual": {},
 }
 
-LEFT_OUT = {"hearing"}
-BUILT = tuple(k for k in TABLE if k not in LEFT_OUT)
+BUILT = tuple(TABLE)
 
 
 def rows(key):
@@ -113,17 +112,20 @@ def build_all():
 
 # --- which definitions, and which are left out ---------------------------------------------------------------------------
 
-def test_the_builders_are_the_seven_and_hearing_is_left_out_on_purpose():
+def test_the_builders_are_the_eight_and_hearing_is_a_held_definition():
     keys = [b().key for b in board.BUILDERS]
-    assert keys == list(BUILT) and len(set(keys)) == 7
-    assert "hearing" not in keys and [b().key for b in board.LEFT_OUT] == ["hearing"]
-    assert board.hearing.__doc__ and "not composed" in board.__doc__ and "Not in ``BUILDERS``" in board.hearing.__doc__
+    assert keys == list(BUILT) and len(set(keys)) == 8
+    assert "hearing" in keys and board.LEFT_OUT == ()
+    wf = board.hearing()
+    assert wf.visibility is Visibility.HELD and wf.held_title == "A member's hearing"
+    assert all(w.visibility is Visibility.BOARD and not w.held_title for w in build_all().values() if w.key != "hearing")
+    assert board.hearing.__doc__ and "Held" in board.hearing.__doc__ and "left out" not in board.__doc__
 
 
 def test_the_aggregator_picks_the_family_up():
     ours = {b for b in board.BUILDERS}
     assert ours <= set(all_builders())
-    assert not set(board.LEFT_OUT) & set(all_builders())
+    assert not board.LEFT_OUT
 
 
 def test_each_definition_is_a_board_family_row_and_names_its_procedure():
@@ -431,20 +433,19 @@ def test_dates_are_checked_at_start():
 
 # --- registration ---------------------------------------------------------------------------------------------------------
 
-def test_register_general_registers_the_family_beside_the_existing_two_and_not_the_left_out_one():
+def test_register_general_registers_the_family_beside_the_existing_two_with_hearing_held():
     registered = general.register_general(SHELF if (SHELF / "authorities").is_dir() else None)
     keys = {w.key for w in registered}
     assert {"owner-info-cycle", "control-adoption"} <= keys
-    assert set(BUILT) <= keys and "hearing" not in keys
+    assert set(BUILT) <= keys and "hearing" in keys
     assert {w.key for w in definitions.all_definitions()} >= keys
-    assert definitions.find("hearing") is None and definitions.find("board-meeting").subject == "meeting"
+    assert definitions.find("hearing").visibility is Visibility.HELD and definitions.find("board-meeting").subject == "meeting"
 
 
-def test_the_left_out_builder_still_validates_when_called_directly():
+def test_the_held_hearing_validates():
     wf = board.hearing()
     assert definitions.validate(wf, jobs=set(JOBS), resolve_law=general.shelf_resolver(SHELF)) == []
-    assert wf.has_legal_clock() and all(s.sop == "" for s in wf.steps)
-    assert definitions.find("hearing") is None
+    assert wf.has_legal_clock() and all(s.sop == "" for s in wf.steps) and not any(s.public_title for s in wf.steps)
 
 
 # --- one run, end to end ---------------------------------------------------------------------------------------------------

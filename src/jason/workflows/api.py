@@ -19,6 +19,7 @@ Nothing here sends, files, or writes outside ``data_dir``.
 
 from __future__ import annotations
 
+import secrets
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
@@ -231,7 +232,8 @@ def start(data_dir: Path | str, definition: str, subject: str, label: str, dates
         detail["items"] = [str(i) for i in items]
     if parent:
         detail["parent"] = parent
-    run = store.create(data_dir, definition, subject.strip(), by=by, label=label, detail=detail, at=at or "")
+    run = store.create(data_dir, definition, subject.strip(), by=by, label=label, detail=detail, at=at or "",
+                       salt=secrets.token_hex(8))      # the id is a handle: nothing of the subject (a unit, a parcel) can be tried to recover it
     day = _today(today)
     _index(data_dir, run, day)
     return {"ok": True, "run": view_dict(_view(run, wf, day, None), run)}

@@ -7,7 +7,7 @@ The definitions, by key (ids are ``<key>.<n>``; the table's id is the ``n``, ``S
 - ``document-intake`` (D1 to D21), ``ingest`` (I0 to I9), ``record-slot`` (S1 to S12), ``split-document`` (P1 to P8),
 - ``onboard`` (the five gates ST, IN, ES, OP, AD, and the change-of-manager branch CM, 36 steps),
 - ``founding-documents`` (F1 to F6), ``key-document`` (K1 to K7), ``parcel-title`` (P-1 to P-5),
-- ``careful-reading`` (C1 to C10), and ``records-production`` (M1 to M10), which is built and left out of ``BUILDERS``.
+- ``careful-reading`` (C1 to C10), and ``records-production`` (M1 to M10), a held definition.
 
 **Which steps are a person's.** The page's ``check`` and ``job`` steps are jason's reads and queued commands. The reads in
 ``jason.workflows.checks.records`` are registered, so the steps they answer are ``check`` steps (role jason): ``active-community``
@@ -37,8 +37,8 @@ the page keeps a gate apart from its children: so every gate is its own step, re
 completes one.
 
 **Privacy.** A subject is an opaque handle (a request, a document, a parcel, a collection), never a name, a unit, a path, or a
-Drive id; a step title names no confidential kind. ``records-production`` withholds and redacts restricted kinds, which the
-Work backend cannot hold (no step can be marked for an executive-session matter), so it is built and not offered.
+Drive id; a step title names no confidential kind. ``records-production`` withholds and redacts restricted kinds, so it is
+held: outside the private view the Work backend shows it as "A records request" with its state, and nothing of the run.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from typing import Any, Callable
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
+    Choice, ClockBasis, ClockDef, DateSlot, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
 )
 
 FAMILY = "records"
@@ -546,7 +546,7 @@ def careful_reading() -> Workflow:
                     dates=(DateSlot("as_of", "The date the findings are judged as of", required=False),), phases=phases, procedure=CR)
 
 
-# --- 7. records-production (built, not offered) -------------------------------------------------------------------------------
+# --- 7. records-production (a held definition) -------------------------------------------------------------------------------
 
 RP = "records-production"
 
@@ -555,10 +555,10 @@ def records_production() -> Workflow:
     """The records side of a member's request (section 2.7): which record answers, what is withheld, what it costs, and the
     production. The subject is an opaque request handle (never a name or a unit), and the items, if any, are opaque kind codes.
 
-    **Built and left out of ``BUILDERS``.** Step 6 weighs withholding and redaction, which reaches restricted kinds (an
-    executive-session matter among them). The Work backend composes no executive-session handling (no step can be marked, and
-    the record a person attests is shown in the run), so a run of this definition cannot be held safely there. It is offered
-    again when that handling is composed. Its law clocks are those whose statutes are on the shelf, on steps that cannot be
+    **Held** (``Visibility.HELD``, held title "A records request"). Step 6 weighs withholding and redaction, which reaches
+    restricted kinds (an executive-session matter among them), and the record a person attests is shown in the run, so the Work
+    backend shows a run of this definition outside the private view by its general title and state only (CIV 4935(e)) and logs
+    each opening in the private view. Its law clocks are those whose statutes are on the shelf, on steps that cannot be
     skipped; the membership list's timeframe (CIV 5210(b)(6) with Corp. Code 8330) is not a law clock until counsel reads it."""
     sid, st = _maker(RP)
     steps = (
@@ -590,17 +590,18 @@ def records_production() -> Workflow:
     phases = _phases(sid, (("open", "Open", ("1", "2")), ("map", "Map the records", ("3", "4")), ("withhold", "Withhold and weigh", ("5", "6")),
                            ("produce", "Cost and production", ("7", "8", "9", "10"))))
     return Workflow(key=RP, title="Produce records to a member", family=FAMILY, subject="request", steps=steps,
-                    dates=(DateSlot("received_on", "The request was received"),), phases=phases)
+                    dates=(DateSlot("received_on", "The request was received"),), phases=phases,
+                    visibility=Visibility.HELD, held_title="A records request")
 
 
 BUILDERS: tuple[Callable[[], Workflow], ...] = (
     document_intake, ingest, record_slot, split_document, onboard, founding_documents, key_document, parcel_title,
-    careful_reading,
+    careful_reading, records_production,
 )
-"""The definitions registered by ``register_general``. ``records_production`` is built and left out (see its docstring)."""
+"""The definitions registered by ``register_general``. ``records_production`` is held (see its docstring)."""
 
-NOT_OFFERED: tuple[Callable[[], Workflow], ...] = (records_production,)
-"""Built, validated by the tests, and not in ``BUILDERS``: the Work backend cannot hold them safely yet."""
+NOT_OFFERED: tuple[Callable[[], Workflow], ...] = ()
+"""Nothing is left out any more (``records_production`` moved into ``BUILDERS`` as a held definition)."""
 
 __all__ = ["BUILDERS", "FAMILY", "NOT_OFFERED", "WANTED", "becomes", "careful_reading", "document_intake", "founding_documents",
            "ingest", "key_document", "onboard", "parcel_title", "record_slot", "records_production", "split_document"]
