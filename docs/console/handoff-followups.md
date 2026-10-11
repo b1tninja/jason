@@ -178,7 +178,7 @@ The tool's envelope: `{"found": true, "asOf", "within", "count", "counts": {"ove
 - **A frozen funnel at close,** and the funnel stages "complete" and "past return-by with outstanding": derived by the screen from `outstanding.count`, `returnBy`, and `status`.
 - **"Not opened":** a form with no campaign is not a campaign row; it is a `ready` or `adjusted` form in the library with no open campaign for it (the library table's join). `jason campaigns --open FORM --channel C --cycle-year Y --by NAME [--handler KEY] [--option NAME=VALUE] [--return-by DATE]` is the step the card offers.
 - **"Asked 107 owners":** not countable. `asked.total` counts emailed copies; a mailed letter's marker names the mailing, so its recipients are not listed, and the owners the law mails appear as `neverAsked` (a count and a list on `jason responses --outstanding`) until they answer. PayHOA's own form carries no marker jason stamps, so nobody is "asked by PayHOA" in the catalog.
-- **A role-aware read:** every tool lists names. The director's counts-only view is the loader's work.
+- **A role-aware read:** every tool lists names. The director's counts-only view is the loader's work, **built server-side** (2026-10-10, `access.counts_only`, applied in `request_views`): a director alone gets `outstanding` and `neverAskedCount` as numbers, no `names`, no owner or unreachable list, a generic `what` for per-owner items, and `countsOnly: true`; the screen only has to say so (`countsOnlyWhy`).
 
 ### Where the first draft's shape or word differed (the code wins; the text above is corrected)
 
