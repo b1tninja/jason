@@ -5,6 +5,7 @@ This folder is the `mystique` profile's own documentation: this association's se
 - [vendor-portals.md](vendor-portals.md): the pest control vendor and its FieldPortals account.
 - [filing-by-kind.md](filing-by-kind.md): where each kind of attachment is filed in the Drive, the library paths that match, and who chose them.
 - [backflow-program.md](backflow-program.md): the six backflow assemblies, the City account, and each year's notices, tests, and repairs.
+- [county-tax-portal.md](county-tax-portal.md): what the county tax collector's payment portal exposes (bills as PDFs, payment receipts), its sign-in, and how a reader would use it; read from a browser capture.
 - [life-safety-watchlist.md](life-safety-watchlist.md): each life-safety inspection and record, where it stands for the association, and what is on file.
 - [responses.md](responses.md): what the association's members' requests held, and how well their kinds are read.
 - [manual.md](manual.md): the Owner's Manual and Rules taken apart: its parts, the classification and its questions, the books, the official rules and their adoption history, the generated manual, and what the board decides.

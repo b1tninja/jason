@@ -267,7 +267,7 @@ Differences from the first sketch: `routing` carries the rule that decided (a mi
 | 3 | **Library printed bills** | Common-area tax PDFs the association kept | financial tax models / library |
 | 4 | **Paper mail** | A “property tax bill” or collector letter | `mail_brief`, mail triage |
 | 5 | **Bank or Gmail payment notices** | “You sent $X” / bill-pay confirmations — **evidence of payment**, not the tax bill | Gmail headers and subjects; a body only if a person asks |
-| 6 | **The county tax collector's portal** | The authoritative bill PDF and account history | Not read by jason; a manual download, or an adapter declared in [../adapters.md](../adapters.md) |
+| 6 | **The county tax collector's portal** | The authoritative bill PDF, **and the account's payment receipts** (confirmation number, posted time, the bank account's last four, and each paid item with its amount): exact proof of payment that names the bill it paid | Not read by jason yet. A browser capture shows both are reachable behind a person's sign-in that a refresh token can then carry ([the profile's note](../../mystique/docs/county-tax-portal.md)); until an adapter is declared in [../adapters.md](../adapters.md), a manual download |
 | 7 | **PayHOA or bank export already on disk** | An attachment on another transaction; a monthly export under `transactions/` | `invoices --fetch` reuse paths |
 | 8 | **Secured roll / parcel list** | Which parcel the bill is for; owner-of-record can lag a sale | `sync-secured` |
 
@@ -277,6 +277,8 @@ Differences from the first sketch: `routing` carries the rule that decided (a mi
 > **Tried:** the City portal's amount match — none.
 > **Found:** a bank payment notice in Gmail for the same amount (a lead: payment sent; not the bill).
 > **Next:** (1) `jason sync-tax`, then look for this amount near this date in the catalog; (2) check scanned and unscanned mail for a property tax bill; (3) if the catalog has the bill line but no PDF, download it from the county's site or attach the mailed bill; (4) if only proof of payment is needed for review, link the bank notice and record “receipt only; bill PDF still missing”.
+
+A receipt from the collector's own site (priority 6) outranks the bank notice (priority 5) as proof of payment: it is the county's record, with the parcel and the confirmation number. It is a `receipt` candidate with `evidence: "payment-proof"` and `confidence: "exact"` when its amount, date, and the bank account's last four match the PayHOA payment; the bill it names is the `bill` to attach.
 
 **What not to do:** attach a City utility bill, invent a match on a close electric amount, or treat the bank email as the tax bill.
 
