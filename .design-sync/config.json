@@ -200,6 +200,8 @@
     "../docs/instance-limits.md",
     "../docs/console/screens/limits.md",
     "../docs/console/screens/records.md",
-    "../docs/console/screens/split.md"
+    "../docs/console/screens/split.md",
+    "../docs/console/handoff-mail-and-payment-attachments.md",
+    "../docs/console/design-brief-mail-and-payments.md"
   ]
 }

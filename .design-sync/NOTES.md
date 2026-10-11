@@ -256,3 +256,11 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   `guidelines/**`, `README.md` (its guideline count), and the sentinel, with no deletes. No component, bundle, or style was uploaded
   (none changed since the 07:09 upload), and `_ds_sync.json` was left as it was. The new screens (Limits, Records, Split) are views,
   not `src/components`, so they are not design-system components.
+
+- 2026-10-10 (evening) re-sync, atomic: the driver ran with an anchor (`anchor: ok`; the remote `_ds_sync.json` was reproduced from the local one
+  with the remote's `styleSha` and `auxSha`, since every render hash, source key, and the bundle sha matched). No component was changed, added,
+  or removed (118); `upload.any` was true for the styles and the README/guidelines only. Plan: all the usual writes, no deletes. Uploaded:
+  `styles.css`, `_ds_bundle.css`, `README.md`, and the 51 guideline docs (`design-brief-mail-and-payments` and
+  `handoff-mail-and-payment-attachments` were added to `guidelinesGlob`), then the sentinel and `_ds_sync.json` last. The working tree had no
+  unfinished `ui/src` work (only a blank line in `styles.css`), so nothing was held back. Validate warnings were the two known ones
+  (`HostPanel` GRID_OVERFLOW, `RemoteView` RENDER_ERRORS); `CitationChip` is no longer thin. The conventions header still verifies against the build.
