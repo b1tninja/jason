@@ -1,0 +1,50 @@
+# Workflows: the tasks jason is used for, as durable runs
+
+The model is [../workflows-design.md](../workflows-design.md): a definition (steps of seven kinds, roles, clocks), a run whose state is an append-only event log on disk, child runs and step groups, and one web interface (Work, Run, StartRun) common to every family. Each page below is written to that page's template (section 5): the tasks, a definition table per task, branches and failure paths, clocks and their basis, the screens, privacy and roles, what exists now (verified against the repo), gaps and build order, a made-up sample run, and acceptance criteria. They were written on 2026-10-11 from the standard operating procedures (`jason sop`), the journeys, and the built code; none of the engine below is built yet.
+
+| Family | Page | Definitions |
+|---|---|---|
+| The members | [members-cycles.md](members-cycles.md) | `owner-info-cycle` (20 SOP steps become 25), `notice-delivery`, `mailroom-letter`, `respond-sweep`, `respond-request`, `respond-policy`, `owner-document`, `form-campaign`, `form-library-review` |
+| The board | [board-governance.md](board-governance.md) | `board-meeting`, `rule-change`, `election`, `hearing`, `law-review`, `duty-schedule` (with document duties), `owners-manual` |
+| The money | [money.md](money.md) | `bill-attach`, `payment-investigation`, `monthly-review`, `delinquency-account`, `fiscal-year`, `reserve-borrowing`, `insurance-renewal`, `county-tax-cycle` |
+| Documents and records | [documents-records.md](documents-records.md) | `document-intake`, `ingest`, the record checklist and the splitter, `onboard` (about 45 steps by gate, with the change-of-manager branch), key documents, `careful-reading`, `records-production` |
+| The property, its safety, its vendors | [property-safety-vendors.md](property-safety-vendors.md) | life-safety period, deficiency, `backflow-annual`, elevated elements, contract notice window, improvement request, paint cycle, loss or claim, maintenance program |
+| Mail, email, and running jason | [mail-and-platform.md](mail-and-platform.md) | paper mail triage, email awaiting us, a Gmail draft from an item, the response inbox, connecting an integration, running the service, check-in |
+
+## What the six pages found in common
+
+- **No engine yet.** `jason.workflows` and `data/workflows/` do not exist. The pieces do: 18 standard operating procedures, three approvals kinds (`owner-info-tags`, `payhoa-attach-bills`, `gmail-drafts`), follow-ups and campaigns, the job queue, the scheduler, board items, and `POST /api/approvals/plan`. No `Procedure` row covers money, life safety, insurance, hearings, or mail.
+- **Loaders without screens.** The responses and follow-ups loaders, the form library, the three instance loaders, bill attach, the investigation, life safety, and paint have loaders and no view in `ui/src`.
+- **Writes without a gate.** Drive filing, Doc writes, the Mailroom send and cancel, the email batch, and the PayHOA request comment (`request-comment` writes without `--yes`) are not approvals kinds.
+- **Statutes and clocks that need a reading, not a recital.** The membership-list clock is labeled five business days under Civil Code 5210(b), which points to Corporations Code 8330 and states more than one timeframe; CIV 5301 and the Revenue and Taxation Code installment sections are not on the authorities shelf, so no tax clock is recited as law; a hearing's suspension notice cites Corporations Code 7341, also not on the shelf. Each is held for the board and counsel.
+- **Procedure flaws found on the way:** `onboard` step 13 is not flagged as a person's step, and step 19 cites 5205 for a board request to its outgoing manager, which the stored text does not say; `fire-protection.md` cites 904.1(c) for the duty to correct where the shelf prints it in 904.2(d); the owner-information SOP lists the campaign step after the test send, but `campaigns.require` refuses copies with no open campaign.
+- **Privacy:** the director's counts-only rule is enforced only on the requests loaders; `mail-triage`, `open-items`, and delinquency have no office check; `followups/*`, `forms/campaigns.json`, and `records-requests/*` have no path level.
+
+## Decisions already taken
+
+- **Every confirmed life-safety deficiency becomes a board item** (2026-10-11), prioritized by a severity a person sets and by a deadline a person records; until a severity is set, jason proposes one and says so ([property-safety-vendors.md](property-safety-vendors.md)).
+- **A director sees counts only** on the requests area, enforced on the server (2026-10-10).
+- **The console may save Gmail drafts, never send**, through the `gmail-drafts` approvals kind (2026-10-10).
+- **The vault is the development environment's store** (2026-10-10).
+
+## Decisions for you, gathered
+
+1. **Child runs and step groups** (all six pages asked): adopted in the spine as recommended; say if not.
+2. **Who records a board decision** (the secretary or the president), and whether a decision step is a link to a meeting's agenda item or a child run.
+3. **The counterparty clock basis:** added to the spine; `followups.Basis` gains it with the engine.
+4. **Mail and shredding:** may the manager alone discard a legal, insurance, tax, or escrow letter, or does the board adopt `records-retention` first (a question for the board and counsel)?
+5. **A response standard for general email:** the law is silent, so the board adopts one or none.
+6. **Hearings:** merge the two stores (`hearings.json`, `decisions.json`); use an opaque run id (the key now carries an address).
+7. **The money:** may a county receipt stand in for a bill at the treasurer's review; who records a lien; which Revenue and Taxation Code sections go on the shelf; whether directors see only counts across the money area.
+8. **Records and onboarding:** keep signed local records as `person` steps (recommended) or make them `plan` steps under new `local.*` kinds; whether `onboard` closes on an attestation or only when all five gates read open; one child run per instrument or per document.
+9. **Where the manager's repair-authority limit lives** (the documents state it, or the board adopts it).
+10. **The console never starts `check-in` runs** (recommended), and the administrator's runs are hidden from the board's Work list (recommended).
+11. **Second signers** for sends (the Mailroom, the email batch).
+
+## Build order
+
+1. `jason.workflows`: the definition type over `Procedure`, the run store, the event log, the fold, the resume check. Pure, tested on made-up definitions.
+2. `jason workflow` at the terminal.
+3. The owner-information cycle end to end (the most that is built), then bill attach.
+4. The `work` and `work-run` loaders and the Work and Run screens.
+5. The other families, each a set of definitions and the one or two screens specific to it. Each page's section 8 has its own order.
