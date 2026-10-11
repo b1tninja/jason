@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Evidence } from "./Evidence";
 import { Pill } from "./Pill";
 import { HeldNote } from "./HeldNote";
-import { changeText, isApprovable, personName, RESULT_WORDS, when, type PlanItem } from "../lib/approvals";
+import { changeText, isApprovable, isFlagged, personName, RESULT_WORDS, when, type PlanItem } from "../lib/approvals";
 
 const OP_WORDS = { add: ["+", "Add"], remove: ["−", "Remove"], set: ["~", "Change"] } as const;
 
@@ -28,10 +28,25 @@ function Diff({ item }: { item: PlanItem }) {
   );
 }
 
+/** A flagged item's state: "flagged" until a person decides it as a one-off exception (approved, rejected, or kept
+ * flagged with a note), then that decision with the person and the reason, and its result once applied. */
+function FlaggedState({ item }: { item: PlanItem }) {
+  const decided = !!item.exception && item.decision !== "undecided";
+  const word = item.result !== "pending" ? RESULT_WORDS[item.result] : decided && item.decision !== "held" ? item.decision : "flagged";
+  const how = item.decision === "approved" ? "approved as a one-off exception" : item.decision === "rejected" ? "rejected" : "kept flagged";
+  return (
+    <span className="write-state">
+      <Pill word={word} meaning={item.resultDetail || undefined} />
+      {decided && <span className="muted">{how} by {personName(item.decidedBy)}{item.decidedAt ? `, ${when(item.decidedAt)}` : ""}{item.reason ? `: ${item.reason}` : ""}</span>}
+    </span>
+  );
+}
+
 /** The item's state in words: undecided, or decided by a named person (with the reason), and its result once applied. */
 function State({ item }: { item: PlanItem }) {
+  if (isFlagged(item)) return <FlaggedState item={item} />;
   if (!isApprovable(item))
-    return <Pill word={item.result !== "pending" ? RESULT_WORDS[item.result] : item.class === "held_for_board" ? "held" : item.class === "informational" ? "follows" : "never approvable"} />;
+    return <Pill word={item.result !== "pending" ? RESULT_WORDS[item.result] : item.class === "informational" ? "follows" : "never approvable"} />;
   return (
     <span className="write-state">
       <Pill word={item.decision} />
@@ -44,8 +59,9 @@ function State({ item }: { item: PlanItem }) {
 }
 
 /** One planned change, as the engine's plan item gives it: the change, before → after, why, the rule, the evidence, and its
- * state. Only an approvable item, while `selectable`, has a checkbox; held, for-a-person, confirm-with-owner, and
- * informational items never do, whatever is passed. `waits` names the changes a completion waits on. `rule` replaces the
+ * state. Only an approvable item, while `selectable`, has a checkbox; flagged (held for the board), for-a-person,
+ * confirm-with-owner, and informational items never do, whatever is passed: a flagged item is decided on its own
+ * (`FlaggedItem`), never in the plan's ordinary approval. `waits` names the changes a completion waits on. `rule` replaces the
  * plain rule line (a `Recitation` in a disclosure, say). `approval` is the plan's id, so an evidence chip opens what jason
  * stored for it and whether it changed since the plan was read. */
 export function WriteRow({ item, selectable = false, checked = false, onToggle, waits, rule, labelledBy, approval }: {
@@ -54,7 +70,7 @@ export function WriteRow({ item, selectable = false, checked = false, onToggle, 
 }) {
   const canSelect = selectable && isApprovable(item);
   const changeId = `write-${item.id}`;
-  const cls = ["write-row", `write-${item.class.replace(/_/g, "-")}`, isApprovable(item) ? `write-${item.decision}` : "", item.result === "changed" ? "write-changed" : ""].filter(Boolean).join(" ");
+  const cls = ["write-row", `write-${item.class.replace(/_/g, "-")}`, isApprovable(item) || item.exception ? `write-${item.decision}` : "", item.result === "changed" ? "write-changed" : ""].filter(Boolean).join(" ");
   return (
     <div className={cls} data-item-id={item.id} data-class={item.class} data-board-item={item.boardItem || undefined}>
       <div className="write-select">

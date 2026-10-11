@@ -44,7 +44,7 @@ function counts(a: Listed): string {
       ? (cls: string) => a.byClass?.[cls] ?? 0
       : null;
   if (!n) return "";
-  const parts = [`${n("approvable")} to decide`, n("held_for_board") ? `${n("held_for_board")} held` : "", n("for_a_person") ? `${n("for_a_person")} for a person` : ""];
+  const parts = [`${n("approvable")} to decide`, n("held_for_board") ? `${n("held_for_board")} flagged` : "", n("for_a_person") ? `${n("for_a_person")} for a person` : ""];
   return parts.filter(Boolean).join(" · ");
 }
 
@@ -70,7 +70,8 @@ function recheckOf(d: unknown): Recheck | null {
  * `/api/approvals/audit?approval=<id>&verify=1`. Each step posts to `/api/approvals/<id>/<step>` in the signed-in
  * person's name, with the server's write token: `decide` `{items, decision, by, reason}`, `submit` and `confirm`
  * `{by}`, `decline` and `withdraw` `{by, reason}`, `check` (re-plan live, writing nothing), and `apply` `{by, confirm:
- * fingerprint}`, offered only when the server allows it (`applyEnabled`). A stale apply answers 409 with the plan that
+ * fingerprint}`; a flagged item is decided with `decide` and `exception: true` (one item, a reason), and `refer`
+ * `{item, by}` puts its finding before the board, offered only when the server allows it (`applyEnabled`). A stale apply answers 409 with the plan that
  * superseded it, which opens. `onLoaded` passes each loaded approval up, so the list's row follows. */
 export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string; onOpen: (id: string) => void; onLoaded?: (a: Approval) => void }) {
   const base = `/api/approvals/${encodeURIComponent(id)}`;
@@ -116,7 +117,8 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
             kind={d.kindFacts ?? undefined} notice={notice} twoPerson={!!d.kindFacts?.twoPerson}
             maxAgeHours={d.kindFacts?.maxAgeHours} recitations={d.recitations} boardHref={boardItemHref}
             busy={busy} error={error} onOpen={onOpen}
-            onDecide={step("decide", ({ items, decision, by, reason }) => ({ items, decision, by, reason }))}
+            onDecide={step("decide", ({ items, decision, by, reason, exception }) => ({ items, decision, by, reason, ...(exception ? { exception: true } : {}) }))}
+            onRefer={step("refer", ({ item, by }) => ({ item, by }))}
             onSubmit={step("submit", ({ by }) => ({ by }))}
             onConfirmSecond={step("confirm", ({ by }) => ({ by }))}
             onDecline={step("decline", ({ by, reason }) => ({ by, reason }))}

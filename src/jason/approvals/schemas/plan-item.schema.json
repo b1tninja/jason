@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jason.local/schemas/approvals/plan-item.schema.json",
   "title": "PlanItem",
-  "description": "One change in an approval: what it changes (before and after, or a value added or removed), why, the rule and evidence, and whether a person may approve it. Items held for the board, for a person, to confirm with the owner, or informational are never approvable.",
+  "description": "One change in an approval: what it changes (before and after, or a value added or removed), why, the rule and evidence, and whether a person may approve it. An item held for the board by jason's policy finding is flagged for review: it is decided only as a one-off exception (exception: true), with a reason. Items for a person, to confirm with the owner, or informational are never approvable.",
   "type": "object",
   "required": ["id", "op", "target", "label", "value", "why", "class", "basis", "decision", "result"],
   "additionalProperties": false,
@@ -52,7 +52,15 @@
     "boardItem": {"type": "string", "description": "Held for the board: the board item it waits on."},
     "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Item ids that must apply first."},
     "highStakes": {"type": "boolean", "description": "A second, distinct person signs before it applies."},
+    "exception": {"type": "boolean", "description": "A flagged item (held for the board) decided by a person as a one-off exception, whether approved, rejected, or kept flagged. Absent when false."},
     "costCents": {"type": "integer", "minimum": 0},
+    "exceptions": {"type": "array", "description": "Read only, added by jason-web beside a flagged item and never stored: the decisions made under its finding (rule) in every plan, oldest first, from the exceptions log.",
+      "items": {"type": "object", "properties": {
+        "at": {"type": "string"}, "approval": {"type": "string"}, "item": {"type": "string"}, "finding": {"type": "string"},
+        "boardItem": {"type": "string"}, "by": {"type": "string"}, "secondBy": {"type": "string"},
+        "decision": {"enum": ["approved", "rejected", "held"]}, "reason": {"type": "string"}, "applied": {"type": "boolean"},
+        "kind": {"type": "string"}}}},
+    "exceptionCount": {"type": "integer", "minimum": 0, "description": "Read only, added by jason-web: exceptions approved under the item's finding."},
     "decision": {"enum": ["undecided", "approved", "rejected", "held"]},
     "decidedBy": {"type": "string"},
     "decidedAt": {"type": "string"},
@@ -62,7 +70,8 @@
   },
   "allOf": [
     {"if": {"properties": {"class": {"const": "approvable"}}}, "then": {"properties": {"basis": {"minLength": 64}}}},
-    {"if": {"properties": {"class": {"not": {"const": "approvable"}}}}, "then": {"properties": {"decision": {"const": "undecided"}}}},
+    {"if": {"properties": {"class": {"not": {"enum": ["approvable", "held_for_board"]}}}}, "then": {"properties": {"decision": {"const": "undecided"}}}},
+    {"if": {"properties": {"class": {"const": "held_for_board"}, "decision": {"enum": ["approved", "rejected", "held"]}}, "required": ["class", "decision"]}, "then": {"properties": {"exception": {"const": true}}, "required": ["exception"]}},
     {"if": {"properties": {"decision": {"enum": ["rejected", "held"]}}}, "then": {"properties": {"reason": {"minLength": 1}}, "required": ["reason"]}}
   ]
 }

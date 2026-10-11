@@ -7,8 +7,10 @@ items:
   mail tag, the earlier-elections rule, or the response policy's ``delivery`` row) and its evidence; and each owner's
   pending PayHOA request that nothing but its writes keeps open, as a completion that depends on those writes (the
   board's stated exception in AGENTS.md: the request is marked complete and the board's comment emailed to the owner);
-- **held for the board**: the unit occupancy writes the response policy holds (``occupancy-vs-tag``), each with its
-  board item. Never approvable;
+- **flagged for review** (``held_for_board``): the unit occupancy writes the response policy holds
+  (``occupancy-vs-tag``), each with its board item. Not part of the plan's ordinary approval; a person decides each on
+  its own, as a one-off exception with a reason (``engine.decide(..., exception=True)``), and only an item so approved
+  is written, by the same applier;
 - **for a person** and **confirm with the owner**: what a request's answer asks that jason does not write, and the
   policy's person and confirm findings. Never approvable;
 - **informational**: each pending request that stays open, and why.
@@ -41,7 +43,7 @@ COMPLETION_RULE = ("the board's owner-information completion rule "
 class Context:
     """The planner's own, in memory, for the applier: the plan and which write or request each item is."""
     plan: Any                                          # owner_info_apply.ApplyPlan
-    writes: dict[str, Any] = field(default_factory=dict)       # item id -> owner_info.Write
+    writes: dict[str, Any] = field(default_factory=dict)       # item id -> owner_info.Write (flagged items too)
     requests: dict[str, int] = field(default_factory=dict)     # completion item id -> submission id
 
 
@@ -240,12 +242,17 @@ def build(p: Any, *, cycle: Any = None, today: date | None = None, read_at: str 
         w = h.write
         target = _target(w)
         board = (Evidence(f"Board item {h.board_item}", f"board-item:{h.board_item}"),) if h.board_item else ()
-        items.append(PlanItem(item_id(KEY, w.kind, target, w.value), w.kind, target, w.label, w.value,
-                              mask(f"{h.text}: held for the board by the response policy ({h.rule})"), group=w.label,
-                              change=_change(p, w), rule=f"owner_responses.RULES: {h.rule}",
-                              evidence=board + _request_evidence(w.why),
-                              basis=digest({"state": _state(p, w), "why": w.why}), klass=ItemClass.HELD_FOR_BOARD,
-                              board_item=h.board_item))
+        flagged = PlanItem(item_id(KEY, w.kind, target, w.value), w.kind, target, w.label, w.value,
+                           mask(f"{h.text}: held for the board by the response policy ({h.rule})"), group=w.label,
+                           change=_change(p, w), rule=f"owner_responses.RULES: {h.rule}",
+                           evidence=board + _request_evidence(w.why),
+                           basis=digest({"state": _state(p, w), "why": w.why}), klass=ItemClass.HELD_FOR_BOARD,
+                           board_item=h.board_item)
+        items.append(flagged)
+        # The write is kept for the applier, as an approvable one's is: a person may approve this item as a one-off
+        # exception (docs/held-items.md), and the engine then applies exactly this write. An item not approved is never
+        # passed to the applier, so it is never written.
+        ctx.writes[flagged.id] = w
     answers = {c.submission: c.answers for c in p.contexts}
     findings = {sid: {f.rule: f for f in fs} for sid, fs in p.findings.items()}
     counts = Counter()

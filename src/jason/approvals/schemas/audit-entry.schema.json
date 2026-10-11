@@ -12,7 +12,7 @@
       "enum": ["plan.created", "plan.failed", "item.decided", "approval.submitted", "approval.confirmed",
                "approval.declined", "apply.started", "apply.refused", "item.applying", "item.applied", "item.failed",
                "item.uncertain", "item.blocked", "item.not_applied", "approval.applied", "approval.failed",
-               "approval.superseded", "approval.withdrawn", "cli.applied"]
+               "approval.superseded", "approval.withdrawn", "cli.applied", "item.referred"]
     },
     "os_user": {"type": "string"},
     "approval": {"type": "string"},

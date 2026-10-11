@@ -63,8 +63,8 @@ A person reads a plan jason made, item by item, with each item's reason, rule, a
 | jason approvals show apr-20991003T084000-1a2b [copy]                                      |
 +------------------------------------------------------------------------------------------+
 | [ChangedBanner, only when stale, superseded, or a check differs]                          |
-| [HeldNote] 2 changes held for the board. Approving this plan does not approve them;      |
-|            they go to the board's agenda.                                                 |
+| [HeldNote] 2 changes flagged for review. Approving this plan does not approve them;      |
+|            each is decided on its own, as a one-off exception, or referred to the board. |
 +------------------------------------------------------------------------------------------+
 | TO DECIDE (8)                                          Show: [All] [Undecided] [Rejected] |
 | Unit 12: Owner A                                                                          |
@@ -77,8 +77,8 @@ A person reads a plan jason made, item by item, with each item's reason, rule, a
 | Unit 14: Owner B                                                                          |
 |   ...                                                                                    |
 +------------------------------------------------------------------------------------------+
-| HELD FOR THE BOARD (2)                     never approvable; on the board's agenda       |
-|   Unit 15: occupancy tag   board item BI-2099-04 · meeting Oct 15                        |
+| FLAGGED FOR REVIEW: 2 flagged, 0 decided by exception   decided one at a time (FlaggedItem) |
+|   Unit 15: occupancy tag   board item BI-2099-04 · meeting Oct 15   [Review this change v] |
 | FOR A PERSON (1)                           jason does not do these                       |
 |   Unit 12: enter the mailing address in PayHOA                                           |
 | CONFIRM WITH THE OWNER (0) · WHAT FOLLOWS (3)                                            |
@@ -100,7 +100,7 @@ After submit, the bar becomes: **Check** (re-read, write nothing), and either **
 
 `ScreenHeader`, `ApprovalsInbox` (letters), `PlanApprovals` and `PlanReview` (plans), `Pill` (status, item result), `DueDate` (the clock), `ChangedBanner`, `HeldNote` (and its inline form on a held row), `WriteRow`, `Evidence`, `Recitation` (in a disclosure under "recite"), `CostLine`, `ApproveBar`, `SecondConfirm`, `ApplyResult`, `AuditLog`, `Command`, `Confirm`, `DraftLetter` (letters, unchanged).
 
-**Two kinds of "held".** The planner's class `held_for_board` (a response-policy finding) puts an item in "Held for the board" with no controls. A person's decision `held` (the bar's **Hold for the board**) refers an approvable item to the board: it needs a reason and is not written. `HeldNote` keeps the two apart: "held for the board" (jason's policy finding) and "held for the board by NAME" (a person's decision). Both say where the item goes: a board item, and the meeting's agenda ([approval-workflow.md](../approval-workflow.md#12-the-board-decides-by-vote)).
+**Two kinds of "held".** The planner's class `held_for_board` (a response-policy finding) puts an item in "Flagged for review", with no checkbox and none of the bar's controls: it is decided on its own in `FlaggedItem` (approve as a one-off exception, reject, keep flagged, or refer to the board; [held-items.md](../../held-items.md)). A person's decision `held` (the bar's **Hold for the board**) refers an approvable item to the board: it needs a reason and is not written. `HeldNote` keeps the two apart: "flagged for review" (jason's policy finding) and "held for the board by NAME" (a person's decision). Both say where the item goes: a board item, and the meeting's agenda ([approval-workflow.md](../approval-workflow.md#12-the-board-decides-by-vote)).
 
 ## Actions
 

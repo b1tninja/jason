@@ -1,9 +1,12 @@
 """``jason approvals``: plans of writes outside jason, decided item by item by a named person (``jason.approvals``).
 
 ``jason approvals`` lists them, open ones first. ``plan KIND`` reads live and stores a plan (it writes nothing
-outside jason). ``show ID`` gives its items: the approvable ones, then those held for the board, for a person, to
-confirm with the owner, and what follows. ``decide ID --items ... --by NAME`` approves (``--hold`` or ``--reject`` with
-``--reason``), ``submit ID --by NAME`` signs, ``confirm ID --by NAME`` is the second person. ``apply ID`` re-plans
+outside jason). ``show ID`` gives its items: the approvable ones, then those flagged for review (held for the board by
+jason's policy finding), for a person, to confirm with the owner, and what follows. ``decide ID --items ... --by NAME``
+approves (``--hold`` or ``--reject`` with ``--reason``), ``submit ID --by NAME`` signs, ``confirm ID --by NAME`` is the
+second person. A flagged item is decided with ``decide ID --item ITEM --exception --reason TEXT --by NAME`` (a one-off
+exception, never a rule; a second person signs) and only so; ``refer ID --item ITEM --by NAME`` puts its finding before
+the board; ``exceptions [--finding RULE]`` lists the exceptions log (docs/held-items.md). ``apply ID`` re-plans
 live and shows whether anything changed since review, writing nothing; ``apply ID --yes`` applies only the approved
 items, or, when something changed, supersedes the approval with a new plan and writes nothing. ``audit`` reads the
 log; ``--verify`` checks its chain.
@@ -18,11 +21,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-ACTIONS = ("list", "kinds", "plan", "show", "decide", "submit", "confirm", "decline", "withdraw", "apply", "audit")
+ACTIONS = ("list", "kinds", "plan", "show", "decide", "refer", "exceptions", "submit", "confirm", "decline", "withdraw",
+           "apply", "audit")
 
 _SECTIONS = (
     ("approvable", "To decide"),
-    ("held_for_board", "Held for the board (never approvable)"),
+    ("held_for_board", "Flagged for review (held for the board; decide each only with --exception)"),
     ("for_a_person", "For a person, in PayHOA (never approvable)"),
     ("confirm_with_owner", "Confirm with the owner first (never approvable)"),
     ("informational", "What follows"),
@@ -82,9 +86,9 @@ def _list(args: argparse.Namespace) -> int:
         return 0
     for a in rows:
         approvable = len(a.approvable)
-        held = sum(1 for i in a.items if i.klass.value == "held_for_board")
+        flagged = len(a.flagged)
         print(f"{a.id}  {a.kind:16} {a.status.value:18} {approvable:3} to decide, {len(a.approved):3} approved, "
-              f"{held:2} held  {_age(a.requested_at):>4}  by {a.requested_by}")
+              f"{flagged:2} flagged  {_age(a.requested_at):>4}  by {a.requested_by}")
     return 0
 
 
@@ -97,8 +101,38 @@ def _item_line(i: Any) -> str:
         if i.result.value != "pending" else ""
     board = f"  board item {i.board_item}" if i.board_item else ""
     waits = f"  waits on {', '.join(d[:10] for d in i.depends_on)}" if i.depends_on and i.approvable else ""
-    return f"    {i.id[:10]}  {i.op:18} {change}{board}{waits}{decided}{result}\n{'':16}why: {i.why}" \
+    flag = "  FLAGGED, decided by exception" if i.flagged and i.exception else "  FLAGGED" if i.flagged else ""
+    return f"    {i.id[:10]}  {i.op:18} {change}{flag}{board}{waits}{decided}{result}\n{'':16}why: {i.why}" \
            + (f"\n{'':16}rule: {i.rule}" if i.rule else "")
+
+
+def _exception_line(r: dict[str, Any]) -> str:
+    second = f"; second {r['secondBy']}" if r.get("secondBy") else ""
+    return (f"{str(r['at'])[:16].replace('T', ' ')}  {r['decision']:8} by {r['by']}{second}"
+            f"{'; applied' if r.get('applied') else ''}: {r.get('reason', '')}  ({r['approval']} {str(r['item'])[:10]})")
+
+
+def _flagged_lines(a: Any) -> list[str]:
+    """For each flagged item's finding: the exceptions already made under it, and the nudge to write a rule."""
+    from jason.approvals import exceptions
+
+    out: list[str] = []
+    try:
+        history, counted = exceptions.rows(), exceptions.counts()
+    except OSError:
+        return out
+    for finding in dict.fromkeys(i.rule for i in a.flagged):
+        rows = [r for r in history if r["finding"] == finding]
+        if not rows:
+            continue
+        out.append(f"   exceptions under {finding or '(no rule named)'}: {len(rows)} decision(s), "
+                   f"{counted.get(finding, 0)} approved")
+        out += [f"     {_exception_line(r)}" for r in rows]
+        if counted.get(finding, 0) >= exceptions.EXCEPTION_NUDGE:
+            board = next((i.board_item for i in a.flagged if i.rule == finding and i.board_item), "")
+            out.append(f"     This finding has been decided by exception {counted[finding]} times. The board may want "
+                       "to write a rule" + (f" (board item {board})." if board else "."))
+    return out
 
 
 def show_lines(a: Any) -> list[str]:
@@ -129,6 +163,8 @@ def show_lines(a: Any) -> list[str]:
         for group, items in groups.items():
             out.append(f"   {group}")
             out += [_item_line(i) for i in items]
+        if key == "held_for_board":
+            out += _flagged_lines(a)
     for note in a.notes:
         out.append(f"  note: {note}")
     return out
@@ -181,6 +217,8 @@ def cmd_approvals(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
             return 0
         if action == "audit":
             return _audit(args, data_dir)
+        if action == "exceptions":
+            return _exceptions(args, data_dir)
         if not args.ref:
             print(f"jason approvals {action} needs {'a KIND' if action == 'plan' else 'an ID'}", file=sys.stderr)
             return 2
@@ -208,11 +246,25 @@ def cmd_approvals(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
             if not args.items and not args.all:
                 print("decide needs --items ID [ID ...] or --all", file=sys.stderr)
                 return 2
+            if args.all and args.exception:
+                print('--exception names the flagged item (--items): "--all" never includes one', file=sys.stderr)
+                return 2
             a = engine.decide(args.ref, "all" if args.all else args.items, by=args.by or "", decision=_decision(args),
-                              reason=args.reason or "", data_dir=data_dir)
+                              reason=args.reason or "", exception=args.exception, data_dir=data_dir)
             undecided = sum(1 for i in a.approvable if i.decision.value == "undecided")
             print(f"{a.id}: {a.status.value}; {len(a.approved)} approved, {undecided} undecided"
                   + ("" if undecided else f" (jason approvals submit {a.id} --by NAME)"))
+            if args.exception:
+                print("One-off decision, not a rule."
+                      + (f" A second, distinct person must sign before it applies (jason approvals confirm {a.id} "
+                         "--by NAME)." if _approved_exception(a) else ""))
+            return 0
+        if action == "refer":
+            if not args.items or len(args.items) != 1:
+                print("refer needs --item ID: the one flagged item whose finding goes to the board", file=sys.stderr)
+                return 2
+            a, found = engine.refer(args.ref, args.items[0], by=args.by or "", data_dir=data_dir)
+            print(f"{a.id}: board item {found.id} ({found.status.value}); nothing was decided")
             return 0
         if action == "submit":
             a = engine.submit(args.ref, by=args.by or "", data_dir=data_dir)
@@ -263,6 +315,38 @@ def cmd_approvals(args: argparse.Namespace, agent_factory: Callable[[Any], Any])
     return 2
 
 
+def _approved_exception(a: Any) -> bool:
+    return any(i.exception and i.decision.value == "approved" for i in a.items)
+
+
+def _exceptions(args: argparse.Namespace, data_dir: Path) -> int:
+    """The exceptions log, one decision a line, oldest first; ``--finding`` narrows to one finding, ``ref`` to one plan."""
+    from jason.approvals import exceptions, store
+
+    rows = exceptions.rows(data_dir)
+    if args.finding:
+        rows = [r for r in rows if r["finding"] == args.finding]
+    if args.ref:
+        rows = [r for r in rows if r["approval"] == store.resolve(args.ref, data_dir)]
+    counted = exceptions.counts(data_dir)
+    if args.json:
+        print(json.dumps({"exceptions": rows, "counts": counted, "nudge": exceptions.EXCEPTION_NUDGE}, indent=1,
+                         ensure_ascii=False))
+        return 0
+    if not rows:
+        print("no exceptions decided (jason approvals decide ID --item ITEM --exception --reason TEXT --by NAME)")
+        return 0
+    for finding in dict.fromkeys(r["finding"] for r in rows):
+        mine = [r for r in rows if r["finding"] == finding]
+        n = counted.get(finding, 0)
+        print(f"{finding or '(no rule named)'}: {len(mine)} decision(s), {n} approved by exception")
+        for r in mine:
+            print(f"  {_exception_line(r)}")
+        if n >= exceptions.EXCEPTION_NUDGE:
+            print(f"  This finding has been decided by exception {n} times. The board may want to write a rule.")
+    return 0
+
+
 def _planned(a: Any) -> int:
     print("\n".join(show_lines(a)))
     print(f"\nPlanned (read live; nothing written outside jason): jason approvals decide {a.id} --items ID ... "
@@ -289,18 +373,23 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p = sub.add_parser("approvals", help="Plans of writes outside jason, approved item by item by a named person")
     add_common(p)
     p.add_argument("action", nargs="?", default="list", choices=ACTIONS,
-                   help="list (default), kinds, plan KIND, show ID, decide ID, submit ID, confirm ID, decline ID, "
-                        "withdraw ID, apply ID, audit [ID]")
+                   help="list (default), kinds, plan KIND, show ID, decide ID, refer ID, exceptions [ID], submit ID, "
+                        "confirm ID, decline ID, withdraw ID, apply ID, audit [ID]")
     p.add_argument("ref", nargs="?", help="the kind (plan) or the approval's id or a unique prefix")
     p.add_argument("--by", metavar="NAME", help="the person deciding, submitting, confirming, or applying")
-    p.add_argument("--items", nargs="+", metavar="ITEM", help="with decide: item ids or unique prefixes (6+ characters)")
+    p.add_argument("--items", "--item", nargs="+", metavar="ITEM",
+                   help="with decide: item ids or unique prefixes (6+ characters); with refer: the one flagged item")
+    p.add_argument("--exception", action="store_true",
+                   help="with decide: decide a flagged item (held for the board) as a one-off exception, never a rule; "
+                        "needs --reason in words, and a second person signs before it applies")
+    p.add_argument("--finding", metavar="RULE", help="with exceptions: only the decisions made under this finding")
     p.add_argument("--all", action="store_true", help="with decide: every approvable item")
     p.add_argument("--hold", action="store_true", help="with decide: hold the items (needs --reason)")
     p.add_argument("--reject", action="store_true", help="with decide: leave the items out (needs --reason)")
     p.add_argument("--reason", help="why: a hold, a rejection, a decline, or a withdrawal")
     p.add_argument("--yes", action="store_true",
                    help="with apply: apply the approved items (without it: re-plan and compare, writing nothing)")
-    p.add_argument("--json", action="store_true", help="with show: the approval as JSON")
+    p.add_argument("--json", action="store_true", help="with show or exceptions: the approval, or the log, as JSON")
     p.add_argument("--scope", metavar="JSON", help="with plan: the kind's scope as a JSON object (a kind that needs "
                                                    "one, such as gmail-drafts, says what it takes)")
     p.add_argument("--status", help="with list: only this status (planned, in_review, approved, ...)")

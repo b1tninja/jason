@@ -11,7 +11,7 @@ const TONE: Partial<Record<AuditEntry["event"], TimelineEvent["tone"]>> = {
 /** What each logged event is, as its provenance glyph: planned (proposal), decided and confirmed (badge-check), signed
  * (signature), written (send), taken back (undo-2), refused (lock), stopped (octagon-alert), failed (triangle-alert). */
 const GLYPH: Partial<Record<AuditEntry["event"], GlyphName>> = {
-  "plan.created": "proposal", "plan.failed": "triangle-alert",
+  "plan.created": "proposal", "plan.failed": "triangle-alert", "item.referred": "proposal",
   "item.decided": "badge-check", "approval.submitted": "signature", "approval.confirmed": "badge-check",
   "approval.declined": "undo-2", "approval.withdrawn": "undo-2", "approval.superseded": "history",
   "apply.started": "send", "apply.refused": "lock", "item.applying": "send", "item.applied": "send", "approval.applied": "send",
@@ -39,6 +39,7 @@ export function auditWords(e: AuditEntry): string {
     case "plan.failed": return `Planning failed (asked by ${who})`;
     case "item.decided": return `${who} ${String(e.result ?? "decided")} ${plural(n, "change", "changes")}`;
     case "approval.submitted": return `${who} signed: ${String(e.result ?? "").replace(/_/g, " ")}${n ? `, ${plural(n, "change", "changes")} approved` : ""}`;
+    case "item.referred": return `${who} referred a flagged finding to the board${e.detail ? ` (${e.detail})` : ""}`;
     case "approval.confirmed": return `${who} confirmed as the second person`;
     case "approval.declined": return `${who} declined and sent it back to review`;
     case "apply.started": return `${who} started the apply (${plural(n, "approved change", "approved changes")})`;

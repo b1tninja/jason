@@ -2,8 +2,10 @@
 
 An ``Approval`` is one plan of writes outside jason, made from a live read, with every item a person reviews. Each
 ``PlanItem`` is one change (before and after, or a tag added or removed), why, its rule and evidence, and its class:
-approvable, or never approvable (held for the board with its board item, for a person, to confirm with the owner, or
-informational). A person decides approvable items one by one (``Decision``); the decisions are submitted under a
+approvable, flagged for review (held for the board with its board item), or never approvable (for a person, to confirm
+with the owner, or informational). A person decides approvable items one by one (``Decision``); a flagged item is
+decided only as a one-off exception, with a reason (``PlanItem.exception``; docs/held-items.md). The decisions are
+submitted under a
 ``Signature``, and a second, distinct person signs too when the kind or a high-stakes item needs one. ``apply`` reads
 live again and refuses when the basis of an approved item moved (``Result.CHANGED``).
 
@@ -56,7 +58,9 @@ class TransitionError(ValueError):
 
 class ItemClass(Enum):
     APPROVABLE = "approvable"
-    HELD_FOR_BOARD = "held_for_board"            # a question of policy (Outcome.BOARD): never approvable
+    # a question of policy (Outcome.BOARD): flagged for review (docs/held-items.md). It is in no ordinary approval; a
+    # director, an officer, or the manager may decide it on its own, as a one-off exception, with a reason
+    HELD_FOR_BOARD = "held_for_board"
     FOR_A_PERSON = "for_a_person"                # a person does it in the system itself (Outcome.PERSON)
     CONFIRM_WITH_OWNER = "confirm_with_owner"    # ask the owner first (Outcome.CONFIRM); a message is its own kind
     INFORMATIONAL = "informational"              # what follows: a request that stays open, and why
@@ -129,6 +133,7 @@ class PlanItem:
     board_item: str = ""                       # held for the board: the board item it waits on
     depends_on: tuple[str, ...] = ()           # item ids that must apply first
     high_stakes: bool = False                  # a second, distinct person must sign before it applies
+    exception: bool = False                    # a flagged item decided as a one-off exception (never a rule)
     cost_cents: int = 0                        # what applying it charges the association (integer cents)
     decision: Decision = Decision.UNDECIDED
     decided_by: str = ""
@@ -140,6 +145,17 @@ class PlanItem:
     @property
     def approvable(self) -> bool:
         return self.klass is ItemClass.APPROVABLE
+
+    @property
+    def flagged(self) -> bool:
+        """Held for the board by jason's policy finding: flagged for review, decided only as an exception."""
+        return self.klass is ItemClass.HELD_FOR_BOARD
+
+    @property
+    def takes_effect(self) -> bool:
+        """Approved, and so written at apply: an approvable item a person approved, or a flagged item a person
+        approved as a one-off exception."""
+        return self.decision is Decision.APPROVED and (self.approvable or (self.flagged and self.exception))
 
 
 @dataclass(frozen=True)
@@ -204,7 +220,12 @@ class Approval:
 
     @property
     def approved(self) -> list[PlanItem]:
-        return [i for i in self.items if i.approvable and i.decision is Decision.APPROVED]
+        """The items that will be written: approved approvable items and flagged items approved by exception."""
+        return [i for i in self.items if i.takes_effect]
+
+    @property
+    def flagged(self) -> list[PlanItem]:
+        return [i for i in self.items if i.flagged]
 
 
 # --- transitions --------------------------------------------------------------------------------------------------------
@@ -282,7 +303,7 @@ def item_dict(i: PlanItem) -> dict[str, Any]:
             "basis": i.basis, "class": i.klass.value, "boardItem": i.board_item, "dependsOn": list(i.depends_on),
             "highStakes": i.high_stakes, "costCents": i.cost_cents, "decision": i.decision.value,
             "decidedBy": i.decided_by, "decidedAt": i.decided_at, "reason": i.reason, "result": i.result.value,
-            "resultDetail": i.result_detail}
+            "resultDetail": i.result_detail, **({"exception": True} if i.exception else {})}
 
 
 def decision_dict(d: DecisionRecord) -> dict[str, Any]:
@@ -319,7 +340,8 @@ def item_from(row: dict[str, Any]) -> PlanItem:
                     evidence=_evidence_from(row.get("evidence")), basis=row.get("basis", ""),
                     klass=ItemClass(row.get("class", "approvable")), board_item=row.get("boardItem", ""),
                     depends_on=tuple(row.get("dependsOn") or ()), high_stakes=bool(row.get("highStakes")),
-                    cost_cents=int(row.get("costCents") or 0), decision=Decision(row.get("decision", "undecided")),
+                    exception=bool(row.get("exception")), cost_cents=int(row.get("costCents") or 0),
+                    decision=Decision(row.get("decision", "undecided")),
                     decided_by=row.get("decidedBy", ""), decided_at=row.get("decidedAt", ""),
                     reason=row.get("reason", ""), result=Result(row.get("result", "pending")),
                     result_detail=row.get("resultDetail", ""))

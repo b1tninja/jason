@@ -525,7 +525,7 @@ def test_the_cli_plans_shows_decides_and_dry_runs_an_apply(village, capsys):
     assert _cli(village.client, "plan", "owner-info-tags", "--by", "A Manager") == 0
     a = store.load_all(village.data_dir)[0]
     out = capsys.readouterr().out
-    assert "Held for the board (never approvable) (2)" in out and "nothing written outside jason" in out
+    assert "Flagged for review (held for the board; decide each only with --exception) (2)" in out and "nothing written outside jason" in out
     ben = [i.id for i in _writes(a, 11)]
     assert _cli(village.client, "decide", a.id, "--items", *ben, "--by", "A Manager") == 0
     assert _cli(village.client, "decide", a.id, "--items", _by(a, ItemClass.HELD_FOR_BOARD)[0].id,

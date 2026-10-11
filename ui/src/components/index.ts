@@ -52,6 +52,7 @@ export type { PrivateView, PrivateOpenBody } from "../lib/api";
 export { PlanReview, PLAN_CAVEATS } from "./PlanReview";
 export { WriteRow } from "./WriteRow";
 export { HeldNote } from "./HeldNote";
+export { FlaggedItem } from "./FlaggedItem";
 export { ChangedBanner } from "./ChangedBanner";
 export { ApproveBar } from "./ApproveBar";
 export { SecondConfirm } from "./SecondConfirm";

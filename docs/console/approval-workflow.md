@@ -27,7 +27,7 @@ The rest of this page generalizes `jason owner-info --apply --payhoa`, as writte
    - an earlier written election's tags (`EarlierElections`);
    - a this-cycle answer's tag changes.
 5. It drops any `member…` write whose target is a test membership.
-6. With `--payhoa`, it **holds for the board** the unit occupancy-tag writes for units whose response the policy flags. Those are `owner_responses.triage(context)` findings with `Outcome.BOARD` and rule `occupancy-vs-tag`. It prints them as "held for the board", and they are never written.
+6. With `--payhoa`, it **holds for the board** the unit occupancy-tag writes for units whose response the policy flags. Those are `owner_responses.triage(context)` findings with `Outcome.BOARD` and rule `occupancy-vs-tag`. It prints them as "held for the board", and the CLI never writes them. (The approvals kind plans them as items flagged for review, which a person may decide as a one-off exception: see "Flagged items and items for a person" below.)
 7. It prints the plan. Without `--yes` it stops there. With `--yes` it calls `owner_info.execute(client, org, writes, member_tag_rows=...)`, which batches member additions by tag (25 at a time), removes a tag by its tag-row id, and adds or removes unit tags. It returns counts by kind.
 8. With `--payhoa`, it runs `_complete_requests`. For each owner's open PayHOA request (`owner_info.to_complete`), `item.left` lists what is still to do:
    - a write not yet made;
@@ -43,7 +43,7 @@ The rest of this page generalizes `jason owner-info --apply --payhoa`, as writte
 | `RECORD` | jason writes it | An **approvable** item: a tag write |
 | `PERSON` | A person enters or removes something in PayHOA | A **for a person** item, never approvable. It holds its request open |
 | `CONFIRM` | Ask the owner before relying on it | A **confirm with the owner** item, never approvable here. It holds the request open. Asking the owner is a message, a separate kind |
-| `BOARD` | A question of policy | A **held for the board** item, with its `Finding.board_item`. Never approvable |
+| `BOARD` | A question of policy | A **flagged for review** item (class `held_for_board`), with its `Finding.board_item`. In no ordinary approval; a director, an officer, or the manager decides it on its own, as a one-off exception ([held-items.md](../held-items.md)). It was "never approvable" until 2026-10-11 |
 | `IGNORE` | A test account's answer | Hidden by default, and counted |
 
 Three facts in the code as it was shaped the engine. Each is now fixed, with its guard (the lessons `apply-loses-partial-results`, `complete-only-after-writes`, and `plan-reads-once`):
@@ -166,7 +166,7 @@ class ApprovalStatus(Enum):
 
 class ItemClass(Enum):
     APPROVABLE = "approvable"
-    HELD_FOR_BOARD = "held_for_board"          # Outcome.BOARD: a question of policy, never approvable
+    HELD_FOR_BOARD = "held_for_board"          # Outcome.BOARD: a question of policy; flagged for review, decided only as an exception
     FOR_A_PERSON = "for_a_person"              # Outcome.PERSON: a person does it in the system itself
     CONFIRM_WITH_OWNER = "confirm_with_owner"  # Outcome.CONFIRM: ask the owner first; a message is its own kind
     INFORMATIONAL = "informational"            # what follows: a request that stays open, and why
@@ -220,9 +220,10 @@ class PlanItem:
     evidence: tuple[Evidence, ...] = ()
     basis: str = ""                            # sha256 of the live state this item relies on
     klass: ItemClass = ItemClass.APPROVABLE
-    board_item: str = ""                       # held for the board: the board item it waits on
+    board_item: str = ""                       # flagged for review: the board item it waits on
     depends_on: tuple[str, ...] = ()           # item ids that must apply first (a completion on its writes)
     high_stakes: bool = False                  # a second, distinct person must sign before it applies
+    exception: bool = False                    # a flagged item decided as a one-off exception (stored only when true)
     cost_cents: int = 0                        # what applying it charges the association
     decision: Decision = Decision.UNDECIDED
     decided_by: str = ""
@@ -281,7 +282,18 @@ class Approval:
 
 **The store.** One JSON file per approval, `data/approvals/<id>.json` under the active profile's data folder, written whole (a temporary file, then a replace) under the store lock, never checked in. The audit log is `data/approvals/audit.jsonl` beside them. The earlier plan for a SQLite `approvals.db` under a console folder was not built; the lesson `approvals-store-location` holds it as a decision until a person confirms the JSON store ([mvp.md](mvp.md#open-decisions)). The letters' store, `data/approvals/letters.json`, shares the folder and the lock key ([section 11](#11-letters-and-plans-one-inbox)).
 
-**Held items and items for a person** are items with their class set. They are stored, shown in their own sections, and counted. They are never decided: `decide` refuses them by name ("held for the board (board item …): never approvable"). Keeping them in the record means the approval is the full picture a person reviewed, not just the writes.
+**Flagged items and items for a person** are items with their class set. They are stored, shown in their own sections, and counted. Keeping them in the record means the approval is the full picture a person reviewed, not just the writes.
+- **An item for a person, to confirm with the owner, or informational is never decided.** `decide` refuses it by name ("… is for a person: never approvable"), exception flag or not.
+- **A flagged item (class `held_for_board`, jason's policy finding) is decided only as a one-off exception.** *History of the decision:* until 2026-10-11 `decide` refused it ("held for the board (board item …): never approvable"), so a plan could carry such items for weeks with no way to review or act on them. On 2026-10-11 the board's Treasurer-Secretary decided that "held" is a **flag for further review**, not a lock ([held-items.md](../held-items.md)). The stored class is unchanged; the word on screen, the rules for deciding it, and the record are what changed.
+  - `decide(..., exception=True)` with a reason. Without the flag a flagged item is still refused, and the refusal says to pass the exception flag and a reason. `"all"` never includes one.
+  - **Approve** needs a reason in words (at least `exceptions.REASON_WORDS`; "ok" is refused), and an item with a basis. The item is marked `exception: true` and `high_stakes: true`, so `needs_second` is true: a second, distinct person signs by the rule that already exists. There is no new signature path, and a control the board adopted binds it as any approved item.
+  - **Reject** says why (the ordinary rule) and writes nothing. **Keep flagged** (`Decision.HELD`) says why, for the next reviewer, and decides nothing. Both are recorded, with `exception: true` on the item.
+  - Approving a flagged item does not approve the plan's ordinary items, and signing the ordinary items does not approve it. A flagged item left undecided never blocks a signature. Submitting counts an approved exception as approved: a plan whose only approved item is an exception is approved, not withdrawn.
+  - The re-plan at apply compares an approved exception like any approved item (its basis, its class). If the basis moved the approval is superseded and the decision is void; the reviewer decides again.
+  - The planner keeps the write behind a flagged item for the applier (`owner_info`: `Context.writes`), so an approved exception applies exactly its own write. An item not approved is never passed to the applier.
+  - **The exceptions log**, `data/approvals/exceptions.jsonl` (`jason.approvals.exceptions`), is append only under the store lock. One line a decision: `{at, event, approval, item, finding, boardItem, by, secondBy, decision, reason, applied, kind}`, where `finding` is the item's rule. Who signed second and whether it was applied are **later lines** (`event: second`, `event: applied`), never edits. The reason is masked like the audit log's. `rows()` folds the lines into one record a decision; `for_finding(rule)` is a finding's history; `counts()` is the exceptions approved under each finding.
+  - **The nudge.** When a finding has been decided by exception `EXCEPTION_NUDGE` (2) times, the plan says so and links the board item. The number is the board's to change; jason proposes a policy and never makes one.
+  - **Refer to the board.** `refer(id, item, by)` makes or refreshes the finding's board item (`jason.tasks.board_items.propose`, the item's own `board_item` id, else `flagged-` and a slug of the rule), proposed for the next agenda, carrying no member's name. It decides nothing, writes nothing outside jason, and is logged (`item.referred`).
 
 **Evidence.** The planner attaches its evidence as `{label, address}`: the PayHOA submission, the rule as a citation, the board item, the ledger row. A record the plan read live also carries `readAt` and `digest` (what was read, as a sha256), and the plan keeps what it read beside the approval ([Evidence you can open](#evidence-you-can-open)). A label is a name and a tag at most; an email address in any field is masked before the record or the log is written.
 
@@ -404,7 +416,7 @@ Apply always re-reads. It never trusts the stored plan's live state.
 3. Run the kind's planner again with the same `scope`, on one live read.
 4. Compare each **approved** item with the re-plan:
    - **Same id, same basis, still approvable:** it goes ahead.
-   - **Missing, a different basis, or now held** (a new board finding, for instance): the item is `CHANGED`.
+   - **Missing, a different basis, or now in another class** (a new board finding, for instance): the item is `CHANGED`. A flagged item approved as an exception is compared the same way: while it is still flagged and its basis is the same, it goes ahead.
 5. If any approved item is `CHANGED`, **refuse the whole apply**. Nothing is written. Then:
    - the approval becomes `superseded`;
    - the log records the changed items, with the old and new basis;
@@ -547,9 +559,9 @@ A letter jason drafts from a template (`google.doc`) has a second, earlier appro
 ### What never appears as approvable
 
 There is no approve control for any of these, at any phase:
-- an item held for the board (`Outcome.BOARD`), or any question no rule row answers ([section 12](#12-the-board-decides-by-vote));
 - an item for a person (`Outcome.PERSON`) or for the owner to confirm (`Outcome.CONFIRM`);
 - a write on a test membership (`config.test_memberships`). It is dropped before the plan;
+- an item **flagged for review** (`Outcome.BOARD`, or any question no rule row answers) has no control in the plan's ordinary approval, and `ApproveBar` never approves one. A director, an officer, or the manager decides it on its own, as a one-off exception, with a reason and a second signature ([section 12](#12-the-board-decides-by-vote), [held-items.md](../held-items.md)); that is a person's decision, never the board's vote;
 - what jason never does (AGENTS.md boundaries):
   - approving, denying, or assigning a member's request;
   - submitting to a collection agency;
@@ -600,8 +612,11 @@ Proposed with the data levels, not built: `reveal` (a masked field shown, by its
 | `jason approvals` | Lists approvals, open ones first (`--status`, `--kind` filter) |
 | `jason approvals kinds` | The registry: each kind's key, risk, approver, and reversibility |
 | `jason approvals plan KIND --by NAME` | Runs the kind's planner on a live read and stores the approval. Writes nothing outside jason |
-| `jason approvals show ID [--json]` | The items by section: to decide, held for the board, for a person, confirm with the owner, what follows; the decisions, signatures, clock, and cost |
+| `jason approvals show ID [--json]` | The items by section: to decide, flagged for review (each marked, with the exceptions made under its finding and the nudge to write a rule), for a person, confirm with the owner, what follows; the decisions, signatures, clock, and cost |
 | `jason approvals decide ID --items ITEM... \| --all [--reject \| --hold --reason TEXT] --by NAME` | Decides items. Approve is the default; reject and hold need `--reason` |
+| `jason approvals decide ID --item ITEM --exception [--reject \| --hold] --reason TEXT --by NAME` | Decides a **flagged** item as a one-off exception: approve (a reason in words; a second person signs), `--reject`, or `--hold` (keep it flagged). Without `--exception` a flagged item is refused |
+| `jason approvals refer ID --item ITEM --by NAME` | Puts a flagged item's finding before the board: makes or refreshes its board item. Decides nothing |
+| `jason approvals exceptions [ID] [--finding RULE] [--json]` | The exceptions log (append only), by finding, with the count approved and the nudge |
 | `jason approvals submit ID --by NAME` | Signs the decisions |
 | `jason approvals confirm ID --by NAME` | The second person. Refused for the first signer and the requester |
 | `jason approvals decline ID --by NAME --reason TEXT` | The second person declines: back to review |
@@ -619,7 +634,7 @@ An approval or an item can be named by a unique prefix (at least 6 characters fo
 - `approval_show(approval_id)`: one approval as stored, with its audit entries (a unique prefix of the id will do);
 - `evidence(address, approval_id)`: one evidence address opened from disk ([Evidence you can open](#evidence-you-can-open)).
 
-An assistant can explain a plan to a person, cite its rules, and say what is held for the board.
+An assistant can explain a plan to a person, cite its rules, and say what is flagged for review.
 
 **No MCP tool decides, submits, confirms, or applies.** An approval is a person's act at the console or in the terminal. It is never an assistant's tool call, even one a person asked for in chat. A model can read text in a document that tells it to approve something, so this is the one write `jason-mcp` must not have.
 
@@ -633,7 +648,7 @@ An assistant can explain a plan to a person, cite its rules, and say what is hel
 - `POST /api/evidence/refresh-all`: every refreshable piece of one plan's evidence read again on one sign-in, the same way, behind the same header;
 - `POST /api/evidence/refresh-many`: the same for a list of addresses that belong to no plan (a screen's Drive files, up to `evidence.MAX_MANY`, 100), on one sign-in;
 - `POST /api/evidence/view`: one document behind a piece of evidence shown unmasked for the named person and logged, behind the same header; a file comes back as a ten-minute link, `GET /api/evidence/document/<token>` ([Evidence you can open](#evidence-you-can-open));
-- a person's acts: `POST /api/approvals/<id>/decide`, `/submit`, `/confirm`, `/decline`, `/withdraw`. A stored approval's items never change (a re-plan is a new approval), so these act on its id, and a superseded or withdrawn approval refuses them by its status;
+- a person's acts: `POST /api/approvals/<id>/decide`, `/submit`, `/confirm`, `/decline`, `/withdraw`. A flagged item is decided with `decide` and `exception: true` (one item, a reason; only a signed-in board office or the manager, never while an admin views as someone else), and `POST /api/approvals/<id>/refer` `{item, by}` puts its finding before the board and decides nothing. The approval JSON carries, on each flagged item, `exceptions` and `exceptionCount` (from the exceptions log) and, on the plan, `flagged`. A stored approval's items never change (a re-plan is a new approval), so these act on its id, and a superseded or withdrawn approval refuses them by its status;
 - `POST /api/approvals/<id>/apply`, only when the server was started with `--allow-apply`, with the token in its header and the fingerprint the person reviewed echoed back (`confirm`). Without the flag it is refused, and the page shows `jason approvals apply ID --yes --by NAME`.
 
 There is no plan route: a plan is made in the terminal (`jason approvals plan KIND --by NAME`).
@@ -667,9 +682,10 @@ jason asks a person's approval for two different things, and the console keeps b
 
 From the design handoff, and the letters' store already keeps it: **board approvals are votes at a meeting, recorded by an officer. No one clicks "approve" for the board.**
 
-- **No board approver in the engine.** `Approver` has no board value. An item that needs the board is `HELD_FOR_BOARD` (the planner's finding) or `Decision.HELD` (a person's hold), and neither is ever approvable.
-- **Held items go to the meeting's agenda.** The path for a held item is the board loop: a board item (`tasks.board_items`, with the reason and the item's evidence), a place on a noticed agenda (`#/agenda`, CIV 4920 and 4930), a motion and a roll call by name at the meeting (`#/room`, `RollCall`), and the decision recorded by the secretary or the president (`data/board/decisions.json`). `HeldNote` says this, and names the board item (a link when the caller passes `boardHref`; `PlanApprovals` does not yet, so the id shows as a chip, and no meeting is named).
+- **No board approver in the engine.** `Approver` has no board value. An item that needs the board is `HELD_FOR_BOARD` (the planner's finding, shown as **flagged for review** since 2026-10-11) or `Decision.HELD` (a person's hold). Neither is approved in the plan's ordinary approval, and neither is the board's decision. A flagged item may be decided by a director, an officer, or the manager on its own, as a **one-off decision** (Civil Code 4355(b)(2)) that needs no rule, with a reason, a second signature, and a line in the exceptions log; it is that person's decision, not a vote, and it makes no rule ([held-items.md](../held-items.md)).
+- **Flagged and held items go to the meeting's agenda.** The path for either is the board loop (`refer` starts it from the plan): a board item (`tasks.board_items`, with the reason and the item's evidence), a place on a noticed agenda (`#/agenda`, CIV 4920 and 4930), a motion and a roll call by name at the meeting (`#/room`, `RollCall`), and the decision recorded by the secretary or the president (`data/board/decisions.json`). `HeldNote` says this, and names the board item (a link when the caller passes `boardHref`, as `PlanApprovals` does; no meeting is named).
 - **The decision comes back as a rule, not a click.** Once the board decides, the decision becomes a rule row in the specification (AGENTS.md: "a new decision is a new rule row"). Items of that kind are then classed approvable by the planner, and a person approves them under the rule, which each item recites. An approval never cites a vote as its authority directly.
+- **Exceptions are counted so the board can write the rule.** Each exception is a line in the exceptions log. When a finding has been decided by exception twice or more (`EXCEPTION_NUDGE`), the plan says "This finding has been decided by exception N times. The board may want to write a rule" and links the board item. Deciding case by case is the opposite of a written policy applied the same way every time (AGENTS.md, "Where the law is silent, write it down"), so the log makes the pattern visible; it never makes a rule.
 - **A letter the board approves** is approved by the officer who records the vote, with the meeting's date (`tasks.approvals.step(..., meeting=...)`); a board approval without a meeting date is refused.
 - **Polls are member input, not votes.** A poll in the meeting room informs; a director's vote is a roll call by name.
 - **Executive session stays out.** An item held for the board on an executive-session subject (delinquency, discipline, litigation; CIV 4935) goes on the agenda by its general nature only, and stays out of open recordings, transcripts, and minutes.

@@ -17,12 +17,22 @@ export interface EvidenceRef { label: string; address?: string; readAt?: string;
 /** What an item changes: a value added to or removed from a field, or a field set from one value to another. */
 export interface Change { op: "add" | "remove" | "set"; field: string; value?: string; before?: string; after?: string; text?: string }
 
-/** One change in an approval (plan-item.schema.json). */
+/** One decision made under a finding, from the exceptions log (`data/approvals/exceptions.jsonl`, append only): who, when,
+ * why, the second person who signed the plan it was in, and whether the write was made. */
+export interface ExceptionRow {
+  at: string; approval: string; item: string; finding: string; boardItem?: string; by: string; secondBy?: string;
+  decision: DecisionWord; reason?: string; applied?: boolean; kind?: string;
+}
+
+/** One change in an approval (plan-item.schema.json). An item of class `held_for_board` is **flagged for review**: it is
+ * in no ordinary approval, and a person decides it on its own as a one-off exception (`exception: true` once decided).
+ * `exceptions` and `exceptionCount` are the server's, beside a flagged item: what was decided under its finding. */
 export interface PlanItem {
   id: string; op: string; target: string; label: string; value: string; why: string; group?: string;
   change?: Change | null; rule?: string; evidence?: EvidenceRef[]; basis: string; class: ItemClass; boardItem?: string;
   dependsOn?: string[]; highStakes?: boolean; costCents?: number; decision: ItemDecision; decidedBy?: string;
   decidedAt?: string; reason?: string; result: ItemResult; resultDetail?: string;
+  exception?: boolean; exceptions?: ExceptionRow[]; exceptionCount?: number;
 }
 
 /** One decision as a named person made it (decision.schema.json). */
@@ -33,19 +43,27 @@ export interface Signature { name: string; at: string; fingerprint: string; role
 
 export interface ApprovalClock { what?: string; due?: string; daysLeft?: number }
 
+/** The plan's flagged items counted by the server, and the count of exceptions at which the plan suggests a rule. */
+export interface FlaggedCounts { flagged: number; decidedByException: number; nudge: number }
+
+/** How many exceptions under one finding before the plan says the board may want to write a rule (the server sends the
+ * number it uses as `flagged.nudge`; this is its default). */
+export const EXCEPTION_NUDGE = 2;
+
 /** One plan of writes outside jason (approval.schema.json). */
 export interface Approval {
   id: string; kind: string; title: string; status: ApprovalStatus; scope?: Record<string, unknown>; profile?: string;
   fingerprint: string; readAt: string; requestedBy: string; requestedAt: string; requestedVia?: Via; evidence?: EvidenceRef[];
   items: PlanItem[]; decisions: DecisionRecord[]; first?: Signature | null; second?: Signature | null;
   costCents?: number | null; clock?: ApprovalClock | null; summary?: Record<string, unknown>; result?: Record<string, unknown>;
-  supersedes?: string; supersededBy?: string; notes?: string[];
+  supersedes?: string; supersededBy?: string; notes?: string[]; flagged?: FlaggedCounts;
 }
 
 export type AuditEvent =
   | "plan.created" | "plan.failed" | "item.decided" | "approval.submitted" | "approval.confirmed" | "approval.declined"
   | "apply.started" | "apply.refused" | "item.applying" | "item.applied" | "item.failed" | "item.uncertain" | "item.blocked"
-  | "item.not_applied" | "approval.applied" | "approval.failed" | "approval.superseded" | "approval.withdrawn" | "cli.applied";
+  | "item.not_applied" | "approval.applied" | "approval.failed" | "approval.superseded" | "approval.withdrawn" | "cli.applied"
+  | "item.referred";
 
 /** One line of approvals/audit.jsonl (audit-entry.schema.json). */
 export interface AuditEntry {
@@ -72,7 +90,9 @@ export interface KindFacts {
 export interface Recheck { changed: ChangedItem[]; new?: PlanItem[] | number; then?: string; now?: string; problems?: string[] }
 
 /** A body a decision, signature, or re-plan posts. `by` is a named person; jason never signs. */
-export interface DecideBody { items: string[]; decision: DecisionWord; reason: string; by: string; fingerprint: string; via: Via }
+export interface DecideBody { items: string[]; decision: DecisionWord; reason: string; by: string; fingerprint: string; via: Via; exception?: boolean }
+/** Put a flagged item's finding before the board (`POST /api/approvals/<id>/refer`). It decides nothing. */
+export interface ReferBody { item: string; by: string; fingerprint: string; via: Via }
 export interface SignBody { by: string; fingerprint: string; via: Via; reason?: string }
 
 // --- names --------------------------------------------------------------------------------------------------------------
@@ -125,7 +145,7 @@ export function when(iso: string | null | undefined): string {
 
 export const SECTIONS: { cls: ItemClass; title: string; note: string }[] = [
   { cls: "approvable", title: "To decide", note: "" },
-  { cls: "held_for_board", title: "Held for the board", note: "Never approvable: the board decides first." },
+  { cls: "held_for_board", title: "Flagged for review", note: "In no ordinary approval: no rule the board adopted answers these. Each is decided on its own, as a one-off exception." },
   { cls: "for_a_person", title: "For a person", note: "Never approvable: a person does these in the system itself." },
   { cls: "confirm_with_owner", title: "Confirm with the owner first", note: "Never approvable: ask the owner first." },
   { cls: "informational", title: "What follows", note: "Nothing to decide: what happens, or stays open, and why." },
@@ -162,23 +182,58 @@ export function isApprovable(i: PlanItem): boolean {
   return i.class === "approvable";
 }
 
+/** Flagged for review: held for the board by jason's policy finding (the engine's `held_for_board` class). */
+export function isFlagged(i: PlanItem): boolean {
+  return i.class === "held_for_board";
+}
+
+/** Approved, and so written at apply: an approvable item approved, or a flagged item approved as a one-off exception. */
+export function takesEffect(i: PlanItem): boolean {
+  return i.decision === "approved" && (isApprovable(i) || (isFlagged(i) && !!i.exception));
+}
+
+/** The flagged items counted: how many, and how many were approved as exceptions. */
+export function flaggedCounts(a: Pick<Approval, "items">): { flagged: number; decidedByException: number } {
+  const rows = a.items.filter(isFlagged);
+  return { flagged: rows.length, decidedByException: rows.filter((i) => i.exception && i.decision === "approved").length };
+}
+
+/** Whether an item's finding has been decided by exception often enough that the plan suggests the board write a rule. */
+export function nudged(i: PlanItem, threshold: number = EXCEPTION_NUDGE): boolean {
+  return isFlagged(i) && (i.exceptionCount ?? 0) >= threshold;
+}
+
+/** Why a decision on a flagged item is refused before it is sent, or "" (the engine's `decide` with `exception`): an
+ * approval gives a reason in words; a rejection or a flag kept gives a note. */
+export function exceptionProblem(decision: DecisionWord, reason: string): string {
+  const text = reason.trim();
+  if (decision === "approved") return text.split(/\s+/).filter(Boolean).length >= 2 ? "" : "Give a reason in words (a few, not \"ok\") for the exception.";
+  if (!text) return decision === "held" ? "Add a note of a few words for the next reviewer." : "Give a reason of a few words for rejecting this change.";
+  return "";
+}
+
 /** Items a person may still decide: approvable, while the plan is planned or in review. */
 export function decidable(a: Approval): boolean {
   return a.status === "planned" || a.status === "in_review";
 }
 
-export interface Tally { approvable: number; approved: number; rejected: number; held: number; undecided: number }
+/** `exceptions` are flagged items approved as one-off exceptions: they are written like an approved change, but are not
+ * among the `approvable` ones the ordinary approval counts. */
+export interface Tally { approvable: number; approved: number; rejected: number; held: number; undecided: number; exceptions: number }
 
 export function tally(a: Pick<Approval, "items">): Tally {
   const rows = a.items.filter(isApprovable);
   const n = (d: ItemDecision) => rows.filter((i) => i.decision === d).length;
-  return { approvable: rows.length, approved: n("approved"), rejected: n("rejected"), held: n("held"), undecided: n("undecided") };
+  return {
+    approvable: rows.length, approved: n("approved"), rejected: n("rejected"), held: n("held"), undecided: n("undecided"),
+    exceptions: a.items.filter((i) => isFlagged(i) && takesEffect(i)).length,
+  };
 }
 
 /** A second, distinct person signs: a two-person kind (`twoPerson`, from the kind's registry row), or an approved item
- * that is high stakes (the engine's `needs_second`). */
+ * that is high stakes (the engine's `needs_second`): a flagged item approved as an exception always is. */
 export function needsSecond(a: Pick<Approval, "items">, twoPerson = false): boolean {
-  return twoPerson || a.items.some((i) => isApprovable(i) && i.decision === "approved" && !!i.highStakes);
+  return twoPerson || a.items.some((i) => takesEffect(i) && !!i.highStakes);
 }
 
 /** The items `item` waits on that are neither approved nor among `chosen`: approving it is refused until they are. */
@@ -195,6 +250,8 @@ export function decisionProblem(a: Approval, ids: readonly string[], decision: D
   if (!ids.length) return "Select changes in the list first.";
   const by = new Map(a.items.map((i) => [i.id, i]));
   const never = ids.map((id) => by.get(id)).filter((i) => !i || !isApprovable(i));
+  if (never.some((i) => i && isFlagged(i)))
+    return `${never.length} selected ${never.length === 1 ? "item is" : "items are"} flagged for review, never approvable here: decide each on its own, as a one-off exception.`;
   if (never.length) return `${never.length} selected ${never.length === 1 ? "item is" : "items are"} never approvable.`;
   if (decision !== "approved" && !reason.trim())
     return decision === "held" ? "Give a reason of a few words for holding these changes for the board." : "Give a reason of a few words for rejecting these changes.";
@@ -235,7 +292,7 @@ export function staleness(a: Approval, opts: { recheck?: Recheck | null; now?: s
 
 /** Counts by result over the approved items, and over everything not applied. */
 export function results(a: Pick<Approval, "items">) {
-  const approved = a.items.filter((i) => isApprovable(i) && i.decision === "approved");
+  const approved = a.items.filter(takesEffect);
   const by = (r: ItemResult) => a.items.filter((i) => i.result === r);
   return {
     approved, applied: by("applied"), failed: by("failed"), uncertain: by("uncertain"), changed: by("changed"),

@@ -96,7 +96,7 @@ The approvals engine (`jason.approvals`, [console/approval-workflow.md](console/
 
 | Status | Means |
 |---|---|
-| 400 | The engine refused: no `by` (`… names the person (by)`); an item held for the board, for a person, or to confirm with the owner (`never approvable`); a rejection, hold, decline, or withdrawal with no `reason` (`says why`); a completion whose writes are not approved (`waits on`); undecided items at submit; the same person confirming (`submitted it`, `asked for the plan`); the wrong state (`is in_review: …`, `cannot be withdrawn`); an unknown `decision` or malformed `items`; apply without `confirm` |
+| 400 | The engine refused: no `by` (`… names the person (by)`); an item for a person or to confirm with the owner (`never approvable`), or an item flagged for review (held for the board) decided without `exception: true` and a reason in words (`exception flag`; the route takes it only from a signed-in board office or the manager); a rejection, hold, decline, or withdrawal with no `reason` (`says why`); a completion whose writes are not approved (`waits on`); undecided items at submit; the same person confirming (`submitted it`, `asked for the plan`); the wrong state (`is in_review: …`, `cannot be withdrawn`); an unknown `decision` or malformed `items`; apply without `confirm` |
 | 403 | The write guard refused, or apply is off (`--allow-apply`), or a check or apply came without the token header |
 | 404 | No such approval, item, or step |
 | 405 | A GET to `check` or `apply`; or the store writes or live reads are off in this server |

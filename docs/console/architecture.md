@@ -80,7 +80,8 @@ The engine is complete without the browser: `jason approvals plan`, `decide`, `s
 | `GET /api/approvals/<id>` | the approval as stored (`approval.schema.json`) | nothing |
 | `GET /api/approvals/audit` | the log (`?approval=`, `?verify=1`) | nothing |
 | `POST /api/approvals/<id>/check` | `engine.check`: re-plan live and compare | nothing, but it reads PayHOA live, so it is a POST behind the guard and the token header, never a link or a prefetch |
-| `POST /api/approvals/<id>/decide` | `engine.decide` (`items`, `decision`, `reason`, `by`) | the approvals store and the log |
+| `POST /api/approvals/<id>/decide` | `engine.decide` (`items`, `decision`, `reason`, `by`; `exception: true` for a flagged item) | the approvals store, the log, and, for an exception, the exceptions log |
+| `POST /api/approvals/<id>/refer` | `engine.refer` (`item`, `by`): the finding's board item, made or refreshed; decides nothing | the approvals store, the log, and the board items |
 | `POST /api/approvals/<id>/submit`, `/confirm`, `/decline`, `/withdraw` | the same steps (`by`, `reason`, `role`) | the approvals store and the log |
 | `POST /api/approvals/<id>/apply` | `engine.apply` (`by`, and `confirm`: the fingerprint the person reviewed) | **PayHOA**, only with `--allow-apply` |
 

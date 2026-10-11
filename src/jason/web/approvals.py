@@ -13,6 +13,12 @@
   prefetch, or another site's ``<img>`` must never set off, so it sits behind the write guard and the token header.
 - **Writes to jason's own store.** ``decide``, ``submit``, ``confirm``, ``decline``, ``withdraw``: each names its
   person (``by``) and returns the Approval; the engine's refusal comes back as 400 in its own words.
+- **Flagged items** (held for the board by jason's policy finding; docs/held-items.md). ``decide`` with ``exception:
+  true`` decides a flagged item as a one-off exception (``reason`` in words), only for a signed-in person whose office
+  opens P2 (a board office or the manager) and never while an admin views as someone else; ``POST
+  /api/approvals/<id>/refer`` with ``{item, by}`` puts the finding before the board and decides nothing. The approval
+  JSON carries, on each flagged item, the exceptions made under its finding (``exceptions``, ``exceptionCount``) and, on
+  the plan, ``flagged`` (counts and the nudge threshold).
 - **Refresh one piece of evidence.** ``POST /api/evidence/refresh`` with ``{address, approval?, by}`` reads that one
   record again live under the person's name and keeps it in jason's cache (``jason.approvals.evidence.refresh``);
   it never writes to PayHOA. Behind the write guard and the token header, like a check.
@@ -55,8 +61,10 @@ Args = dict[str, str]
 LiveFactory = Callable[[Any], ContextManager[Any]]      # an ActionKind -> a context yielding an engine.Live
 
 CAVEAT = ("An approval is decided, submitted, confirmed, and applied by a named person; jason never approves its own "
-          "plan. Items held for the board, for a person, or to confirm with the owner are never approvable. A check "
-          "reads PayHOA live and writes nothing; an apply re-reads and refuses when anything changed since review.")
+          "plan. Items for a person or to confirm with the owner are never approvable; an item flagged for review (held "
+          "for the board) is decided only on its own, as a one-off exception with a reason, and a second person signs. "
+          "A check reads PayHOA live and writes nothing; an apply re-reads and refuses when anything changed since "
+          "review.")
 APPLY_OFF = ("apply is off: jason-web was started without --allow-apply. A person applies from a terminal with "
              "`jason approvals apply ID --by NAME --yes`, or restarts jason-web with --allow-apply")
 STEPS = ("submit", "confirm", "decline", "withdraw")
@@ -190,6 +198,34 @@ def recite(rule: str) -> dict[str, Any]:
         return {"found": False, "citation": rule, "reason": f"{type(exc).__name__}: {exc}"}
 
 
+def with_exceptions(out: dict[str, Any], a: Any) -> dict[str, Any]:
+    """The approval JSON with the exceptions log beside each flagged item: ``exceptions`` (the decisions made under its
+    finding in every plan, oldest first: who, when, why, the second person, applied or not) and ``exceptionCount``
+    (exceptions approved under that finding), and on the plan ``flagged`` (how many are flagged, how many decided by
+    exception here, and ``nudge``, the count at which the plan suggests the board write a rule). Items that are not
+    flagged are unchanged; a log that cannot be read leaves the plan as it was."""
+    from jason.approvals import exceptions
+
+    flagged = [i for i in a.items if i.flagged]
+    if not flagged:
+        return out
+    try:
+        history = exceptions.rows()
+        counted = exceptions.counts()
+    except OSError:
+        history, counted = [], {}
+    by_id = {i["id"]: i for i in out.get("items", [])}
+    for i in flagged:
+        row = by_id.get(i.id)
+        if row is not None:
+            row["exceptions"] = [r for r in history if r["finding"] == i.rule]
+            row["exceptionCount"] = counted.get(i.rule, 0)
+    out["flagged"] = {"flagged": len(flagged),
+                      "decidedByException": sum(1 for i in flagged if i.exception and i.decision.value == "approved"),
+                      "nudge": exceptions.EXCEPTION_NUDGE}
+    return out
+
+
 def show(ident: str) -> dict[str, Any]:
     """The approval as the engine stores it, with what the screen must not work out for itself beside it: the kind's
     declared facts (``kindFacts``; None for a kind this checkout no longer has), whether a second person must sign
@@ -200,7 +236,7 @@ def show(ident: str) -> dict[str, Any]:
     from jason.approvals.model import to_dict
 
     a = store.load(ident)
-    out = to_dict(a)
+    out = with_exceptions(to_dict(a), a)
     try:
         kind = registry.get(a.kind)
     except KeyError:
@@ -479,6 +515,19 @@ def _text(body: dict[str, Any], key: str) -> str:
     return "" if value is None else str(value)
 
 
+def _require_office() -> None:
+    """For an exception or a referral: where sign-in is set up, a signed-in roster person whose offices open P2 (a board
+    office or the manager); aborts with the 401 or 403 that says why. Where it is not set up (the loopback default), the
+    named person is the record, as for any decision."""
+    from flask import current_app
+
+    sign_in = current_app.extensions.get("jason_sign_in")
+    if sign_in is not None and getattr(sign_in, "configured", False):
+        from jason.web.access import Level, require
+
+        require(Level.P2)
+
+
 def _answer(fn: Callable[[], Any]):
     """The loader pattern: a value is 200; a missing approval 404; a refusal 400 in the engine's words; a lock held
     elsewhere 409; a live session that needs a person (``jason login``) 503; anything else 500."""
@@ -709,8 +758,34 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
                 raise ValueError(f"decision is one of {', '.join(choices)}")
             by, _, via = _who(body)
             a = engine.decide(ident, items, by=by, decision=Decision(_text(body, "decision")),
-                              reason=_text(body, "reason"), via=via)
-            return mask(to_dict(a))
+                              reason=_text(body, "reason"), via=via, exception=exception)
+            return mask(with_exceptions(to_dict(a), a))
+        # A flagged item is decided only as an exception, and only by a signed-in person whose office opens P2 (a board
+        # office or the manager). Checked outside `run`: the refusal is an HTTP 401 or 403, not a 400.
+        exception = body.get("exception") is True
+        if exception:
+            _require_office()
+        return _answer(run)
+
+    @bp.post("/api/approvals/<ident>/refer")
+    def refer_route(ident: str):
+        """Put a flagged item's finding before the board (``{item, by}``): the board item is made or refreshed and
+        proposed for the next agenda. Decides nothing. Same guards as an exception: 405 with writes off, a signed-in
+        person whose office opens P2, never while an admin views as someone else."""
+        if not writes:
+            return jsonify(error="writes are off"), 405
+        body = _body()
+        _require_office()
+
+        def run() -> dict[str, Any]:
+            from jason.approvals import engine
+            from jason.approvals.model import to_dict
+
+            if not isinstance(body.get("item"), str) or not body["item"].strip():
+                raise ValueError("item is the flagged item's id (or a unique prefix)")
+            by, _, via = _who(body)
+            a, found = engine.refer(ident, body["item"].strip(), by=by, via=via)
+            return mask({**with_exceptions(to_dict(a), a), "boardItem": found.id})
         return _answer(run)
 
     @bp.post("/api/approvals/<ident>/<step>")
@@ -782,4 +857,4 @@ def blueprint(*, live: LiveFactory | None = default_live, allow_apply: bool = Fa
 __all__ = ["CAVEAT", "DOCUMENT_CSP", "EVIDENCE_REFRESH", "EVIDENCE_REFRESH_DRIVE", "Grant", "Grants", "REFRESH_KINDS",
            "VIEW_TTL", "approvals", "audit_log", "blueprint", "default_live", "disposition", "evidence", "mask", "plans",
            "refresh_all_evidence", "refresh_evidence", "refresh_kind", "refresh_many_evidence", "show",
-           "view_evidence"]
+           "view_evidence", "with_exceptions"]

@@ -13,7 +13,9 @@ const VERBS: Record<DecisionWord, [string, string]> = {
 
 /** Decide the selected changes, then sign. Two parts:
  * 1. Approve, reject, or hold the selected approvable items. Reject and Hold need a reason; held, for-a-person, and
- *    informational items are never in `selected` (they have no checkbox, and any passed are refused).
+ *    informational items are never in `selected` (they have no checkbox, and any passed are refused). A flagged item
+ *    (held for the board by jason's policy finding) is never approved here: it is decided on its own (`FlaggedItem`),
+ *    and this bar only counts it.
  * 2. Sign: the tally, the cost (`cost`), the person's full name (pre-filled with `me`; never "jason"), and the button that
  *    says what is signed: "Approve 5 of 8 changes as Jane Example". With changes undecided it stays unavailable and says
  *    how many are left.
@@ -41,7 +43,7 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
   const open = decidable(approval) && !blocked;
   const nameProblem = signerProblem(by);
   const fingerprint = approval.fingerprint;
-  const held = approval.items.filter((i) => i.class === "held_for_board").length;
+  const flagged = approval.items.filter((i) => i.class === "held_for_board").length;
   const person = approval.items.filter((i) => i.class === "for_a_person" || i.class === "confirm_with_owner").length;
 
   const problem = nameProblem || decisionProblem(approval, ids, decision, reason);
@@ -53,7 +55,8 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
     else if (problem && decision !== "approved" && !reason.trim()) reasonRef.current?.focus();
   };
 
-  const signLabel = (t.approved === t.approvable && t.approvable > 0 ? `Approve all ${plural(t.approvable, "change", "changes")}` : `Approve ${t.approved} of ${plural(t.approvable, "change", "changes")}`) + (by ? ` as ${by}` : "");
+  const signLabel = (t.approved === t.approvable && t.approvable > 0 ? `Approve all ${plural(t.approvable, "change", "changes")}` : `Approve ${t.approved} of ${plural(t.approvable, "change", "changes")}`)
+    + (t.exceptions ? ` and ${plural(t.exceptions, "exception", "exceptions")}` : "") + (by ? ` as ${by}` : "");
   const signWhy = !open ? "" : t.undecided > 0 ? `Decide ${t.undecided} more ${t.undecided === 1 ? "change" : "changes"} to submit.` : nameProblem;
   const decideReasonError = decideError && decision !== "approved" && !reason.trim();
 
@@ -89,7 +92,7 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
 
       <div className="approve-sign">
         <p className="approve-tally">
-          <strong>{t.approved} of {t.approvable}</strong> approved · {t.rejected} rejected{t.held ? ` · ${t.held} held by a person` : ""} · {t.undecided} undecided
+          <strong>{t.approved} of {t.approvable}</strong> approved · {t.rejected} rejected{t.held ? ` · ${t.held} held by a person` : ""} · {t.undecided} undecided{t.exceptions ? ` · ${plural(t.exceptions, "flagged change", "flagged changes")} approved as ${t.exceptions === 1 ? "an exception" : "exceptions"}` : ""}
         </p>
         {cost}
         <label className="approve-field">
@@ -101,8 +104,8 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
           {open && !signWhy ? (
             <Confirm busy={busy} onConfirm={() => onSubmit?.({ by, fingerprint, via: "console" })} summary={
               <p>
-                Sign as {by}: {t.approved} approved, {t.rejected} rejected{t.held ? `, ${t.held} held for the board` : ""}, on fingerprint <code>{short(fingerprint)}</code>.
-                {t.approved === 0 ? " Nothing is approved, so the plan is withdrawn." : " jason re-plans before anything is applied; if the plan changed, nothing is applied."}
+                Sign as {by}: {t.approved} approved{t.exceptions ? ` and ${plural(t.exceptions, "exception", "exceptions")}` : ""}, {t.rejected} rejected{t.held ? `, ${t.held} held for the board` : ""}, on fingerprint <code>{short(fingerprint)}</code>.
+                {t.approved + t.exceptions === 0 ? " Nothing is approved, so the plan is withdrawn." : " jason re-plans before anything is applied; if the plan changed, nothing is applied."}
               </p>
             }>{signLabel}</Confirm>
           ) : (
@@ -112,7 +115,7 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
         </div>
       </div>
       <p className="muted approve-note">
-        {held + person > 0 && <>{held ? `${held} held for the board` : ""}{held && person ? " and " : ""}{person ? `${person} for a person` : ""} {held + person === 1 ? "is" : "are"} not part of this approval. </>}
+        {flagged + person > 0 && <>{flagged ? `${flagged} flagged for review` : ""}{flagged && person ? " and " : ""}{person ? `${person} for a person` : ""} {flagged + person === 1 ? "is" : "are"} not part of this approval{flagged ? "; a flagged change is decided on its own, in its section" : ""}. </>}
         Your name, the time, and the plan's fingerprint <code>{short(fingerprint)}</code> are recorded. jason plans; only a named person decides and signs.
       </p>
     </form>

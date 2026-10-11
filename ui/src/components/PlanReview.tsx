@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useId, useState, type KeyboardEvent } from "react";
 import { ApplyResult } from "./ApplyResult";
 import { Confirm } from "./Confirm";
 import { ApproveBar } from "./ApproveBar";
@@ -10,15 +10,16 @@ import { ControlNotice } from "./ControlNotice";
 import { CostLine } from "./CostLine";
 import { DueDate } from "./DueDate";
 import { Evidence, EvidenceVersion, RefreshAllEvidence } from "./Evidence";
+import { FlaggedItem } from "./FlaggedItem";
 import { HeldNote } from "./HeldNote";
 import { Pill } from "./Pill";
 import { Recitation, type Citation } from "./Recitation";
 import { SecondConfirm } from "./SecondConfirm";
 import { WriteRow } from "./WriteRow";
 import {
-  cleanName, commands, decidable, groupItems, isApprovable, needsSecond, personName, plural, SECTIONS, short, signerProblem, staleness,
-  STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type DecideBody, type KindFacts, type PlanItem, type Recheck,
-  type SignBody,
+  cleanName, commands, decidable, EXCEPTION_NUDGE, flaggedCounts, groupItems, isApprovable, isFlagged, needsSecond, personName, plural,
+  SECTIONS, short, signerProblem, staleness, STATUS_MEANING, takesEffect, when, type Approval, type AuditEntry, type ChainCheck,
+  type DecideBody, type KindFacts, type PlanItem, type Recheck, type ReferBody, type SignBody,
 } from "../lib/approvals";
 import type { ControlNotices } from "../lib/controls";
 
@@ -50,7 +51,7 @@ function Withdraw({ me, busy, onWithdraw }: { me: string; busy?: boolean; onWith
 
 export const PLAN_CAVEATS = [
   "jason plans; it never approves its own plan. Every decision and signature names a person.",
-  "Held for the board, for a person, confirm with the owner, and what follows are never approvable.",
+  "For a person, confirm with the owner, and what follows are never approvable. A change flagged for review is in no ordinary approval: a director, an officer, or the manager decides it on its own, as a one-off exception that a second person signs.",
   "Apply reads the live state again and refuses when anything an approved change relies on moved; then nothing is written.",
 ];
 
@@ -58,12 +59,14 @@ export const PLAN_CAVEATS = [
  * it: the header (who asked, when it was read, the fingerprint, the clock), a changed-since-review banner, the two kinds
  * of held note side by side, the items in exactly one section by their class and grouped by owner (only approvable items
  * have checkboxes; arrow keys move between them), the cost, then by status: the approve bar, the second person, the
- * apply command, or the result; and the audit history. Every write goes through `Confirm` as a named person (`me`) and
- * carries the plan's fingerprint. */
+ * apply command, or the result; and the audit history. A change **flagged for review** (class `held_for_board`) has its
+ * own section: each item expands to what a reviewer needs (`FlaggedItem`) and is decided there, on its own, as a one-off
+ * exception, or referred to the board (`onDecide` with `exception: true`, `onRefer`). Every write goes through `Confirm`
+ * as a named person (`me`) and carries the plan's fingerprint. */
 export function PlanReview({
   approval, me = "", audit, chain, recheck, now, maxAgeHours = 24, twoPerson = false, recitations, boardHref, kind, notice,
   onDecide, onSubmit, onConfirmSecond, onDecline, onReplan, onOpen, busy, error, caveats = PLAN_CAVEATS,
-  onCheck, onApply, applyBlocked, onWithdraw,
+  onCheck, onApply, applyBlocked, onWithdraw, onRefer,
 }: {
   approval: Approval; me?: string; audit?: readonly AuditEntry[]; chain?: ChainCheck | null; recheck?: Recheck | null;
   now?: string; maxAgeHours?: number; twoPerson?: boolean; recitations?: Readonly<Record<string, Citation>>;
@@ -80,6 +83,8 @@ export function PlanReview({
    * server will not apply), the step is the terminal command. */
   onApply?: Act<{ by: string; confirm: string }>; applyBlocked?: string;
   onWithdraw?: Act<{ by: string; reason: string }>;
+  /** Put a flagged item's finding before the board (makes or refreshes its board item; decides nothing). */
+  onRefer?: Act<ReferBody>;
 }) {
   const uid = useId();
   const a = approval;
@@ -108,7 +113,9 @@ export function PlanReview({
     boxes[next]?.focus();
   };
 
-  const approvedCount = a.items.filter((i) => isApprovable(i) && i.decision === "approved").length;
+  const approvedCount = a.items.filter(takesEffect).length;
+  const flags = flaggedCounts(a);
+  const nudge = a.flagged?.nudge ?? EXCEPTION_NUDGE;
   const signed = a.status === "approved" || a.status === "partially_approved";
   const second = needsSecond(a, twoPerson);
   // A plan older than its kind allows is refused at apply ("plan again"), so it is never offered as ready: the banner
@@ -127,6 +134,9 @@ export function PlanReview({
   };
 
   const refs = [...(a.evidence ?? []), ...a.items.flatMap((i) => i.evidence ?? [])];
+  // The nudge shows once for a finding, on its first flagged item.
+  const firstOfFinding = new Map<string, string>();
+  for (const i of a.items) if (isFlagged(i) && !firstOfFinding.has(i.rule ?? "")) firstOfFinding.set(i.rule ?? "", i.id);
 
   return (
     <EvidenceVersion.Provider value={evidenceVersion}>
@@ -176,7 +186,7 @@ export function PlanReview({
         return (
           <section key={cls} className={`plan-section plan-${cls.replace(/_/g, "-")}`} aria-labelledby={sid}>
             <div className="plan-section-head">
-              <h3 id={sid}>{title} ({rows.length})</h3>
+              <h3 id={sid}>{cls === "held_for_board" ? `${title}: ${flags.flagged} flagged, ${flags.decidedByException} decided by exception` : `${title} (${rows.length})`}</h3>
               {note && <span className="muted">{note}</span>}
               {live && (
                 <label className="plan-all">
@@ -206,8 +216,16 @@ export function PlanReview({
                       )}
                     </div>
                     {items.map((i) => (
-                      <WriteRow key={i.id} item={i} selectable={live} checked={selected.includes(i.id)} onToggle={toggle}
-                        waits={by(i)} rule={rule(i)} labelledBy={gid} approval={a.id} />
+                      <Fragment key={i.id}>
+                        <WriteRow item={i} selectable={live} checked={selected.includes(i.id)} onToggle={toggle}
+                          waits={by(i)} rule={rule(i)} labelledBy={gid} approval={a.id} />
+                        {isFlagged(i) && (
+                          <FlaggedItem item={i} approval={a} me={me} editable={editable} busy={busy} nudge={nudge} boardHref={boardHref}
+                            showNudge={firstOfFinding.get(i.rule ?? "") === i.id}
+                            onDecide={onDecide ? (b) => run(onDecide, b, `Recorded: ${b.decision === "held" ? "kept flagged" : b.decision} (one-off exception) as ${b.by}.`) : undefined}
+                            onRefer={onRefer ? (b) => run(onRefer, b, `Referred to the board as ${b.by}.`) : undefined} />
+                        )}
+                      </Fragment>
                     ))}
                   </div>
                 );

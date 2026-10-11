@@ -10,6 +10,7 @@ import { ApproveBar } from "./ApproveBar";
 import { AuditLog, auditWords } from "./AuditLog";
 import { ChangedBanner } from "./ChangedBanner";
 import { CostLine } from "./CostLine";
+import { FlaggedItem } from "./FlaggedItem";
 import { HeldNote } from "./HeldNote";
 import { PlanReview } from "./PlanReview";
 import { QuestionCard, type Question } from "./QuestionCard";
@@ -21,7 +22,8 @@ import { WriteRow } from "./WriteRow";
 import { KIND_NOTICES } from "../lib/controls.fixtures";
 import { signerWords } from "../lib/controls";
 import {
-  decisionProblem, isJason, sameName, signerProblem, staleness, tally, type Approval, type AuditEntry, type PlanItem, type Recheck,
+  decisionProblem, flaggedCounts, isJason, needsSecond, nudged, results, sameName, signerProblem, staleness, tally, type Approval,
+  type AuditEntry, type PlanItem, type Recheck,
 } from "../lib/approvals";
 
 // The engine's own Example Village fixtures (tests/fixtures/approvals): the components take them as they are.
@@ -104,12 +106,12 @@ describe("WriteRow", () => {
 });
 
 describe("HeldNote", () => {
-  it("keeps jason's policy finding apart from a person's hold", () => {
+  it("keeps jason's policy finding (flagged for review) apart from a person's hold", () => {
     const a = planned();
     Object.assign(item(a, WRITE_502[0]), { decision: "held", decidedBy: "Jane Example", decidedAt: NOW, reason: "ask the board first" });
     render(<HeldNote items={a.items} />);
-    const policy = screen.getByRole("note", { name: "Held for the board: jason's policy finding" });
-    expect(within(policy).getByText(/2 changes held for the board/)).toBeInTheDocument();
+    const policy = screen.getByRole("note", { name: "Flagged for review: jason's policy finding" });
+    expect(within(policy).getByText(/2 changes flagged for review/)).toBeInTheDocument();
     expect(within(policy).getByText("rental-approvals-4-15")).toBeInTheDocument();
     const person = screen.getByRole("note", { name: "Held for the board by Jane Example" });
     expect(within(person).getByText("ask the board first")).toBeInTheDocument();
@@ -348,13 +350,13 @@ describe("QuestionCard and StageSteps", () => {
 describe("PlanReview", () => {
   it("puts each item in exactly one section, and only approvable items get checkboxes", () => {
     render(<PlanReview approval={planned()} me="A Manager" now={NOW} />);
-    for (const h of ["To decide (12)", "Held for the board (2)", "For a person (1)", "What follows (2)"])
+    for (const h of ["To decide (12)", "Flagged for review: 2 flagged, 0 decided by exception", "For a person (1)", "What follows (2)"])
       expect(screen.getByRole("heading", { name: h })).toBeInTheDocument();
     const decide = screen.getByRole("region", { name: "To decide (12)" });
     const items = decide.querySelectorAll<HTMLInputElement>("input[data-plan-check]");
     expect(items).toHaveLength(12);
     expect(items[0]).toHaveAccessibleName(/101 EXAMPLE WAY: Ana Example/);
-    for (const h of ["Held for the board (2)", "For a person (1)", "What follows (2)"])
+    for (const h of ["Flagged for review: 2 flagged, 0 decided by exception", "For a person (1)", "What follows (2)"])
       expect(within(screen.getByRole("region", { name: h })).queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.getByText(/Planned by jason, asked by A Manager/)).toBeInTheDocument();
   });
@@ -504,5 +506,207 @@ describe("a control's notice on a plan and at the second signature", () => {
       expect(screen.getByRole("heading", { name: "A second person confirms" })).toBeInTheDocument();
       unmount();
     }
+  });
+});
+
+// --- flagged for review (docs/held-items.md) -----------------------------------------------------------------------------
+
+const HELD2 = "f8c33b440bec33f9";           // unit tag +, the other flagged item (same finding)
+const FINDING = "owner_responses.RULES: occupancy-vs-tag";
+const BOARD = "rental-approvals-4-15";
+const WHY = "the owner confirmed in writing that the unit is owner-occupied";
+/** What the server sends beside a flagged item (GET /api/approvals/<id>): the log's rows for its finding and their count. */
+const row = (n: number, by = "Dana Director", decision = "approved") => ({
+  at: `2026-10-0${n}T17:0${n}:00+00:00`, approval: `apr-2026100${n}T120000-aaaa`, item: HELD, finding: FINDING, boardItem: BOARD, by, secondBy: n === 1 ? "Lee President" : "",
+  decision, reason: `case ${n}: the owner's written answer`, applied: n === 1, kind: "owner-info-tags",
+});
+function withExceptions(count = 0): Approval {
+  const a = planned();
+  const rows = Array.from({ length: count }, (_, n) => row(n + 1));
+  for (const id of [HELD, HELD2]) Object.assign(item(a, id), { exceptions: rows, exceptionCount: count });
+  return a;
+}
+
+describe("flagged for review", () => {
+  it("says flagged in the row's pill, and the policy finding stays jason's", () => {
+    const a = planned();
+    render(<WriteRow item={item(a, HELD)} />);
+    expect(screen.getByText("flagged")).toBeInTheDocument();
+    expect(screen.getByText(/Flagged for review/)).toBeInTheDocument();
+    expect(screen.getByText(/jason's policy finding/)).toBeInTheDocument();
+    expect(screen.queryByText(/never approvable/)).toBeNull();
+  });
+
+  it("heads the section with how many are flagged and how many were decided by exception", () => {
+    const a = withExceptions();
+    Object.assign(item(a, HELD2), { decision: "approved", decidedBy: "Dana Director", exception: true, reason: WHY, highStakes: true });
+    render(<PlanReview approval={a} me="A Manager" now={NOW} />);
+    expect(screen.getByRole("heading", { name: "Flagged for review: 2 flagged, 1 decided by exception" })).toBeInTheDocument();
+    const section = screen.getByRole("region", { name: "Flagged for review: 2 flagged, 1 decided by exception" });
+    expect(within(section).getAllByText("approved").length).toBeGreaterThan(0);
+    expect(within(section).getByText(/approved as a one-off exception by Dana Director: the owner confirmed in writing/)).toBeInTheDocument();
+    expect(within(section).getAllByText("second person").length).toBeGreaterThan(0);
+  });
+
+  it("expands to the change, the finding and rule, the evidence, the board item, and the exceptions already made", () => {
+    const a = withExceptions(2);
+    render(<FlaggedItem item={item(a, HELD)} approval={a} me="A Manager" editable boardHref={(id) => `#/actions?item=${id}`} />);
+    const panel = document.querySelector("[data-flagged-item]") as HTMLElement;
+    const change = within(panel).getByLabelText("The change");
+    expect(change).toHaveTextContent("Targetunit:1");
+    expect(change).toHaveTextContent("FromRental");
+    expect(change).toHaveTextContent("Tonone");
+    expect(panel).toHaveTextContent("says owner-occupied; the unit is tagged Rented out");
+    expect(panel).toHaveTextContent(`Finding and rule: ${FINDING}`);
+    expect(panel).toHaveTextContent("PayHOA request 501");
+    expect(within(panel).getAllByRole("link", { name: BOARD })[0]).toHaveAttribute("href", `#/actions?item=${BOARD}`);
+    const history = panel.querySelector(".flagged-history") as HTMLElement;
+    expect(within(history).getAllByRole("listitem")).toHaveLength(2);
+    expect(history).toHaveTextContent("Dana Director approved · 2026-10-01 17:01 UTC: case 1: the owner's written answer · second: Lee President · applied");
+    expect(history).toHaveTextContent("no second signature yet · not applied");
+    expect(panel).toHaveTextContent("2 exceptions made under this finding");
+  });
+
+  it("offers the four actions, each in a Confirm, and says the exception is not a rule", async () => {
+    const onDecide = vi.fn();
+    const onRefer = vi.fn();
+    const user = userEvent.setup();
+    const a = withExceptions();
+    render(<FlaggedItem item={item(a, HELD)} approval={a} me="A Manager" editable onDecide={onDecide} onRefer={onRefer} />);
+    for (const name of ["Approve as a one-off exception", "Reject", "Keep flagged", "Refer to the board"])
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    // no reason, or a token for one: refused before it is sent
+    await user.click(screen.getByRole("button", { name: "Approve as a one-off exception" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Give a reason in words");
+    await user.type(screen.getByLabelText("Reason, in words (for the log)"), "ok");
+    await user.click(screen.getByRole("button", { name: "Approve as a one-off exception" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Give a reason in words");
+    expect(onDecide).not.toHaveBeenCalled();
+    await user.clear(screen.getByLabelText("Reason, in words (for the log)"));
+    await user.type(screen.getByLabelText("Reason, in words (for the log)"), WHY);
+    await user.click(screen.getByRole("button", { name: "Approve as a one-off exception" }));
+    const dialog = screen.getByRole("group", { name: "Exception" });
+    expect(dialog).toHaveTextContent("One-off decision, not a rule. A second person must sign.");
+    expect(dialog).toHaveTextContent(`because: "${WHY}"`);
+    expect(onDecide).not.toHaveBeenCalled();                                    // two steps: nothing is sent yet
+    await user.click(within(dialog).getByRole("button", { name: "Yes, do it" }));
+    expect(onDecide).toHaveBeenCalledWith({ items: [HELD], decision: "approved", reason: WHY, by: "A Manager", fingerprint: a.fingerprint, via: "console", exception: true });
+  });
+
+  it("rejects and keeps flagged with a reason or a note, and refers without one, as the named person", async () => {
+    const onDecide = vi.fn();
+    const onRefer = vi.fn();
+    const user = userEvent.setup();
+    const a = withExceptions();
+    render(<FlaggedItem item={item(a, HELD)} approval={a} me="A Manager" editable onDecide={onDecide} onRefer={onRefer} />);
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Give a reason of a few words for rejecting");
+    await user.click(screen.getByRole("button", { name: "Keep flagged" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Add a note");
+    await user.type(screen.getByLabelText("Reason, in words (for the log)"), "the owner moved out");
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    expect(onDecide).toHaveBeenLastCalledWith(expect.objectContaining({ items: [HELD], decision: "rejected", reason: "the owner moved out", exception: true }));
+    await user.type(screen.getByLabelText("Reason, in words (for the log)"), "wait for the rule");
+    await user.click(screen.getByRole("button", { name: "Keep flagged" }));
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    expect(onDecide).toHaveBeenLastCalledWith(expect.objectContaining({ decision: "held", reason: "wait for the rule", exception: true }));
+    await user.click(screen.getByRole("button", { name: "Refer to the board" }));
+    expect(screen.getByRole("group", { name: "Refer" })).toHaveTextContent("Nothing is decided and nothing is written");
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    expect(onRefer).toHaveBeenCalledWith({ item: HELD, by: "A Manager", fingerprint: a.fingerprint, via: "console" });
+  });
+
+  it("never signs as jason: without a person's name the actions stay unavailable", async () => {
+    const user = userEvent.setup();
+    const a = withExceptions();
+    render(<FlaggedItem item={item(a, HELD)} approval={a} me="Jason" editable onDecide={vi.fn()} onRefer={vi.fn()} />);
+    await user.type(screen.getByLabelText("Reason, in words (for the log)"), WHY);
+    await user.click(screen.getByRole("button", { name: "Approve as a one-off exception" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("jason never signs");
+    expect(screen.getByRole("button", { name: "Refer to the board" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("shows the history but no actions when the plan is no longer open to decisions", () => {
+    const a = withExceptions(1);
+    render(<FlaggedItem item={item(a, HELD)} approval={a} me="A Manager" editable={false} />);
+    expect(screen.queryByRole("button", { name: "Approve as a one-off exception" })).toBeNull();
+    expect(screen.getByText(/open while the plan is planned or in review/)).toBeInTheDocument();
+    expect(screen.getByText(/case 1: the owner's written answer/)).toBeInTheDocument();
+  });
+
+  it("nudges toward a rule at two exceptions, with the board item's link, and not before", () => {
+    const board = (id: string) => `#/actions?item=${id}`;
+    const { unmount } = render(<PlanReview approval={withExceptions(1)} me="A Manager" now={NOW} boardHref={board} />);
+    expect(screen.queryByText(/has been decided by exception/)).toBeNull();
+    unmount();
+    render(<PlanReview approval={withExceptions(2)} me="A Manager" now={NOW} boardHref={board} />);
+    const nudge = screen.getAllByText(/This finding has been decided by exception 2 times\. The board may want to write a rule/);
+    expect(nudge).toHaveLength(1);                                              // once for the finding, not once per item
+    expect(within(nudge[0].closest("p") as HTMLElement).getByRole("link", { name: BOARD })).toHaveAttribute("href", `#/actions?item=${BOARD}`);
+  });
+
+  it("uses the server's threshold for the nudge", () => {
+    const a = { ...withExceptions(2), flagged: { flagged: 2, decidedByException: 0, nudge: 3 } };
+    render(<PlanReview approval={a} me="A Manager" now={NOW} />);
+    expect(screen.queryByText(/has been decided by exception/)).toBeNull();
+  });
+
+  it("is decided through PlanReview as an exception, and referred, in the named person's name", async () => {
+    const onDecide = vi.fn(async () => {});
+    const onRefer = vi.fn(async () => {});
+    const user = userEvent.setup();
+    const a = withExceptions();
+    render(<PlanReview approval={a} me="A Manager" now={NOW} onDecide={onDecide} onRefer={onRefer} />);
+    const panel = document.querySelector(`[data-flagged-item="${HELD2}"]`) as HTMLElement;
+    await user.type(within(panel).getByLabelText("Reason, in words (for the log)"), WHY);
+    await user.click(within(panel).getByRole("button", { name: "Approve as a one-off exception" }));
+    await user.click(within(panel).getByRole("button", { name: "Yes, do it" }));
+    expect(onDecide).toHaveBeenCalledWith(expect.objectContaining({ items: [HELD2], decision: "approved", exception: true, by: "A Manager" }));
+    expect(await screen.findByText(/Recorded: approved \(one-off exception\) as A Manager/)).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Refer to the board" }));
+    await user.click(within(panel).getByRole("button", { name: "Yes, do it" }));
+    expect(onRefer).toHaveBeenCalledWith({ item: HELD2, by: "A Manager", fingerprint: a.fingerprint, via: "console" });
+    expect(await screen.findByText(/Referred to the board as A Manager/)).toBeInTheDocument();
+  });
+
+  it("is never approved by the approve bar, which counts it and signs for exceptions apart from changes", async () => {
+    const onDecide = vi.fn();
+    const user = userEvent.setup();
+    const a = planned();
+    const { unmount } = render(<ApproveBar approval={a} selected={[HELD, HELD2]} me="A Manager" onDecide={onDecide} />);
+    expect(screen.getByText("Select changes in the list")).toBeInTheDocument();       // a flagged item is dropped from the selection
+    expect(screen.getByText(/2 flagged for review and 1 for a person are not part of this approval/)).toBeInTheDocument();
+    expect(decisionProblem(a, [HELD], "approved", "")).toMatch(/flagged for review, never approvable here/);
+    expect(screen.getByRole("button", { name: "Approve selected" })).toHaveAttribute("aria-disabled", "true");
+    expect(onDecide).not.toHaveBeenCalled();
+    unmount();
+    // an exception approved: written like an approved change, and the second person is needed
+    const decided = planned();
+    for (const i of decided.items) if (i.class === "approvable") Object.assign(i, { decision: "rejected", decidedBy: "A Manager", reason: "later" });
+    Object.assign(item(decided, HELD), { decision: "approved", decidedBy: "A Manager", exception: true, reason: WHY, highStakes: true });
+    expect(tally(decided)).toMatchObject({ approved: 0, rejected: 12, undecided: 0, exceptions: 1 });
+    expect(needsSecond(decided)).toBe(true);
+    expect(needsSecond(planned())).toBe(false);
+    render(<ApproveBar approval={{ ...decided, status: "in_review" }} selected={[]} me="A Manager" onSubmit={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Approve 0 of 12 changes and 1 exception as A Manager" }));
+    const sign = screen.getAllByRole("group", { name: "Confirm" }).pop() as HTMLElement;
+    expect(sign).toHaveTextContent("0 approved and 1 exception, 12 rejected");
+    expect(sign).not.toHaveTextContent("the plan is withdrawn");                      // an exception is approved: not withdrawn
+  });
+
+  it("words a referral in the history, naming the person and the board item", () => {
+    const e = { seq: 9, at: "2026-10-11T12:00:00+00:00", event: "item.referred", os_user: "x", actor: "A Manager", detail: `board item ${BOARD}`, prev: "", hash: "" } as AuditEntry;
+    expect(auditWords(e)).toBe(`A Manager referred a flagged finding to the board (board item ${BOARD})`);
+  });
+
+  it("counts an approved exception among the approved changes at apply", () => {
+    const a = signed();
+    Object.assign(item(a, HELD), { decision: "approved", decidedBy: "A Manager", exception: true, reason: WHY, highStakes: true });
+    expect(results(a).approved).toHaveLength(13);
+    expect(results({ items: planned().items }).approved).toHaveLength(0);
+    expect(flaggedCounts(a)).toEqual({ flagged: 2, decidedByException: 1 });
+    expect(nudged(withExceptions(2).items.find((i) => i.id === HELD) as PlanItem)).toBe(true);
+    expect(nudged(item(planned(), HELD))).toBe(false);
   });
 });

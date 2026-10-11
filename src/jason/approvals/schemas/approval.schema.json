@@ -39,6 +39,8 @@
     "result": {"type": "object", "description": "After apply: counts by result, when, and by whom; or why it was refused."},
     "supersedes": {"type": "string"},
     "supersededBy": {"type": "string"},
-    "notes": {"type": "array", "items": {"type": "string"}}
+    "notes": {"type": "array", "items": {"type": "string"}},
+    "flagged": {"type": "object", "description": "Read only, added by jason-web and never stored: the plan's flagged items (held for the board) counted, how many are decided by exception, and the count at which the plan suggests the board write a rule.",
+      "properties": {"flagged": {"type": "integer"}, "decidedByException": {"type": "integer"}, "nudge": {"type": "integer"}}}
   }
 }

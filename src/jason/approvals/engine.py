@@ -3,8 +3,12 @@
 - ``plan(kind, live, by=...)`` runs the kind's planner on a live read and stores an ``Approval``; an open approval of
   the same kind and scope is superseded by it.
 - ``decide(id, items, by=..., decision=...)`` records a named person's decision on approvable items. An item that is
-  not approvable (held for the board, for a person, to confirm with the owner, informational) is refused, and so is a
-  completion whose writes are not approved.
+  not approvable (for a person, to confirm with the owner, informational) is refused, and so is a completion whose
+  writes are not approved. An item **flagged for review** (held for the board by jason's policy finding) is refused
+  too, unless the caller passes ``exception=True`` with a reason in words: then it is decided as a one-off exception
+  (docs/held-items.md). An exception approved is high stakes (a second, distinct person signs, by the rule that
+  already exists), and each exception decision is a line in the exceptions log (``jason.approvals.exceptions``).
+  ``refer`` puts the finding before the board and decides nothing.
 - ``submit(id, by=...)`` signs the decisions: approved, partially approved, or withdrawn when nothing was approved.
   ``confirm`` is the second, distinct person, needed when the kind is two-person or an approved item is high stakes;
   ``decline`` sends it back to review.
@@ -23,7 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from jason.approvals import audit, registry, store
+from jason.approvals import audit, exceptions, registry, store
 from jason.approvals.model import (OPEN, Approval, ApprovalStatus, Decision, DecisionRecord, Evidence, ItemClass,
                                    PlanItem, Result, Signature, basis_fingerprint, plan_fingerprint, same_person,
                                    transition)
@@ -140,7 +144,9 @@ def counts(a: Approval) -> dict[str, Any]:
 
     return {"items": len(a.items), "byClass": dict(Counter(i.klass.value for i in a.items)),
             "byDecision": dict(Counter(i.decision.value for i in a.approvable)),
-            "byResult": dict(Counter(i.result.value for i in a.items if i.result is not Result.PENDING))}
+            "byResult": dict(Counter(i.result.value for i in a.items if i.result is not Result.PENDING)),
+            "flaggedCount": len(a.flagged),
+            "decidedByException": sum(1 for i in a.flagged if i.exception and i.decision is Decision.APPROVED)}
 
 
 def _approval_from(kind: registry.ActionKind, planned: Planned, *, by: str, via: str, scope: dict[str, Any],
@@ -231,27 +237,42 @@ def _store_new(approval: Approval, data_dir: Path | None, *, by: str, via: str,
 # --- decide, submit, confirm, decline, withdraw -----------------------------------------------------------------------
 
 def _why_not(i: PlanItem) -> str:
-    if i.klass is ItemClass.HELD_FOR_BOARD:
+    if i.flagged:
         board = f" (board item {i.board_item})" if i.board_item else ""
-        return f"{i.id} is held for the board{board}: never approvable"
+        return (f"{i.id} is held for the board{board}, flagged for review: it is decided only as a one-off exception "
+                "(pass the exception flag and a reason in words)")
     return f"{i.id} is {i.klass.value.replace('_', ' ')}: never approvable"
 
 
+def reason_in_words(reason: str) -> bool:
+    """Whether a reason is words and not a token: at least ``exceptions.REASON_WORDS`` words ("ok" is not a reason)."""
+    return len((reason or "").split()) >= exceptions.REASON_WORDS
+
+
 def decide(approval_id: str, items: Iterable[str] | str, *, by: str, decision: Decision = Decision.APPROVED,
-           reason: str = "", via: str = "cli", data_dir: Path | None = None) -> Approval:
+           reason: str = "", via: str = "cli", exception: bool = False, data_dir: Path | None = None) -> Approval:
     """Record ``by``'s decision on ``items`` (ids, unique prefixes, or "all" for every approvable item). A rejection
     or a hold says why. An item that is not approvable is refused, and so is approving a completion whose writes are
-    not approved. Rejecting or holding a write makes a completion that waits on it undecided again."""
+    not approved. Rejecting or holding a write makes a completion that waits on it undecided again.
+
+    ``exception=True`` is for items **flagged for review** (held for the board by jason's policy finding), and only
+    for them: each is approved as a one-off exception (a reason in words; the item becomes high stakes, so a second,
+    distinct person signs), rejected (a reason), or kept flagged (``Decision.HELD``, a reason). Without the flag a
+    flagged item is refused, and no other non-approvable class is ever decided. ``"all"`` never includes one."""
     by = _named(by, "a decision")
     if decision is Decision.UNDECIDED:
         raise Refused("a decision approves, rejects, or holds")
     if decision is not Decision.APPROVED and not (reason or "").strip():
         raise Refused(f"an item {decision.value} says why (reason)")
+    if exception and decision is Decision.APPROVED and not reason_in_words(reason):
+        raise Refused(f"an exception says why in words (reason): at least {exceptions.REASON_WORDS} words")
     with store.locked("decide"):
         a = store.load(approval_id, data_dir)
         if a.status not in (S.PLANNED, S.IN_REVIEW):
             raise Refused(f"{a.id} is {a.status.value}: items are decided before it is submitted")
         if items == "all" or list(items) == ["all"]:
+            if exception:
+                raise Refused('an exception names the flagged item (items): "all" never includes one')
             chosen = list(a.approvable)
         else:
             try:
@@ -260,7 +281,13 @@ def decide(approval_id: str, items: Iterable[str] | str, *, by: str, decision: D
                 raise Refused(str(exc.args[0])) from exc
         if not chosen:
             raise Refused("no items named")
-        refused = [_why_not(i) for i in chosen if not i.approvable]
+        if exception:
+            refused = [f"{i.id} is not flagged for review: the exception flag is for flagged items only"
+                       for i in chosen if not i.flagged]
+            refused += [f"{i.id} has no basis: an apply could not tell whether it changed since review"
+                        for i in chosen if i.flagged and decision is Decision.APPROVED and not i.basis]
+        else:
+            refused = [_why_not(i) for i in chosen if not i.approvable]
         if refused:
             raise Refused("; ".join(refused))
         ids = {i.id for i in chosen}
@@ -273,6 +300,9 @@ def decide(approval_id: str, items: Iterable[str] | str, *, by: str, decision: D
         now = _now()
         for i in chosen:
             i.decision, i.decided_by, i.decided_at, i.reason = decision, by, now, reason
+            if exception:
+                # an approved exception is high stakes: the second, distinct person signs, by the rule that exists
+                i.exception, i.high_stakes = True, decision is Decision.APPROVED
         reset = []
         if decision is not Decision.APPROVED:
             for other in a.items:
@@ -283,9 +313,78 @@ def decide(approval_id: str, items: Iterable[str] | str, *, by: str, decision: D
         transition(a, S.IN_REVIEW)
         store.save(a, data_dir)
     audit.append(data_dir, "item.decided", approval=a.id, kind=a.kind, actor=by, via=via, items=sorted(ids),
-                 result=decision.value, detail=(reason + (f"; undecided again: {', '.join(reset)}" if reset else "")),
+                 result=decision.value,
+                 detail=(("one-off exception: " if exception else "") + reason
+                         + (f"; undecided again: {', '.join(reset)}" if reset else "")),
                  fingerprint=a.fingerprint)
+    if exception:
+        for i in chosen:
+            exceptions.record(a.id, i, by=by, decision=decision, reason=reason, kind=a.kind, at=now, data_dir=data_dir)
     return a
+
+
+def refer(approval_id: str, item: str, *, by: str, via: str = "cli", data_dir: Path | None = None
+          ) -> tuple[Approval, Any]:
+    """Put the finding of a flagged item before the board: make or refresh its board item, proposed for the next agenda
+    (``jason.tasks.board_items``), with this plan's evidence. It decides nothing and writes nothing outside jason. The
+    plan's flagged items of the finding name the board item afterwards. Returns the approval and the board item."""
+    by = _named(by, "a referral")
+    from jason.tasks import board_items
+
+    if data_dir is None:
+        from jason.config import data_dir as profile_data_dir
+
+        data_dir = profile_data_dir()
+    with store.locked("refer"):
+        a = store.load(approval_id, data_dir)
+        try:
+            i = a.item(item)
+        except KeyError as exc:
+            raise Refused(str(exc.args[0])) from exc
+        if not i.flagged:
+            raise Refused(f"{i.id} is not flagged for review: only a flagged finding is referred to the board")
+        found = _board_item_for(a, i, by=by, data_dir=Path(data_dir))
+        board_items.propose(Path(data_dir), [found])
+        for x in a.items:
+            if x.flagged and x.rule == i.rule and x.board_item != found.id:
+                x.board_item = found.id
+        store.save(a, data_dir)
+    audit.append(data_dir, "item.referred", approval=a.id, kind=a.kind, actor=by, via=via, item=i.id, op=i.op,
+                 target=i.target, label=i.label, detail=f"board item {found.id}", fingerprint=a.fingerprint)
+    return a, found
+
+
+def board_item_id(i: PlanItem) -> str:
+    """The id of the board item for a flagged finding: the item's own, else a slug of the finding's rule."""
+    import re
+
+    return i.board_item or "flagged-" + re.sub(r"[^a-z0-9]+", "-", (i.rule or i.op).lower()).strip("-")[:60]
+
+
+def _board_item_for(a: Approval, i: PlanItem, *, by: str, data_dir: Path) -> Any:
+    """The board item for a flagged finding. One already on the list keeps its own title, summary, and ask (the board
+    item the finding's rule row names was written by a review) and gains this plan's evidence; a new one says only
+    that a finding no adopted rule answers is before the board, and carries no member's name or address."""
+    from dataclasses import replace
+    from datetime import date
+
+    from jason.community.board_items import BoardItem, ItemCategory
+    from jason.tasks import board_items
+
+    finding = i.rule or i.op
+    ident = board_item_id(i)
+    evidence = (f"jason approvals show {a.id}", f'jason approvals exceptions --finding "{finding}"')
+    current = next((b for b in board_items.load(data_dir) if b.id == ident), None)
+    if current is not None:
+        return replace(current, evidence=tuple(dict.fromkeys((*current.evidence, *evidence))))
+    return BoardItem(
+        ident, f"A finding no adopted rule answers: {finding.split(': ', 1)[-1]}",
+        f"An approvals plan ({a.kind}) holds changes flagged for review because no rule the board has adopted answers "
+        f"them (finding: {finding}). A director, an officer, or the manager asked that the board consider it. Until the "
+        "board decides, each case is a one-off decision by a named person, recorded in the exceptions log.",
+        "decide whether to adopt a written rule for this finding, or to leave each case to a one-off decision",
+        ItemCategory.GOVERNANCE, authority="CIV 4350, 4355", evidence=evidence,
+        history=[f"{date.today().isoformat()}: referred from {a.id} by {by}"])
 
 
 def submit(approval_id: str, *, by: str, role: str = "manager", via: str = "cli",
@@ -315,7 +414,8 @@ def submit(approval_id: str, *, by: str, role: str = "manager", via: str = "cli"
             transition(a, S.WITHDRAWN)
             a.notes.append("nothing approved")
         else:
-            transition(a, S.APPROVED if len(approved) == len(a.approvable) else S.PARTIALLY_APPROVED)
+            every = sum(1 for i in approved if i.approvable) == len(a.approvable)
+            transition(a, S.APPROVED if every else S.PARTIALLY_APPROVED)
         store.save(a, data_dir)
     audit.append(data_dir, "approval.submitted", approval=a.id, kind=a.kind, actor=by, via=via, role=role,
                  fingerprint=a.fingerprint, result=a.status.value,
@@ -349,6 +449,9 @@ def confirm(approval_id: str, *, by: str, role: str = "manager", via: str = "cli
         store.save(a, data_dir)
     audit.append(data_dir, "approval.confirmed", approval=a.id, kind=a.kind, actor=by, via=via, role=role,
                  fingerprint=a.fingerprint)
+    for i in a.approved:
+        if i.exception:                                # the exceptions log: who signed second (a later line)
+            exceptions.follow_up(a.id, i, "second", second_by=by, kind=a.kind, data_dir=data_dir)
     return a
 
 
@@ -427,7 +530,7 @@ def compare(a: Approval, planned: Planned) -> tuple[list[Changed], list[PlanItem
         j = now.get(i.id)
         if j is None:
             changed.append(Changed(i.id, i.op, i.label, i.basis, "", "no longer in the plan"))
-        elif not j.approvable:
+        elif j.klass is not i.klass:
             board = f" (board item {j.board_item})" if j.board_item else ""
             changed.append(Changed(i.id, i.op, i.label, i.basis, j.basis, f"now {j.klass.value}{board}"))
         elif j.basis != i.basis:
@@ -551,9 +654,9 @@ def _run(a: Approval, kind: registry.ActionKind, planned: Planned, new: list[Pla
         a = store.load(a.id, data_dir)
         transition(a, S.APPLYING)
         for i in a.items:
-            if not (i.approvable and i.decision is Decision.APPROVED):
+            if not i.takes_effect:
                 i.result = Result.NOT_APPLIED
-                i.result_detail = (f"{i.decision.value} by {i.decided_by}: {i.reason}" if i.approvable
+                i.result_detail = (f"{i.decision.value} by {i.decided_by}: {i.reason}" if i.approvable or i.exception
                                    else i.klass.value.replace("_", " "))
         if new:
             a.notes.append(f"{len(new)} approvable item(s) new since review, not included: plan again for them")
@@ -589,8 +692,24 @@ def _run(a: Approval, kind: registry.ActionKind, planned: Planned, new: list[Pla
         store.save(a, data_dir)
     audit.append(data_dir, "approval.applied" if a.status is S.APPLIED else "approval.failed", approval=a.id,
                  kind=a.kind, actor=by, via=via, fingerprint=a.fingerprint, result=counts(a)["byResult"])
+    _log_exceptions_applied(a, data_dir)
     return Applied(a, None, [], new)
 
 
-__all__ = ["Applied", "Changed", "Live", "Planned", "Recheck", "Recorder", "Refused", "apply", "check", "compare",
-           "confirm", "counts", "decide", "decline", "needs_second", "plan", "problems", "submit", "withdraw"]
+def _log_exceptions_applied(a: Approval, data_dir: Path | None) -> None:
+    """The exceptions log hears whether each approved exception was written (a later line; none is edited). A log that
+    cannot be written does not undo the apply: the approval says so."""
+    try:
+        for i in a.approved:
+            if i.exception:
+                exceptions.follow_up(a.id, i, "applied", applied=i.result is Result.APPLIED,
+                                     second_by=a.second.name if a.second else "", kind=a.kind, data_dir=data_dir)
+    except OSError as exc:
+        with store.locked("apply"):
+            a.notes.append(f"the exceptions log could not be written: {type(exc).__name__}: {exc}")
+            store.save(a, data_dir)
+
+
+__all__ = ["Applied", "Changed", "Live", "Planned", "Recheck", "Recorder", "Refused", "apply", "board_item_id", "check",
+           "compare", "confirm", "counts", "decide", "decline", "needs_second", "plan", "problems", "reason_in_words",
+           "refer", "submit", "withdraw"]

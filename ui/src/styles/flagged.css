@@ -1,0 +1,16 @@
+/* A flagged item (held for the board by jason's policy finding): the review panel under its row, the exceptions made under
+   its finding, and the nudge to write a rule. Tokens only (see styles.css :root). */
+.flagged-item { display: grid; gap: 8px; margin: 0 0 12px; padding: 0 0 0 4px; }
+.flagged-nudge { margin: 0; }
+.flagged-review { border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: var(--r); background: var(--panel); padding: 8px 12px; }
+.flagged-review > summary { cursor: pointer; font-weight: 600; }
+.flagged-review[open] > summary { margin-bottom: 8px; }
+.flagged-review h4 { margin: 8px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.flagged-change { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+.flagged-change dt { color: var(--muted); }
+.flagged-change dd { margin: 0; overflow-wrap: anywhere; }
+.flagged-history { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
+.flagged-board, .flagged-decided { margin: 8px 0 0; }
+.flagged-actions { margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r); }
+.flagged-actions legend { padding: 0 6px; font-weight: 600; }
+.flagged-actions .confirm { flex: 1 1 100%; }

@@ -25,7 +25,7 @@ EVENTS = (
     "plan.created", "plan.failed", "item.decided", "approval.submitted", "approval.confirmed", "approval.declined",
     "apply.started", "apply.refused", "item.applying", "item.applied", "item.failed", "item.uncertain", "item.blocked",
     "item.not_applied", "approval.applied", "approval.failed", "approval.superseded", "approval.withdrawn",
-    "cli.applied",
+    "cli.applied", "item.referred",
 )
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
 # a street address: a house number, one to four capitalized words, a street type, then any unit and city, state, ZIP;

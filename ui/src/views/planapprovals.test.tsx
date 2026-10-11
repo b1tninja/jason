@@ -171,3 +171,101 @@ describe("a control's notice on an open plan", () => {
     expect(posted.at(-1)?.body).toMatchObject({ by: "B Director" });
   });
 });
+
+describe("a plan's flagged items (held for the board, decided only as a one-off exception)", () => {
+  const HELD = "acad6529c029339a";
+  const FINDING = "owner_responses.RULES: occupancy-vs-tag";
+  const WHY = "the owner confirmed in writing that the unit is owner-occupied";
+  const log = (n: number) => ({
+    at: `2026-10-0${n}T17:00:00+00:00`, approval: `apr-2026100${n}T120000-aaaa`, item: HELD, finding: FINDING, boardItem: "rental-approvals-4-15",
+    by: "Dana Director", secondBy: "Lee President", decision: "approved", reason: `case ${n}: the owner's written answer`, applied: true,
+  });
+  /** The plan as the server serves it: each flagged item carries the exceptions made under its finding. */
+  function served(count: number) {
+    const rows = Array.from({ length: count }, (_, n) => log(n + 1));
+    const items = (plannedJson as unknown as Approval).items.map((i) => (i.class === "held_for_board" ? { ...i, exceptions: rows, exceptionCount: count } : i));
+    return { ...plannedJson, items, flagged: { flagged: 2, decidedByException: 0, nudge: 2 } };
+  }
+  function serve(plan: object) {
+    const posted = stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) =>
+      url === `/api/approvals/${ID}` && !init?.method ? new Response(JSON.stringify(plan), { status: 200 }) : base(url, init));
+    return posted;
+  }
+
+  it("decides one as an exception with a reason, and posts exception: true with the write token", async () => {
+    const posted = serve(served(1));
+    const user = userEvent.setup();
+    render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
+    const panel = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(`[data-flagged-item="${HELD}"]`);
+      if (!el) throw new Error("not yet");
+      return el;
+    });
+    expect(within(panel).getByText(/1 exception made under this finding/)).toBeInTheDocument();
+    await user.type(within(panel).getByLabelText("Reason, in words (for the log)"), WHY);
+    await user.click(within(panel).getByRole("button", { name: "Approve as a one-off exception" }));
+    expect(within(panel).getByRole("group", { name: "Exception" })).toHaveTextContent("One-off decision, not a rule. A second person must sign.");
+    await user.click(within(panel).getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].url).toBe(`/api/approvals/${ID}/decide`);
+    expect(posted[0].body).toEqual({ items: [HELD], decision: "approved", by: "A Manager", reason: WHY, exception: true });
+    expect(posted[0].headers["X-Jason-Token"]).toBe("tok-1");
+  });
+
+  it("refers a finding to the board without deciding it", async () => {
+    const posted = serve(served(0));
+    const user = userEvent.setup();
+    render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
+    const panel = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(`[data-flagged-item="${HELD}"]`);
+      if (!el) throw new Error("not yet");
+      return el;
+    });
+    await user.click(within(panel).getByRole("button", { name: "Refer to the board" }));
+    await user.click(within(panel).getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].url).toBe(`/api/approvals/${ID}/refer`);
+    expect(posted[0].body).toEqual({ item: HELD, by: "A Manager" });
+    expect(posted[0].headers["X-Jason-Token"]).toBe("tok-1");
+  });
+
+  it("an ordinary decision still posts no exception flag", async () => {
+    const posted = serve(served(0));
+    const user = userEvent.setup();
+    render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
+    await screen.findByRole("heading", { name: "To decide (12)" });
+    await user.click(document.querySelector<HTMLInputElement>("input[data-plan-check]") as HTMLInputElement);
+    await user.click(screen.getByRole("button", { name: "Approve 1 selected" }));
+    await user.click(screen.getAllByRole("button", { name: "Yes, do it" }).pop() as HTMLElement);
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(Object.keys(posted[0].body as object).sort()).toEqual(["by", "decision", "items", "reason"]);
+  });
+
+  it("nudges toward a rule, linking the board item, once the finding has been decided by exception twice", async () => {
+    serve(served(2));
+    render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
+    const nudge = await screen.findByText(/This finding has been decided by exception 2 times\. The board may want to write a rule/);
+    expect(within(nudge.closest("p") as HTMLElement).getByRole("link", { name: "rental-approvals-4-15" })).toHaveAttribute("href", "#/actions?item=rental-approvals-4-15");
+    expect(screen.getByRole("heading", { name: "Flagged for review: 2 flagged, 0 decided by exception" })).toBeInTheDocument();
+  });
+
+  it("reads a stored plan that has none of the new fields, as before", async () => {
+    serve(plannedJson);
+    render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
+    expect(await screen.findByRole("heading", { name: "Flagged for review: 2 flagged, 0 decided by exception" })).toBeInTheDocument();
+    expect(screen.queryByText(/has been decided by exception/)).toBeNull();
+    expect(screen.getAllByText(/No exception has been decided under this finding yet/).length).toBe(2);
+  });
+
+  it("lists a plan's flagged items in the row, from the server's counts by class", async () => {
+    stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
+    const summary = { ...plannedJson, items: 17, byClass: { approvable: 12, held_for_board: 2, for_a_person: 1 }, byDecision: {}, byResult: {}, approved: 0 };
+    vi.mocked(fetch).mockImplementation(async (url) =>
+      new Response(JSON.stringify(url === "/api/approvals" ? { ...page, approvals: [summary] } : { error: "no route" }), { status: url === "/api/approvals" ? 200 : 404 }));
+    render(<ApprovalsView />);
+    const plans = await screen.findByRole("region", { name: "Plans of writes" });
+    expect(within(plans).getByText("12 to decide · 2 flagged · 1 for a person")).toBeInTheDocument();
+  });
+});

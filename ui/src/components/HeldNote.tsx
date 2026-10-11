@@ -16,9 +16,11 @@ function BoardItems({ ids, boardHref }: { ids: string[]; boardHref?: (id: string
 
 const uniq = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))];
 
-/** Why changes are held for the board, in two kinds kept apart:
- * - "Held for the board": jason's policy finding (the planner's `held_for_board` class, a question no rule answers). Never
- *   approvable; only the board's decision releases it. It names the board item it waits on.
+/** Why changes are held back, in two kinds kept apart:
+ * - "Flagged for review": jason's policy finding (the planner's `held_for_board` class, a question no rule answers). It is
+ *   in no ordinary approval; a director, an officer, or the manager reviews each and may decide it on its own as a one-off
+ *   exception (`FlaggedItem`). It names the board item it waits on. (The word was "Held for the board" until 2026-10-11;
+ *   the stored class is unchanged.)
  * - "Held for the board by NAME": a person's decision (`decision: "held"`) on an approvable item, with the reason.
  * Pass the items; each kind present renders its own note (`role="note"`). `inline` is one line for a single row. */
 export function HeldNote({ items, inline = false, boardHref }: { items: readonly PlanItem[]; inline?: boolean; boardHref?: (id: string) => string }) {
@@ -30,7 +32,7 @@ export function HeldNote({ items, inline = false, boardHref }: { items: readonly
     const i = policy[0] ?? byPerson[0];
     return policy.length ? (
       <p className="held-note held-inline" role="note">
-        Held for the board <span className="held-source">jason's policy finding</span>
+        Flagged for review <span className="held-source">jason's policy finding</span>
         {i.boardItem && <>: board item <BoardItems ids={[i.boardItem]} boardHref={boardHref} /></>}
       </p>
     ) : (
@@ -44,9 +46,9 @@ export function HeldNote({ items, inline = false, boardHref }: { items: readonly
   return (
     <>
       {policy.length > 0 && (
-        <section className="held-note" role="note" aria-label="Held for the board: jason's policy finding">
-          <h3>{plural(policy.length, "change", "changes")} held for the board <span className="held-source">jason's policy finding</span></h3>
-          <p>No rule the board has adopted answers these. jason does not apply them, and approving this plan does not approve them.</p>
+        <section className="held-note" role="note" aria-label="Flagged for review: jason's policy finding">
+          <h3>{plural(policy.length, "change", "changes")} flagged for review <span className="held-source">jason's policy finding</span></h3>
+          <p>No rule the board has adopted answers these. jason does not apply them, and approving this plan does not approve them. A director, an officer, or the manager can review each one and decide it on its own, as a one-off exception.</p>
           {uniq(policy.map((i) => i.boardItem)).length > 0 && (
             <p className="muted">Board item <BoardItems ids={uniq(policy.map((i) => i.boardItem))} boardHref={boardHref} />.</p>
           )}
