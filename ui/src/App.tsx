@@ -41,6 +41,7 @@ import { IngestionView } from "./views/IngestionView";
 import { ReferenceShelfView } from "./views/ReferenceShelfView";
 import { LeadsView } from "./views/LeadsView";
 import { ApprovalsView } from "./views/ApprovalsView";
+import { ControlsView } from "./views/ControlsView";
 import { DecisionsView } from "./views/DecisionsView";
 import { PlanMeetingView } from "./views/PlanMeetingView";
 import { MeetingRoomView } from "./views/MeetingRoomView";
@@ -100,6 +101,9 @@ export const SCREENS: ScreenDef[] = [
   // Governance
   { id: "actions", label: "Board action items", group: "Governance", aliases: ["board"], view: () => <BoardItemsView /> },
   { id: "decisions", label: "Decisions", group: "Governance", roles: ["officer", "administrator"], view: () => <DecisionsView /> },
+  // The safeguards jason suggests and the board adopts (docs/console/screens/controls.md): `#/controls` is the list, `#/controls?key=KEY`
+  // one control. The board's offices and the manager read (GET /api/controls, P2); never the owner view.
+  { id: "controls", label: "Controls", group: "Governance", roles: ["officer", "manager", "administrator"], view: () => <ControlsView /> },
   { id: "agenda", label: "Plan a meeting", group: "Governance", view: () => <PlanMeetingView /> },
   { id: "room", label: "Meeting room", ownerLabel: "Live meeting", group: "Governance", owner: true, view: ({ audience }) => <MeetingRoomView audience={audience} /> },
   { id: "meetings", label: "Meetings and minutes", group: "Governance", owner: true, view: ({ audience }) => <MeetingsView audience={audience} /> },
