@@ -148,6 +148,8 @@ Without sign-in set up, or with no one signed in and sign-in not required, the c
 | reviewer | Approvals waiting on a second person, and their evidence | Second signature only | None as an office: the roster gives anyone P0 and P1 |
 | counsel | Governing documents, conflicts, notices' requirements and proof, granted matters | None | None as an office: P0 and P1 as anyone on the roster; granted P3 matter files are not built |
 
+**The Screens column is superseded (2026-10-11).** Directors and officers have the same access to information, so no screen is narrowed by office: every board member opens every screen their data levels allow, and may read any office's landing page through a lens ([screens/office-views.md](screens/office-views.md)). The columns that remain true are "Can sign" and the data levels: some actions are an officer's alone.
+
 `SEE_RULES` opens P2 outright to those offices: what is proposed is masking each P2 field by the server with a logged reveal (`MaskedField`), so that a screen such as Members and units can show an owner without an email or a phone number ([Data levels](#data-levels), below). The screen specs' privacy tables (for example [Members and units](screens/members-and-units.md#privacy)) are written for that masking: they say what a role would see once it exists, and are narrower than the built levels.
 
 `OfficerRole` has no reviewer or counsel. Whether they become officer roles, or a separate grant in the profile, is open ([mvp.md](mvp.md#open-decisions)).

@@ -6,12 +6,12 @@ regenerate it after a command changes. `jason <command> --help` is the source.
 Most commands also take `--env PATH` (the `.env` file; default `./.env` or `JASON_ENV`) and `--interactive`
 (allow Keeper password, MFA, and device approval prompts). They are left out of the tables below.
 
-189 commands, by area:
+190 commands, by area:
 
 - [PayHOA & finance](#payhoa--finance) (19)
 - [Utility bills](#utility-bills) (8)
 - [Documents & library](#documents--library) (26)
-- [Meetings, board & minutes](#meetings-board--minutes) (12)
+- [Meetings, board & minutes](#meetings-board--minutes) (13)
 - [Owners, requests, notices & forms](#owners-requests-notices--forms) (28)
 - [Law, legal, insurance & claims](#law-legal-insurance--claims) (15)
 - [Google Workspace](#google-workspace) (8)
@@ -94,6 +94,9 @@ PayHOA's Mailroom (USPS letters through Lob): mailings and their cost; preview a
 | `--send-to` | {mailing,unit} | Each owner's mailing address (default) or the unit's own address |
 | `--with-invoices` |  | Mail each owner's invoice with the letter |
 | `--double-sided` |  | Print on both sides |
+| `--mail-class` | {standard,first-class} | Standard (PayHOA: 2-3 weeks) or first class (5-8 business days; needed for tracking and invoices). Default: first class with --notice, else standard. Standard is not a method CIV 4040(a)(2) lists for an individual notice |
+| `--tracking` | {certified,registered} | Certified or registered mail (extra cost a letter; first class only) |
+| `--color` |  | Print in color (extra cost a page) |
 | `--send` |  | Mail the letter after the preview (needs --yes; charges postage) |
 | `--cancel` | CANCEL | Cancel a letter still processing, by its letter id (needs --yes) |
 | `--prices` |  | Check every letter PayHOA charged against its pricing guide (payhoa.pricing); saves data/mailroom/price-check.json |
@@ -972,6 +975,50 @@ What needs attention across the governance systems: clocks passed or near, quest
 | `--past` | PAST | how far back the schedule looks for what is overdue (default 30 days) |
 | `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |
 | `--private` |  | leave units out, as the board packet does |
+| `--json` |  | print JSON |
+
+### `jason workflow`
+
+Durable workflows: list and start runs, open one (the resume check), attest, skip, pause, cancel, verify its hash chain, or draft a definition from a procedure (one act at a time; every write needs --by; writes only data/workflows)
+
+| Option | Value | Help |
+|---|---|---|
+| `--list` |  | list the runs (the default) |
+| `--definition` | KEY | with --list: one definition's runs |
+| `--state` | {open,all,draft,active,paused,waiting,done,cancelled,failed} | with --list: open (not done or cancelled; the default), all, or one state |
+| `--definitions` |  | list the registered definitions |
+| `--family` | F | with --definitions: one family |
+| `--start` | KEY | start a draft run of a definition (with --subject, --label, --date, --by) |
+| `--subject` | S | with --start: what the run is about, such as campaign:KEY |
+| `--label` | L | with --start: the run's name |
+| `--date` | NAME=YYYY-MM-DD | with --start: a date the definition asks for (repeat) |
+| `--open` | RUN | open a run: a draft starts its clocks, then the resume check appends what changed |
+| `--show` | RUN | a run as it stands now (reads only) |
+| `--events` |  | with --show: the run's events |
+| `--attest` | RUN STEP | record a person's attestation, or the board's decision (with --record, --by; a decision also --outcome; a branch --choice) |
+| `--arrived` | RUN STEP | note that what a wait step waits for has come (with --by) |
+| `--skip` | RUN STEP | skip a step its definition lets be skipped (with --reason, --by) |
+| `--reopen` | RUN STEP | open a done, skipped, or failed step again (with --reason, --by) |
+| `--pause` | RUN | pause a run (with --reason, --by) |
+| `--resume` | RUN | lift a pause (with --by) |
+| `--note` | RUN | add a note to a run (with --text, --by; --step for one step) |
+| `--cancel` | RUN | cancel a run, which stays listed (with --reason, --by, --yes) |
+| `--verify` | RUN | check a run's hash chain and name the first broken event |
+| `--reindex` |  | rebuild data/workflows/index.json from the events |
+| `--from-sop` | KEY | print a DRAFT definition from a procedure (jason sop lists them); it is never registered |
+| `--record` | REF | with --attest: the record that shows it (minutes, a sent notice, a library id) |
+| `--what` | TEXT | with --attest or --arrived: what was done, in a few words |
+| `--outcome` | WORD | with --attest on a decision step: adopted, approved, denied, rejected, withdrawn, tabled, or pending (only a final one finishes the step) |
+| `--motion` | TEXT | with --attest on a decision step: the motion (default: the step's title) |
+| `--choice` | KEY | with --attest on a branch step a person answers |
+| `--item` | ITEM | with --start: an item of the run (repeat); with an act on a per-item step: the item |
+| `--step` | STEP | with --note: the step it is about |
+| `--reason` | TEXT | why: a skip, a pause, a reopen, or a cancel |
+| `--text` | TEXT | with --note: the note |
+| `--expect` | N | the run's n you last saw; a run that moved on is refused |
+| `--as-of` | YYYY-MM-DD | read the clocks as of this day (default: today) |
+| `--by` | NAME | who is acting (required for every write; kept with when) |
+| `--yes` |  | confirm: --cancel always; --start and --open of a run with a legal clock |
 | `--json` |  | print JSON |
 
 ## Owners, requests, notices & forms

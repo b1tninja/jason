@@ -21,6 +21,7 @@ One page per screen of the earlier spec, now read against the console that exist
 | [notices.md](notices.md) | none | Proposed whole, `#/notices` | 2 |
 | [governing-documents.md](governing-documents.md) | none | Proposed whole, `#/documents` | 2 |
 | [mail.md](mail.md) | `#/mail-triage`, `#/inbox`'s letters and requests, `#/insurance`, `#/renewals` | Their documents on `Doc` (built) | 2 |
+| [office-views.md](office-views.md) | `#/digest` (Today) | Proposed: a landing page per office and a lens to read another's; actions stay the holder's | 2 |
 | [work.md](work.md) | none (its parts are in Today, `#/approvals`, `#/actions`, `#/followups`) | Proposed whole, `#/work` and `#/work/<definition>/<id>`; the run store is not built | 2 |
 | [mailroom.md](mailroom.md) | none (`jason mailroom` at the terminal) | Proposed whole, `#/mailroom`: the preview and the send plan | 2 to 4 |
 | [elections.md](elections.md) | none (its parts are in the notice catalog, the nomination form, and the decisions store) | Proposed whole, `#/elections`; no election store yet | after Work |
