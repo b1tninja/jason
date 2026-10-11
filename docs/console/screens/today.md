@@ -46,7 +46,10 @@ One question: what needs a person now? The approvals waiting, the clocks running
 | Waiting on a person | Letters: `pending` and the `requested` group. Engine: `approvals` with `status` in planned, in review, approved, partially approved, and whether each needs a second signature | `GET /api/approvals` (existing) |
 | Needs attention | `jason.api.governance_digest(limit=8, private=True)` → `attention.digest(...).as_dict()`: `totals` by urgency, `unavailable`, and `sections[]` (`key`, `title`, `command`, `available`, `error`, `summary`, `counts`, `notes`, `items[]` with `urgency`, `text`, `due`, `command`, `more`), and the `caveat` | `governance-digest` (to add; `?section=`) |
 | Next questions | `jason.api.next_questions(limit=5)`: `questions[]` with `id`, `kind`, `question`, `priority`, `unblocks`, `highStakes` | no new loader: `GET /api/onboarding-session?limit=5` (built) answers them in `next`, with the gates and the second person's queue |
+| Your work (proposed; needs the run store, [work.md](work.md)) | `jason.workflows.runs(...)` for the signed-in person: the runs whose current step their office holds, with each run's next clock and its basis | `GET /api/work?mine=1` (to add) |
 | Lock holders | `jason.locks.holders()` | add to `/api/health` |
+
+**Your work** is the Work screen's "Yours" group, cut to the five nearest. It shows no run that is not the viewer's move; "Waiting on others", "Waiting on a clock", and "The board" stay on `#/work`. It reads the same loader as the Work screen, so the two never disagree.
 
 **Section order** is the digest's own (`Digest.ordered`): sections with something urgent first, quiet ones next, unavailable ones last. Within a section, `Item.key`: urgency, then a statute's clock before the documents' before a policy's, then the due day.
 
@@ -68,6 +71,11 @@ One question: what needs a person now? The approvals waiting, the clocks running
 | Requests · jason respond [copy]                                                            |
 |  [OVERDUE] Request 1042, architectural: 6 days late                                     > |
 | Intake · unavailable: no intake queue on disk. Run jason intake --scan.                    |
++--------------------------------------------------------------------------------------------+
+| YOUR WORK (proposed)                                                                       |
+|  Owner information 2099   Step 9: read the returned forms        due Oct 23 [DOCUMENTS]  > |
+|  Bill attach, Oct         Step 4: approve the attachments        due Oct 14 [PERSON]     > |
+|  All your runs (14 open) >                                                                 |
 +--------------------------------------------------------------------------------------------+
 | NEXT QUESTIONS                                                                             |
 |  Which version of the declaration is in force?   unblocks: 2 clocks, 1 gate            >  |
@@ -102,6 +110,7 @@ The caveats stay where they were: an answer from a library search says "this is 
 | A digest line | Opens the screen that owns it; where none exists yet, shows the line's command to copy | No |
 | Copy command | Copies the section's or line's `command` | No |
 | A next question | Opens it in `#/onboarding` | No |
+| A your-work row | Opens the run at its current step (`#/work/<definition>/<id>`) | No |
 
 The bands have no write of their own. A sync is a command (`jason sync-catalog`, `jason notices KEY --sync`, `jason meetings --sync`), shown, never run.
 
@@ -111,11 +120,13 @@ The bands have no write of their own. A sync is a command (`jason sync-catalog`,
 - **A section unavailable:** it sits last, with "Unavailable:" and its error. The rest stands.
 - **A section with nothing owed:** "Nothing needs attention." with its summary line.
 - **Nothing waiting:** "Nothing is waiting on a person." The band stays, so its absence is never mistaken for a failure to load.
+- **Your work, no runs yours:** "No run is waiting on you." with a link to `#/work`. **No run store yet:** the band is absent, not an error.
 
 ## Privacy
 
 - The digest is read with `private=True`: units are left out of request lines, and people's task titles are replaced by their rule's label. A line never names an owner.
 - Waiting rows show counts and kinds, never names.
+- Your-work rows show a run's label and current step, never an owner's name, address, or answer. Directors and officers have the same access to information; a director's band is the director's own steps.
 - The owner view shows none of these bands.
 
 ## Acceptance criteria
@@ -126,3 +137,6 @@ The bands have no write of their own. A sync is a command (`jason sync-catalog`,
 4. Waiting on a person counts letters and plans apart, and the counts match `/api/approvals`.
 5. The loaders make no call to PayHOA, Google, or Zoom: a test with those clients patched to raise passes.
 6. The digest's caveat is shown verbatim.
+7. Your work lists only runs whose current step the viewer's office holds, nearest due date first with a legal date before any other, at most five, and its count matches `GET /api/work?mine=1`.
+8. Each row's due date shows its basis word; a proposed number does not render as a stamp.
+9. An administrator viewing as someone else sees that person's band read-only, with the "Viewing as NAME (admin view)" line.

@@ -70,6 +70,11 @@ Skip, pause, resume, reopen, note, and cancel are dialogs. Each is a `Confirm` t
 
 A `Doc` of the run's events with their evidence addresses, for the board's record; draw the print layout (a letterhead-free page, the label, the events newest last).
 
+### C7. What can be run (the catalog) and Your work on Today
+
+- **The catalog** (`#/work/definitions`): a read-only list of the workflows by family, each with its step count, its cadence, the procedure it came from, a DRIFTED word when the procedure lost a step, and [Start] / [Read]. [Read] opens a definition as a page that reads like a table of steps, kinds, roles, and clocks. Draw a family with eight rows, a drifted row, and a row the viewer's office cannot start (the role that can is named, no button). Spec: [screens/work.md](screens/work.md), "The definitions catalog".
+- **Your work on Today** (`#/digest`): a band of the five nearest runs that are the viewer's move, each with its current step and its due date and basis pill, and "All your runs (14 open)". Spec: [screens/today.md](screens/today.md).
+
 ## D. The shared components, each once
 
 Reuse (built): `StageSteps`, `Findings`, `Command`, `TerminalStep`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`, `AgeStamp`, `DataTable`, `Tabs`, `Card`.
@@ -84,6 +89,7 @@ Reuse (built): `StageSteps`, `Findings`, `Command`, `TerminalStep`, `Confirm`, `
 | `ChangedSince` | The banner | `changed[]{step,was,now,at}` | one; several; none (absent) |
 | `RunLinks` | What the run made | `links[]{kind,id,state,label}` | an approval, a job, a follow-up, a board item, a dock task, a document, a campaign, a child run |
 | `RunHistory` | The event log | `events[]{n,kind,step,by,at,detail}` | newest first; a correction as a later entry; a torn-log warning |
+| `DefinitionRow`, `DefinitionPage` | The catalog row and the definition read as a page | `key, title, family, steps[], cadence, procedure, drift{ok, why}, startedBy` | in step; drifted; not startable by the viewer |
 | `StartRun` | The form of C4 | `definition{dates[]{name,rule}}` | valid; a date that fails its check; refused (the sentence) |
 
 **Fixed words** (use exactly): "Yours", "Waiting on others", "Waiting on a clock", "The board", "needs a person", "changed since", "a legal date", "proposed, not the law's", "Waiting on the NAME/OFFICE", "Record in Decisions", "Review in Approvals", "Viewing as NAME (admin view): go back to yourself first".

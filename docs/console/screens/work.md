@@ -110,9 +110,38 @@ Six bands. The rail and the step panel are the page; the others read from them.
 - **History**: the event log, newest first, with who and when. A correction is a later entry, never an edit.
 - **Changed since**: the resume check's differences, shown before anything else on the page.
 
+## Layout: the definitions catalog and the Start-a-run picker
+
+`#/work/definitions` (a tab of Work, "What can be run"). A **read-only** catalog of the workflows jason has, so a person can find one to start and the board can read how a task is done.
+
+```
++------------------------------------------------------------------------------------------+
+| Work > What can be run                                              [Start a run]        |
+| 41 workflows in 6 families · 2 have drifted from their procedure                         |
++------------------------------------------------------------------------------------------+
+| Family: [All v]   Search: [______]   Needs: [my office v]                                |
++------------------------------------------------------------------------------------------+
+| THE MEMBERS                                                                              |
+| Owner information cycle   25 steps · yearly · starts with a campaign        [Start] [Read]|
+|   Built from the procedure owner-info-cycle (20 steps). In step with it.                 |
+| Respond to a request      14 steps · per request                            [Start] [Read]|
+|   Built from the procedure respond. DRIFTED: the procedure now has 15 steps.             |
+| THE MONEY                                                                                |
+| ...                                                                                      |
++------------------------------------------------------------------------------------------+
+```
+
+- **A row** is a definition: its title, its family, its step count, how often it runs (once, yearly, per item), its subject kind, and the procedure it was built from. **Drift** is the engine's check (`definitions` finds a step address the procedure no longer has) shown as a word, "DRIFTED", with the sentence; the catalog never fixes it.
+- **Read** opens the definition as a page: every step, its kind, its role, its clock and basis, what it needs and what it produces, and the sentence it shows a person. It reads like the family page's definition table, from the same rows, so the board can see how a task is done before it is started. A step that cites a statute recites it (`Recitation`).
+- **Start** opens `StartRun` (the Start-a-run form above) with the definition chosen. A definition the viewer's office cannot start shows the role that can ("Started by the manager or the secretary") and no Start button.
+- **Filters:** family, a word in the title or a step, and "my office" (the definitions that have a step for it).
+- **Empty:** "No workflows are registered." **Drift:** the heading counts it and each row says it.
+- **Loader:** `GET /api/work-definitions` (above). Privacy: P0; a definition holds no owner's data.
+- Definitions are jason's procedures, the lowest authority: a step that conflicts with the law or a rule is corrected in the definition and the lesson recorded. The catalog shows the definition's `lessons`, and gives no control to edit it.
+
 ## Components
 
-Built: `StageSteps`, `Findings`, `Command`, `TerminalStep`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`, `AgeStamp`. To add: `WorkflowRail`, `RunStepPanel` (the name `StepPanel` is `DriveChooser`'s), `ClockStrip`, `BasisPill` (a `Pill` preset for the five basis words), `RunRow`, `StartRun`, and `ChangedSince`.
+Built: `StageSteps`, `Findings`, `Command`, `TerminalStep`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`, `AgeStamp`. To add: `DefinitionRow`, `DefinitionPage`, `WorkflowRail`, `RunStepPanel` (the name `StepPanel` is `DriveChooser`'s), `ClockStrip`, `BasisPill` (a `Pill` preset for the five basis words), `RunRow`, `StartRun`, and `ChangedSince`.
 
 ## Actions
 
@@ -153,3 +182,6 @@ Built: `StageSteps`, `Findings`, `Command`, `TerminalStep`, `Confirm`, `Doc`, `D
 9. A store that moved under a done step shows the `ChangedSince` banner and a `changed` event; nothing done is silently repeated.
 10. A director reads the same run page an officer reads at the same level; the page shows no owner's contact details or answer in a list.
 11. The page renders no `/api/file` link, no absolute path, and no frame of an outside host.
+12. The catalog lists every registered definition once, with its family, step count, and procedure; a definition whose procedure lost a step is marked DRIFTED with the sentence, and the heading counts them.
+13. "Start" is offered only for a definition the viewer's office may start; otherwise the row names the role that can.
+14. The catalog has no control that edits a definition.
