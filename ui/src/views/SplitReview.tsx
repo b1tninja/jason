@@ -112,7 +112,8 @@ export function SplitReview({ backend, id, by, loader, facts, status, drop, setD
                     <th scope="row" data-label="Part">{p.ordinal}{p.level > 0 ? " (nested)" : ""}</th>
                     <td data-label="First page"><LazyChip page={p.start} loader={loader} /></td>
                     <td data-label="Pages">{rangeWords(p.start, p.end)}</td>
-                    <td data-label="Title">{confidential ? <span className="muted">hidden</span> : <ReviewTitle page={p.start} value={p.title} onCommit={onRename} onSaved={read} />}</td>
+                    <td data-label="Title">{confidential ? <span className="muted">hidden</span> : <ReviewTitle page={p.start} value={p.title} onCommit={onRename} onSaved={read} />}
+                      {p.kind && !confidential && <span className="muted split-kind"> looks like: {p.kind}, a guess</span>}</td>
                     <td data-label="What happens">{ACTION_WORDS[p.action] ?? p.action}{p.why ? <span className="muted"> {p.why}</span> : null}{p.slot ? <span className="muted"> Slot: {p.slot}</span> : null}</td>
                   </tr>
                 ))}

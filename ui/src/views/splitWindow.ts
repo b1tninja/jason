@@ -72,6 +72,147 @@ export function centerPage(l: Layout, scroll: number, viewport: number, count: n
   return Math.min(count, Math.max(1, t * l.perTrack + Math.ceil(l.perTrack / 2)));
 }
 
+// ---------------------------------------------------------------------------------------------------------------- bands
+
+/** A document of the album: a header row, then its pages in rows that start at its first page (so a band never shares a row with
+ * the page of another). Rows differ in height (a band is shorter than a row of pages), so the offsets are prefix sums, built once
+ * per layout and searched in log time; nothing is measured. docs/pdf-splitter.md, section 5.3. */
+export interface BandDoc { no: number; start: number; end: number; label?: string }
+
+export interface Banded {
+  layout: Layout;
+  docs: readonly BandDoc[];
+  /** a band's height, gap included */
+  bandTrack: number;
+  rows: number;
+  /** tops[r] is the offset of row r; tops[rows] is the scroll length */
+  tops: Float64Array;
+  /** the row index of each document's band */
+  docRow: Int32Array;
+  total: number;
+}
+
+/** Bands over a downward layout. `docs` must be sorted and together cover pages 1..count. */
+export function bandedLayout(l: Layout, docs: readonly BandDoc[], bandH: number): Banded {
+  const bandTrack = bandH + l.gap;
+  const per = Math.max(1, l.perTrack);
+  let rows = 0;
+  for (const d of docs) rows += 1 + Math.max(1, Math.ceil((d.end - d.start + 1) / per));
+  const tops = new Float64Array(rows + 1);
+  const docRow = new Int32Array(docs.length);
+  let r = 0, y = 0;
+  docs.forEach((d, i) => {
+    docRow[i] = r;
+    tops[r++] = y; y += bandTrack;
+    const n = Math.max(1, Math.ceil((d.end - d.start + 1) / per));
+    for (let k = 0; k < n; k++) { tops[r++] = y; y += l.track; }
+  });
+  tops[rows] = y;
+  return { layout: l, docs, bandTrack, rows, tops, docRow, total: y };
+}
+
+/** The last index below n in a sorted array whose value is <= v (0 when none). */
+function floorIndex(a: ArrayLike<number>, n: number, v: number): number {
+  let lo = 0, hi = n - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (a[mid] <= v) lo = mid; else hi = mid - 1; }
+  return Math.max(0, lo);
+}
+
+/** The row at a scroll offset. */
+export function rowAt(b: Banded, y: number): number {
+  return b.rows === 0 ? 0 : floorIndex(b.tops, b.rows, Math.max(0, y));
+}
+
+/** The rows to build: those in view plus `buffer` viewports either side (as `visibleTracks`). */
+export function visibleRows(b: Banded, scroll: number, viewport: number, buffer = 2): Win {
+  if (b.rows === 0) return { first: 0, last: -1 };
+  const pad = Math.max(0, buffer) * viewport;
+  const first = rowAt(b, scroll - pad);
+  const last = rowAt(b, scroll + viewport + pad);
+  return { first, last: Math.max(first, last) };
+}
+
+export interface RowInfo { kind: "band" | "cells"; doc: number; first: number; last: number; top: number; height: number }
+
+/** What a row holds: a band (the document), or the pages `first..last`. */
+export function rowInfo(b: Banded, r: number): RowInfo {
+  const doc = floorIndex(b.docRow, b.docs.length, r);
+  const d = b.docs[doc];
+  const k = r - b.docRow[doc];
+  const top = b.tops[r];
+  if (k === 0) return { kind: "band", doc, first: d.start, last: d.start - 1, top, height: b.bandTrack - b.layout.gap };
+  const first = d.start + (k - 1) * b.layout.perTrack;
+  return { kind: "cells", doc, first, last: Math.min(d.end, first + b.layout.perTrack - 1), top, height: b.layout.cellH };
+}
+
+/** The document a page is in (its index in `docs`). */
+export function docOfPage(b: Banded, page: number): number {
+  let lo = 0, hi = b.docs.length - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (b.docs[mid].start <= page) lo = mid; else hi = mid - 1; }
+  return lo;
+}
+
+/** The row that holds a page. */
+export function rowOfPage(b: Banded, page: number): number {
+  const d = docOfPage(b, page);
+  return b.docRow[d] + 1 + Math.max(0, Math.floor((page - b.docs[d].start) / b.layout.perTrack));
+}
+
+/** The 1-based pages in a window of rows (a band holds none). */
+export function bandedPagesIn(b: Banded, w: Win, count: number): { first: number; last: number } {
+  if (w.last < w.first || b.rows === 0) return { first: 1, last: 0 };
+  let r = w.first;
+  while (r <= w.last && rowInfo(b, r).kind === "band") r++;
+  let q = w.last;
+  while (q >= r && rowInfo(b, q).kind === "band") q--;
+  if (q < r) return { first: 1, last: 0 };
+  return { first: rowInfo(b, r).first, last: Math.min(count, rowInfo(b, q).last) };
+}
+
+/** The scroll offset that puts a page in view, moving as little as it can. `start` aligns it to the top, and a page in the first row
+ * of its document takes the band above it too, so the number it belongs to shows. */
+export function bandedScrollFor(b: Banded, page: number, scroll: number, viewport: number, start = false): number {
+  const r = rowOfPage(b, page);
+  const d = docOfPage(b, page);
+  const top = r - b.docRow[d] === 1 ? b.tops[b.docRow[d]] : b.tops[r];
+  const bottom = b.tops[r + 1];
+  if (start) return Math.max(0, Math.min(top, Math.max(0, b.total - viewport)));
+  if (top < scroll) return top;
+  if (bottom > scroll + viewport) return Math.max(0, bottom - viewport);
+  return scroll;
+}
+
+/** The offset of a document's band: a jump to a segment. */
+export function bandedScrollForDoc(b: Banded, doc: number, viewport: number): number {
+  const i = Math.max(0, Math.min(b.docs.length - 1, doc));
+  return Math.max(0, Math.min(b.tops[b.docRow[i]] ?? 0, Math.max(0, b.total - viewport)));
+}
+
+/** The page at the middle of the viewport. */
+export function bandedCenterPage(b: Banded, scroll: number, viewport: number, count: number): number {
+  if (b.rows === 0) return 1;
+  let r = rowAt(b, scroll + viewport / 2);
+  let info = rowInfo(b, r);
+  if (info.kind === "band") { r = Math.min(b.rows - 1, r + 1); info = rowInfo(b, r); if (info.kind === "band") return Math.min(count, info.first); }
+  return Math.min(count, Math.max(1, info.first + Math.ceil((info.last - info.first + 1) / 2) - 1));
+}
+
+/** The page `rows` rows below (or above) a page, in the same column, skipping the bands: what the arrow keys use. */
+export function bandedRowStep(b: Banded, page: number, rows: number, count: number): number {
+  const col = (page - b.docs[docOfPage(b, page)].start) % b.layout.perTrack;
+  let r = rowOfPage(b, page);
+  const dir = rows < 0 ? -1 : 1;
+  for (let n = Math.abs(rows); n > 0; n--) {
+    let next = r + dir;
+    while (next >= 0 && next < b.rows && rowInfo(b, next).kind === "band") next += dir;
+    if (next < 0 || next >= b.rows) break;
+    r = next;
+  }
+  const info = rowInfo(b, r);
+  if (info.kind === "band") return page;
+  return Math.min(count, info.first + Math.min(col, info.last - info.first));
+}
+
 // ---------------------------------------------------------------------------------------------------------------- scroll speed
 
 export interface Motion { at: number; offset: number; dir: -1 | 0 | 1; speed: number }

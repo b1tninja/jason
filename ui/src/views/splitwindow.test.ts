@@ -3,7 +3,8 @@ import { demoFacts, demoSuggestions } from "./splitDemo";
 import { documentNumbers, everyNth, lqipUrl, marksIn, nextMark, segmentsOf, splitAtRestarts, splitOnBlanks, startsOf, unionStarts } from "./splitModel";
 import { LoadError, ThumbLoader } from "./splitThumbs";
 import {
-  FAST_PX_PER_S, budgetFor, centerPage, layoutOf, liveCells, motionOf, pagesIn, priorityOf, scrollFor, visibleTracks,
+  FAST_PX_PER_S, bandedCenterPage, bandedLayout, bandedPagesIn, bandedRowStep, bandedScrollFor, bandedScrollForDoc, budgetFor, centerPage, docOfPage, layoutOf, liveCells,
+  motionOf, pagesIn, priorityOf, rowAt, rowInfo, rowOfPage, scrollFor, visibleRows, visibleTracks, type BandDoc,
 } from "./splitWindow";
 
 afterEach(() => vi.useRealTimers());
@@ -61,6 +62,173 @@ describe("the windowing math, on a synthetic 3,000-page file", () => {
     const e = layoutOf({ count: 0, width: 800, cellW: 100, cellH: 100 });
     expect(visibleTracks(e, 0, 600)).toEqual({ first: 0, last: -1 });
     expect(liveCells(e, visibleTracks(e, 0, 600), 0)).toBe(0);
+  });
+});
+
+describe("the album's bands, on 3,000 pages in uneven documents", () => {
+  const l = layoutOf({ count: 3000, width: 1000, cellW: 124, cellH: 184 });       // 7 across, 192 per row
+  const BAND = 30;                                                                // plus the 8 px gap
+  // 300 documents of 1 to 19 pages, covering 1..3000 exactly
+  const docs: BandDoc[] = [];
+  for (let p = 1, i = 0; p <= 3000; i++) {
+    const n = Math.min(3001 - p, 1 + ((i * 7) % 19));
+    docs.push({ no: i + 1, start: p, end: p + n - 1, label: i % 3 ? undefined : `Title ${i + 1}` });
+    p += n;
+  }
+  const b = bandedLayout(l, docs, BAND);
+
+  it("puts a band at the head of every document and starts the document's pages on a new row", () => {
+    expect(b.docs).toHaveLength(docs.length);
+    let rows = 0;
+    docs.forEach((d, i) => {
+      expect(b.docRow[i]).toBe(rows);
+      const info = rowInfo(b, rows);
+      expect(info.kind).toBe("band");
+      expect(info.doc).toBe(i);
+      const first = rowInfo(b, rows + 1);
+      expect(first.kind).toBe("cells");
+      expect(first.first).toBe(d.start);                     // never shares a row with the document before
+      rows += 1 + Math.ceil((d.end - d.start + 1) / 7);
+    });
+    expect(b.rows).toBe(rows);
+  });
+
+  it("sums the offsets: a band is shorter than a row of pages, and the total is the sum", () => {
+    let y = 0;
+    for (let r = 0; r < b.rows; r++) {
+      expect(b.tops[r]).toBe(y);
+      y += rowInfo(b, r).kind === "band" ? BAND + 8 : 192;
+    }
+    expect(b.total).toBe(y);
+    expect(b.tops[b.rows]).toBe(y);
+    expect(b.total).toBeGreaterThan(l.total);                // the bands and the part rows add height
+  });
+
+  it("finds the row at an offset, at row starts and one pixel before", () => {
+    for (const r of [0, 1, 2, 57, 400, b.rows - 1]) {
+      expect(rowAt(b, b.tops[r])).toBe(r);
+      if (r > 0) expect(rowAt(b, b.tops[r] - 1)).toBe(r - 1);
+    }
+    expect(rowAt(b, -50)).toBe(0);
+    expect(rowAt(b, b.total + 500)).toBe(b.rows - 1);
+  });
+
+  it("builds only the rows in view and two screens either side, wherever the scroll is", () => {
+    const viewport = 600;
+    for (const scroll of [0, 1234, 40000, b.total / 2, b.total - viewport]) {
+      const w = visibleRows(b, scroll, viewport, 2);
+      const span = bandedPagesIn(b, w, 3000);
+      expect(w.last - w.first + 1).toBeLessThan(40);
+      expect(span.last - span.first + 1).toBeLessThan(120);
+      expect(w.first).toBeLessThanOrEqual(rowAt(b, scroll));
+      expect(w.last).toBeGreaterThanOrEqual(rowAt(b, scroll + viewport));
+    }
+  });
+
+  it("covers the whole file as the scroll goes from top to end, with no gap between windows", () => {
+    const seen = new Set<number>();
+    for (let s = 0; s <= b.total; s += 250) {
+      const p = bandedPagesIn(b, visibleRows(b, s, 600, 0), 3000);
+      for (let n = p.first; n <= p.last; n++) seen.add(n);
+    }
+    expect(seen.size).toBe(3000);
+  });
+
+  it("finds a page's row and document, and the row holds the page", () => {
+    for (const page of [1, 2, 7, 8, 500, 1499, 2999, 3000]) {
+      const r = rowOfPage(b, page);
+      const info = rowInfo(b, r);
+      expect(info.kind).toBe("cells");
+      expect(page).toBeGreaterThanOrEqual(info.first);
+      expect(page).toBeLessThanOrEqual(info.last);
+      expect(docOfPage(b, page)).toBe(info.doc);
+      expect(page).toBeGreaterThanOrEqual(docs[info.doc].start);
+      expect(page).toBeLessThanOrEqual(docs[info.doc].end);
+    }
+  });
+
+  it("scrolls to a page with the bands counted: in view stays put, otherwise the least move, or the top with `start`", () => {
+    const viewport = 600;
+    expect(bandedScrollFor(b, 1, 0, viewport)).toBe(0);
+    const big = docs.findIndex((x, i) => i > 100 && x.end - x.start >= 14);       // a document of three rows or more
+    const page = docs[big].start + 8;                                            // in its second row of pages
+    const r = rowOfPage(b, page);
+    expect(r - b.docRow[big]).toBe(2);
+    const top = b.tops[r];
+    expect(bandedScrollFor(b, page, top - 50, viewport)).toBe(top - 50);          // already in view
+    expect(bandedScrollFor(b, page, 0, viewport)).toBe(b.tops[r + 1] - viewport); // from above: just enough
+    expect(bandedScrollFor(b, page, b.total, viewport)).toBe(top);                // from below: its top
+    expect(bandedScrollFor(b, page, 0, viewport, true)).toBe(top);
+    // the first row of a document takes its band with it
+    expect(bandedScrollFor(b, docs[big].start, b.total, viewport)).toBe(b.tops[b.docRow[big]]);
+    expect(bandedScrollFor(b, 3000, 0, viewport, true)).toBeLessThanOrEqual(b.total - viewport);
+    // a document's first page shows its band above it
+    const first = docs[200].start;
+    expect(bandedScrollFor(b, first, 0, viewport, true)).toBe(b.tops[b.docRow[200]]);
+    // and wherever it lands, the page is in the window it builds
+    for (const page of [1, 333, 1500, 2222, 3000]) {
+      const at = bandedScrollFor(b, page, 0, viewport, true);
+      const span = bandedPagesIn(b, visibleRows(b, at, viewport, 0), 3000);
+      expect(span.first).toBeLessThanOrEqual(page);
+      expect(span.last).toBeGreaterThanOrEqual(page);
+    }
+  });
+
+  it("jumps to a segment: the top of its band, held inside the scroll length", () => {
+    expect(bandedScrollForDoc(b, 0, 600)).toBe(0);
+    expect(bandedScrollForDoc(b, 150, 600)).toBe(b.tops[b.docRow[150]]);
+    expect(rowInfo(b, rowAt(b, bandedScrollForDoc(b, 150, 600))).kind).toBe("band");
+    expect(bandedScrollForDoc(b, docs.length - 1, 5000)).toBe(b.total - 5000);
+    expect(bandedScrollForDoc(b, 9999, 600)).toBeLessThanOrEqual(b.total - 600);       // past the end is the last
+  });
+
+  it("names the page at the middle of the view, never a band", () => {
+    for (const at of [0, 777, 30000, b.total]) {
+      const p = bandedCenterPage(b, at, 600, 3000);
+      expect(p).toBeGreaterThanOrEqual(1);
+      expect(p).toBeLessThanOrEqual(3000);
+    }
+    // a view centred on a band names the first page below it
+    const bandTop = b.tops[b.docRow[100]];
+    const under = bandedCenterPage(b, bandTop - 300 + 10, 600, 3000);
+    expect(under).toBeGreaterThanOrEqual(docs[100].start);
+    expect(under).toBeLessThanOrEqual(Math.min(docs[100].end, docs[100].start + 6));      // in the document's first row
+  });
+
+  it("steps a row down or up in the same column and skips the bands", () => {
+    const d = docs.findIndex((x, i) => x.end - x.start >= 14 && docs[i + 1].end - docs[i + 1].start >= 3);   // three rows, then four pages
+    const first = docs[d].start;
+    expect(bandedRowStep(b, first + 2, 1, 3000)).toBe(first + 9);
+    expect(bandedRowStep(b, first + 9, -1, 3000)).toBe(first + 2);
+    // across a band: the last row of the document before, the same column or its last page
+    const across = bandedRowStep(b, docs[d + 1].start + 3, -1, 3000);
+    expect(across).toBeLessThanOrEqual(docs[d].end);
+    expect(across).toBeGreaterThanOrEqual(docs[d].end - 6);
+    expect(bandedRowStep(b, 1, -1, 3000)).toBe(1);                              // the top stays
+    expect(bandedRowStep(b, 3000, 5, 3000)).toBe(3000);                         // the end stays
+  });
+
+  it("costs next to nothing in the worst case, 3,000 one-page documents: the build once, the window search per scroll event", () => {
+    const worst: BandDoc[] = Array.from({ length: 3000 }, (_, i) => ({ no: i + 1, start: i + 1, end: i + 1 }));
+    const t0 = performance.now();
+    const w = bandedLayout(l, worst, BAND);
+    const build = performance.now() - t0;
+    expect(w.rows).toBe(6000);                                    // a band and a row each
+    const t1 = performance.now();
+    for (let i = 0; i < 10000; i++) bandedPagesIn(w, visibleRows(w, (i * 977) % w.total, 600, 2), 3000);
+    const perScroll = (performance.now() - t1) / 10000;
+    console.info(`bands, worst case: build ${build.toFixed(2)} ms; window + pages per scroll event ${(perScroll * 1000).toFixed(1)} us`);
+    expect(build).toBeLessThan(100);
+    expect(perScroll).toBeLessThan(1);                            // a frame is 16 ms
+  });
+
+  it("handles one document and a document of one page", () => {
+    const one = bandedLayout(l, [{ no: 1, start: 1, end: 3000 }], BAND);
+    expect(one.rows).toBe(1 + Math.ceil(3000 / 7));
+    const tiny = bandedLayout(l, [{ no: 1, start: 1, end: 1 }, { no: 2, start: 2, end: 2 }], BAND);
+    expect(tiny.rows).toBe(4);
+    expect(rowInfo(tiny, 2).kind).toBe("band");
+    expect(rowOfPage(tiny, 2)).toBe(3);
   });
 });
 

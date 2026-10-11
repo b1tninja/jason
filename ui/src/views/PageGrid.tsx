@@ -5,8 +5,9 @@ import { cellLabel, lqipUrl, stateWord, type PageFact, type Size, type Suggestio
 import type { Snapshot } from "./splitStore";
 import type { ThumbLoader } from "./splitThumbs";
 import {
-  FAST_PX_PER_S, SETTLE_MS, centerPage, layoutOf, liveCells, motionOf, pagesIn, scrollFor, visibleTracks,
-  type Axis, type Layout, type Win,
+  FAST_PX_PER_S, SETTLE_MS, bandedCenterPage, bandedLayout, bandedPagesIn, bandedRowStep, bandedScrollFor, bandedScrollForDoc, centerPage,
+  layoutOf, liveCells, motionOf, pagesIn, rowInfo, scrollFor, visibleRows, visibleTracks,
+  type Axis, type BandDoc, type Banded, type Layout, type Win,
 } from "./splitWindow";
 
 /** The windowed page grid (docs/pdf-splitter.md, sections 3.4 and 5.3). Cells have a fixed size, so the scroll length is arithmetic; only the
@@ -22,7 +23,11 @@ const SIZES: Record<string, Size[]> = { ts: ["tiny", "small"], t: ["tiny"], sl: 
 export interface GridApi {
   scrollToPage(page: number, start?: boolean): void;
   focusPage(page: number): void;
+  /** jump to a document's band (1-based document number); no-op without bands */
+  scrollToSegment(no: number): void;
   cols(): number;
+  /** pages to move to land `rows` rows below (negative: above), in the same column; bands are skipped */
+  rowDelta(page: number, rows: number): number;
   windowInfo(): { first: number; last: number; live: number; tracks: number; total: number };
 }
 
@@ -36,6 +41,8 @@ export interface PageGridProps {
   /** a page's height over its width */
   aspect?: number;
   gap?: number;
+  /** the album's documents, in page order: each gets a header row (a band) before its pages, and its pages start a new row */
+  bands?: readonly BandDoc[];
   label: string;
   snap: Snapshot;
   facts: FactsCache;
@@ -50,6 +57,10 @@ export interface PageGridProps {
 }
 
 const CHROME = 24;
+/** a band's height; fixed, so the offsets are prefix sums */
+export const BAND_H = 30;
+
+function pagesWord(n: number): string { return `${n} ${n === 1 ? "page" : "pages"}`; }
 
 function bandWord(s: Suggestion | undefined): string { return s ? String(s.band) : ""; }
 
@@ -106,16 +117,37 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
   const ch = Math.round(cw * aspect) + CHROME;
   const layout: Layout = useMemo(() => layoutOf({ axis, count, width: size.w, cellW: cw, cellH: ch, gap }), [axis, count, size.w, cw, ch, gap]);
   const layoutRef = useRef(layout); layoutRef.current = layout;
+  // with bands the rows differ in height: offsets are prefix sums built here, once per layout, and searched in log time
+  const banded: Banded | null = useMemo(() => (axis === "y" && p.bands && p.bands.length > 0 ? bandedLayout(layout, p.bands, BAND_H) : null), [axis, layout, p.bands]);
+  const bandedRef = useRef(banded);
+  // Marking a start moves the pages below it to other rows, and a cell that changes parent is a new element: the one that had the
+  // focus is remembered here, before the commit, and given it again after.
+  const keepFocus = useRef(0);
+  if (banded !== bandedRef.current && typeof document !== "undefined") {
+    const a = document.activeElement as HTMLElement | null;
+    keepFocus.current = a && box.current?.contains(a) && a.dataset.page ? Number(a.dataset.page) : 0;
+  }
+  bandedRef.current = banded;
+  useLayoutEffect(() => {
+    const n = keepFocus.current;
+    keepFocus.current = 0;
+    if (!n || !box.current || box.current.contains(document.activeElement)) return;
+    box.current.querySelector<HTMLElement>(`button[data-page="${n}"]`)?.focus({ preventScroll: true });
+  });
   const [win, setWin] = useState<Win>({ first: 0, last: -1 });
   const winRef = useRef(win);
   const factsVersion = useSyncExternalStore(facts.subscribe, facts.getVersion, facts.getVersion);
 
   const offset = () => (axis === "y" ? box.current?.scrollTop ?? 0 : box.current?.scrollLeft ?? 0);
   const viewport = () => (axis === "y" ? size.h : size.w);
+  const pagesOf = (b: Banded | null, l: Layout, w: Win) => (b ? bandedPagesIn(b, w, count) : pagesIn(l, w, count));
+  const centerOf = (b: Banded | null, l: Layout, at: number, vp: number) => (b ? bandedCenterPage(b, at, vp, count) : centerPage(l, at, vp, count));
+  const scrollOf = (b: Banded | null, l: Layout, page: number, at: number, vp: number, start = false) => (b ? bandedScrollFor(b, page, at, vp, start) : scrollFor(l, page, at, vp, start));
 
   const recompute = useCallback(() => {
     const l = layoutRef.current;
-    const w = visibleTracks(l, offset(), axis === "y" ? sizeRef.current.h : sizeRef.current.w, BUFFER_VIEWPORTS);
+    const vp = axis === "y" ? sizeRef.current.h : sizeRef.current.w;
+    const w = bandedRef.current ? visibleRows(bandedRef.current, offset(), vp, BUFFER_VIEWPORTS) : visibleTracks(l, offset(), vp, BUFFER_VIEWPORTS);
     if (w.first !== winRef.current.first || w.last !== winRef.current.last) { winRef.current = w; setWin(w); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [axis]);
@@ -137,12 +169,12 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
   }, []);
 
   // the window follows the layout and the size
-  useLayoutEffect(() => { recompute(); }, [layout, size, recompute]);
+  useLayoutEffect(() => { recompute(); }, [layout, banded, size, recompute]);
 
   // facts for the pages in the window
-  const span = pagesIn(layout, win, count);
+  const span = pagesOf(banded, layout, win);
   useEffect(() => { facts.ensure(span.first, span.last); }, [facts, span.first, span.last]);
-  useEffect(() => { loader.setView(centerPage(layout, offset(), viewport(), count), 0); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [loader, win]);
+  useEffect(() => { loader.setView(centerOf(banded, layout, offset(), viewport()), 0); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [loader, win]);
 
   // scroll: rAF-throttled; direction and speed steer the loader, a settled scroll asks for the held-back pictures
   const frame = useRef(0);
@@ -159,7 +191,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       const m = motionOf(prev.current, now, offset());
       prev.current = { at: m.at, offset: m.offset };
       avg.current = 0.55 * avg.current + 0.45 * m.speed;
-      loader.setView(centerPage(layoutRef.current, m.offset, viewport(), count), m.dir);
+      loader.setView(centerOf(bandedRef.current, layoutRef.current, m.offset, viewport()), m.dir);
       if (avg.current > FAST_PX_PER_S) loader.setFast(true);
       if (settle.current) clearTimeout(settle.current);
       settle.current = setTimeout(() => { avg.current = 0; loader.setFast(false); }, SETTLE_MS);
@@ -173,7 +205,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
     const el = box.current;
     if (!el) return;
     const l = layoutRef.current;
-    const next = scrollFor(l, page, offset(), axis === "y" ? sizeRef.current.h : sizeRef.current.w);
+    const next = scrollOf(bandedRef.current, l, page, offset(), axis === "y" ? sizeRef.current.h : sizeRef.current.w);
     if (next !== offset()) { if (axis === "y") el.scrollTop = next; else el.scrollLeft = next; }
     recompute();
     requestAnimationFrame(() => {
@@ -188,13 +220,25 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
     scrollToPage(page, start = false) {
       const el = box.current;
       if (!el) return;
-      const next = scrollFor(layoutRef.current, page, offset(), axis === "y" ? sizeRef.current.h : sizeRef.current.w, start);
+      const next = scrollOf(bandedRef.current, layoutRef.current, page, offset(), axis === "y" ? sizeRef.current.h : sizeRef.current.w, start);
       if (axis === "y") el.scrollTop = next; else el.scrollLeft = next;
+      recompute();
+    },
+    scrollToSegment(no) {
+      const el = box.current, b = bandedRef.current;
+      if (!el || !b) return;
+      el.scrollTop = bandedScrollForDoc(b, b.docs.findIndex((d) => d.no === no), sizeRef.current.h);
       recompute();
     },
     focusPage,
     cols: () => layoutRef.current.perTrack,
-    windowInfo: () => { const s = pagesIn(layoutRef.current, winRef.current, count); return { first: s.first, last: s.last, live: liveCells(layoutRef.current, winRef.current, count), tracks: layoutRef.current.tracks, total: layoutRef.current.total }; },
+    rowDelta: (page, rows) => (bandedRef.current ? bandedRowStep(bandedRef.current, page, rows, count) - page : rows * layoutRef.current.perTrack),
+    windowInfo: () => {
+      const l = layoutRef.current, b = bandedRef.current, s = pagesOf(b, l, winRef.current);
+      const live = b ? Math.max(0, s.last - s.first + 1) : liveCells(l, winRef.current, count);
+      return { first: s.first, last: s.last, live, tracks: b ? b.rows : l.tracks, total: b ? b.total : l.total };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [axis, count, focusPage, recompute]);
 
   // ---- pointer: the click, the long press, the drag of a start
@@ -303,8 +347,26 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
   const out: JSX.Element[] = [];
   for (let t = win.first; t <= win.last; t++) {
     cells.length = 0;
-    for (let k = 0; k < layout.perTrack; k++) {
-      const page = t * layout.perTrack + k + 1;
+    const ri = banded ? rowInfo(banded, t) : null;
+    if (banded && ri && ri.kind === "band") {
+      const d = banded.docs[ri.doc];
+      const n = d.end - d.start + 1;
+      const label = confidential ? "" : d.label ?? "";
+      out.push(
+        <div key={`b${t}`} role="row" aria-rowindex={t + 1} className="split-row split-band" data-band={d.no % 2} data-seg={d.no} style={{ top: ri.top, height: BAND_H }}>
+          <div role="rowheader" aria-colspan={layout.perTrack} className="split-band-head">
+            <strong>Document {d.no}</strong>
+            <span>starts at page {d.start}</span>
+            <span>{pagesWord(n)}</span>
+            {label && <span className="split-band-label">{label}</span>}
+          </div>
+        </div>,
+      );
+      continue;
+    }
+    const firstPage = ri ? ri.first : t * layout.perTrack + 1;
+    const lastPage = ri ? ri.last : Math.min(count, (t + 1) * layout.perTrack);
+    for (let page = firstPage; page <= lastPage; page++) {
       if (page > count) break;
       const sizes = variant === "strip" ? "t" : variant === "scroll" ? (Math.abs(page - focus) <= 1 ? "sl" : "s") : "ts";
       cells.push(
@@ -314,17 +376,17 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       );
     }
     out.push(axis === "y"
-      ? <div key={t} role="row" aria-rowindex={t + 1} className="split-row" style={{ top: t * layout.track, height: ch, gap }}>{[...cells]}</div>
+      ? <div key={t} role="row" aria-rowindex={t + 1} className="split-row" style={{ top: ri ? ri.top : t * layout.track, height: ch, gap }}>{[...cells]}</div>
       : <div key={t} role="presentation" className="split-col" style={{ left: t * layout.track, width: cw }}>{[...cells]}</div>);
   }
   const focusLive = focus >= span.first && focus <= span.last;
   void factsVersion;
   return (
     <div ref={box} className={`split-scroll split-scroll-${axis}`} data-variant={variant} role={axis === "y" ? "grid" : "group"} aria-label={p.label}
-      aria-rowcount={axis === "y" ? layout.tracks : undefined} aria-colcount={axis === "y" ? layout.perTrack : undefined} aria-multiselectable={axis === "y" ? true : undefined}
+      aria-rowcount={axis === "y" ? (banded ? banded.rows : layout.tracks) : undefined} aria-colcount={axis === "y" ? layout.perTrack : undefined} aria-multiselectable={axis === "y" ? true : undefined}
       tabIndex={focusLive ? -1 : 0} onScroll={onScroll} onClick={onClick} onContextMenu={onContextMenu} onPointerDown={onPointerDown}
       onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onFocus={onFocus}>
-      <div className="split-spacer" style={axis === "y" ? { height: layout.total } : { width: layout.total, height: ch }}>{out}</div>
+      <div className="split-spacer" style={axis === "y" ? { height: banded ? banded.total : layout.total } : { width: layout.total, height: ch }}>{out}</div>
     </div>
   );
 });

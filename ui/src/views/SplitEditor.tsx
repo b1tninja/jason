@@ -138,6 +138,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
     const server = new Map(session.segments.map((s) => [s.start, s]));
     return snap.segs.map((s) => ({ key: s.key, path: s.key, start: s.start, end: s.end, pages: s.end - s.start + 1, level: s.level, parent: "", source: s.start === 1 ? "first" : server.get(s.start)?.source ?? "person", labels: server.get(s.start)?.labels ?? {} }));
   }, [snap.segs, session.segments]);
+  // the album's bands: one per top-level document, with the title the server has for its first page (a guess until confirmed)
+  const bands = useMemo(() => segRows.filter((s) => s.level === 0).map((s, i) => ({ no: i + 1, start: s.start, end: s.end, label: s.labels.title || undefined })), [segRows]);
   const topCount = snap.segs.filter((s) => s.level === 0).length;
   const openSug = session.suggestions.filter((s) => s.state === "open");
   const high = useMemo(() => acceptable(session.suggestions, 0.85), [session.suggestions]);
@@ -184,18 +186,20 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
     }
     if (e.altKey) return;
     const cols = gridRef.current?.cols() ?? 1;
+    // rows hold different page counts once the album has bands, so a row step is asked of the grid
+    const rowStep = (rows: number) => gridRef.current?.rowDelta(focusRef.current, rows) ?? rows * cols;
     const lower = k.length === 1 ? k.toLowerCase() : k;
     const horizontal = view === "filmstrip" || (view === "scroll" && scrollAxis === "x");
     const stepsOf: Record<string, number> = view === "scroll" && scrollAxis === "y"
       ? { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -1, ArrowRight: 1 }
       : horizontal ? { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -1, ArrowDown: 1 }
-      : { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols };
+      : { ArrowLeft: -1, ArrowRight: 1, ArrowUp: rowStep(-1), ArrowDown: rowStep(1) };
     if (k in stepsOf && view !== "list") { e.preventDefault(); step(stepsOf[k], e.shiftKey); return; }
     switch (lower) {
       case "Home": e.preventDefault(); goTo(1); return;
       case "End": e.preventDefault(); goTo(pages); return;
-      case "PageUp": e.preventDefault(); goTo(focus - cols * 3); return;
-      case "PageDown": e.preventDefault(); goTo(focus + cols * 3); return;
+      case "PageUp": e.preventDefault(); goTo(focus + rowStep(-3)); return;
+      case "PageDown": e.preventDefault(); goTo(focus + rowStep(3)); return;
       case "Enter": case " ":
         if (view === "filmstrip") { e.preventDefault(); store.toggle(focus); setAnchor(focus); }
         return;
@@ -348,7 +352,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first }: { backend:
 
       <div className={`split-main${wide ? " has-rail" : ""}`}>
         <div className="split-work">
-          {view === "album" && <PageGrid ref={gridRef} {...common} axis="y" variant="album" cellW={albumW} label="Pages" onActivate={onActivate} />}
+          {view === "album" && <PageGrid ref={gridRef} {...common} axis="y" variant="album" bands={bands} cellW={albumW} label="Pages" onActivate={onActivate} />}
           {view === "scroll" && <PageGrid ref={gridRef} {...common} axis={scrollAxis} variant="scroll" cellW="fit" maxW={scrollAxis === "y" ? 520 : 360} label="Pages, one at a time" onActivate={onActivate} />}
           {view === "filmstrip" && (
             <div className="split-film">

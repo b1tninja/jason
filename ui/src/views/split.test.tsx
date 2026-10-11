@@ -13,6 +13,7 @@ import { parseSplitRoute, splitRoute, type SessionView } from "./splitModel";
 import { SplitStore } from "./splitStore";
 import { ThumbLoader } from "./splitThumbs";
 import { createRef } from "react";
+import type { BandDoc } from "./splitWindow";
 
 // jsdom has no PointerEvent: a stand-in that carries pointerType, so touch and mouse can be told apart
 if (typeof window.PointerEvent === "undefined") {
@@ -150,7 +151,7 @@ describe("marking pages in the demo", () => {
   it("opens a made-up 120-page draft with only the pages near the view built", async () => {
     await openDemo();
     expect(screen.getByText("Demo")).toBeInTheDocument();
-    expect(screen.getByText("120 pages")).toBeInTheDocument();
+    expect(screen.getAllByText("120 pages").length).toBeGreaterThan(0);                   // the counts line, and the band of a one-document file
     const cells = document.querySelectorAll("[data-cell]").length;
     expect(cells).toBeGreaterThan(10);
     expect(cells).toBeLessThan(120);
@@ -377,7 +378,7 @@ describe("the review step in the demo", () => {
 });
 
 describe("a draft with a thousand pages", () => {
-  async function mountGrid(pages: number, loader?: ThumbLoader) {
+  async function mountGrid(pages: number, loader?: ThumbLoader, bands?: BandDoc[]) {
     const backend = new DemoBackend({ pages });
     const store = new SplitStore(backend, "demo");
     await store.load();
@@ -385,7 +386,7 @@ describe("a draft with a thousand pages", () => {
     const l = loader ?? new ThumbLoader({ urlOf: (p, s) => backend.thumbUrl("demo", p, s) });
     const ref = createRef<GridApi>();
     const ui = (focus = 1) => (
-      <PageGrid ref={ref} count={pages} axis="y" variant="album" cellW={124} label="Pages" snap={store.getSnapshot()} facts={facts} loader={l} focus={focus} selection={null}
+      <PageGrid ref={ref} count={pages} axis="y" variant="album" bands={bands} cellW={124} label="Pages" snap={store.getSnapshot()} facts={facts} loader={l} focus={focus} selection={null}
         confidential={false} onActivate={() => undefined} onMenu={() => undefined} onMove={() => undefined} onFocusPage={() => undefined} />
     );
     const view = render(ui());
@@ -412,6 +413,35 @@ describe("a draft with a thousand pages", () => {
     const info = ref.current!.windowInfo();
     expect(info.live).toBeLessThan(100);
     expect(info.last).toBe(3000);
+  });
+
+  it("draws a numbered band before each document, builds a few dozen elements for 3,000 pages, and jumps to a segment", async () => {
+    const docs: BandDoc[] = [];
+    for (let p = 1, i = 0; p <= 3000; i++) { const n = Math.min(3001 - p, 1 + ((i * 7) % 19)); docs.push({ no: i + 1, start: p, end: p + n - 1, label: i === 0 ? "Welcome letter" : undefined }); p += n; }
+    const { view, ref } = await mountGrid(3000, undefined, docs);
+    const grid = view.container.querySelector<HTMLElement>("[role=grid]")!;
+    const bands = () => [...view.container.querySelectorAll<HTMLElement>(".split-band")];
+    expect(bands()[0]).toHaveTextContent("Document 1");
+    expect(bands()[0]).toHaveTextContent("starts at page 1");
+    expect(bands()[0]).toHaveTextContent("Welcome letter");
+    expect(bands()[0]).toHaveTextContent("1 page");
+    expect(Number(grid.getAttribute("aria-rowcount"))).toBeGreaterThan(400);                       // bands are rows
+    const elements = () => view.container.querySelectorAll("[data-cell], .split-band").length;
+    expect(elements()).toBeLessThan(140);
+    for (let i = 0; i < 20; i++) {
+      grid.scrollTop = (i * 23000) % 600000;
+      fireEvent.scroll(grid);
+      await act(async () => { await new Promise((r) => setTimeout(r, 15)); });
+      expect(elements()).toBeLessThan(140);
+    }
+    ref.current!.scrollToSegment(200);
+    await waitFor(() => expect(view.container.querySelector('.split-band[data-seg="200"]')).toBeTruthy());
+    expect(view.container.querySelector(`[data-cell][data-page="${docs[199].start}"]`)).toBeTruthy();
+    ref.current!.scrollToPage(3000, true);
+    await waitFor(() => expect(view.container.querySelector('[data-cell][data-page="3000"]')).toBeTruthy());
+    expect(view.container.querySelector(`.split-band[data-seg="${docs.length}"]`)).toBeTruthy();
+    expect(ref.current!.rowDelta(1, 1)).toBeGreaterThan(0);
+    expect(ref.current!.windowInfo().live).toBeLessThan(120);
   });
 
   it("asks for the pictures of the window only, and holds no more than its budget", async () => {
@@ -552,5 +582,26 @@ describe("saving: conflicts, a lost connection, a refusal", () => {
     expect(s.getSnapshot().readOnly).toBe(true);
     expect(s.getSnapshot().message).toBe("This split is declined; only a draft can be changed.");
     expect(mine(s)).toEqual([1]);
+  });
+});
+
+describe("the review shows each part's kind as a guess", () => {
+  it("says 'looks like: <kind>, a guess' from the part's kind, nothing when there is none, and hides it for a confidential file", async () => {
+    const { SplitReview } = await import("./SplitReview");
+    const part = (n: number, kind: string | null) => ({ segment: `s${n}`, level: 0, start: n * 10 - 9, end: n * 10, ordinal: n, slot: "", title: `Part ${n}`, kind, pages: [[n * 10 - 9, n * 10]] as [number, number][], count: 10, name: "", action: "held" });
+    const review = { id: "demo", status: "draft", version: 1, sourcePages: 20, files: 2, parts: [part(1, "invoice"), part(2, null)], dropped: [], pagesInFiles: 20, totalsOk: true, problems: [], collisions: [], duplicates: [], held: [], result: "" };
+    const backend = { act: async () => ({ act: "review", review }) } as unknown as SplitBackend;
+    const loader = new ThumbLoader({ urlOf: () => "", fetcher: () => new Promise<string>(() => undefined) });
+    const facts = new FactsCache(new DemoBackend(), "demo", 20);
+    const show = (confidential: boolean) => render(
+      <SplitReview backend={backend} id="demo" by="Test" loader={loader} facts={facts} status="draft" drop={[]} setDrop={() => undefined} onBack={() => undefined}
+        onDone={() => undefined} confidential={confidential} onRename={async () => undefined} />);
+    const first = show(false);
+    expect(await screen.findByText("looks like: invoice, a guess", { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByText(/looks like:/)).toHaveLength(1);
+    first.unmount();
+    show(true);
+    await screen.findByText(/Pages add up/);
+    expect(screen.queryByText(/looks like:/)).toBeNull();
   });
 });
