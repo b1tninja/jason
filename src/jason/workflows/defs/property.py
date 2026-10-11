@@ -14,10 +14,13 @@ needed here), and nothing of the approvals, tasks, controls, community, or web p
   ``gmail-drafts`` kind, case ``proposal-request``). Every other write the page calls a plan (a filing plan, an insurer's
   notice, a letter, a vendor's question) has no registered kind, so it is a ``person`` step whose ``why`` says what it
   becomes.
-- **A job or a check step** needs a name in ``JOBS`` or ``CHECKS``. None of the property reads is registered there (that
-  belongs to the engine's owner), so each read the page gives to jason is a ``person`` step (the manager reads the command's
-  output and attests the result). ``WANTED`` lists, as strings, the checks, jobs, plan kinds, templates, and commands the
-  page wants that do not exist, so each step can be made what the page says when they do.
+- **A job or a check step** needs a name in ``JOBS`` or ``CHECKS``. Twelve property reads are registered by
+  ``jason.workflows.checks.property`` (the life-safety record, the deficiency register's acts and board item, the loss packet,
+  a contract's notice windows, the backflow tester, the paint catalog, the elevated-elements due day), and each step that
+  names one is a ``check`` step of role ``jason``. A read the page gives to jason that has no store to answer it yet is still
+  a ``person`` step (the manager reads the command's output and attests the result). ``WANTED`` lists, as strings, the checks,
+  jobs, plan kinds, templates, and commands the page wants that do not exist, so each step can be made what the page says
+  when they do.
 - **A law clock** is on a step only where the statute is on the authorities shelf (Civil Code, Health and Safety Code 116800).
   The State Fire Marshal's regulations (19 CCR 904.2) are not on the shelf, so their clocks have the basis ``documents`` with the
   regulation named in ``cite`` (never ``law``). A contract's notice windows are ``documents`` with both edges. A supplier's or
@@ -44,6 +47,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from jason.workflows.readers import named_check
 from jason.workflows.types import (
     Choice, ClockBasis, ClockDef, DateSlot, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
 )
@@ -75,18 +79,10 @@ ORDER: dict[str, tuple[str, ...]] = {
 
 WANTED: tuple[str, ...] = (
     # reads the page gives to jason, as checks (readers.CHECKS) once they are written
-    "check:life-safety-standing -- the standing of each obligation for the period, from the life-safety loader (life-safety-period read)",
-    "check:life-safety-reports-read -- reports placed and read for the period (life-safety-period read-report, keep)",
-    "check:deficiency-fold -- the register row's state, read from the register's own fold (deficiency, every step)",
     "check:backflow-assemblies -- assemblies from the notice, the water account, and last year's reports, side by side (backflow-annual assemblies)",
-    "check:backflow-tester -- the tester against the published lists (backflow-annual tester)",
-    "check:elevated-due -- each building's due day from the elevated-inspection records (elevated-elements due)",
-    "check:contract-window -- both edges of each notice window, with delivery (contract-notice-window window)",
     "check:contract-owed -- what the counterparty owes and whether it is on file (contract-notice-window owed)",
     "check:contract-statement -- the managing agent's written statement, present or missing (contract-notice-window statement)",
     "check:improvement-findings -- the five findings of the unit's manual (improvement-request findings)",
-    "check:paint-catalog -- each scheduled color against the maker's catalog (paint-cycle watch)",
-    "check:loss-packet -- the five-question loss packet (loss-claim packet)",
     "check:program-standing -- a maintenance program's document, adoption, and implementation (maintenance-program standing)",
     # jobs (readers.JOBS)
     "job:life-safety-read-report -- jason models --filed, after the local-ai preflight (life-safety-period read-report)",
@@ -131,6 +127,7 @@ level P2 for the offices that open it, and no step needs a closed session."""
 P, C, J, PL, D, W, B = (StepKind.PERSON, StepKind.CHECK, StepKind.JOB, StepKind.PLAN, StepKind.DECISION, StepKind.WAIT,
                         StepKind.BRANCH)
 M, S, PRES = Role.MANAGER, Role.SECRETARY, Role.PRESIDENT
+JASON = Role.JASON
 BY_MANAGER = SkipRule((M,))
 BY_SECRETARY = SkipRule((S,))
 ONCE, ITEM, PERIOD = Repeat.ONCE, Repeat.PER_ITEM, Repeat.PER_PERIOD
@@ -202,11 +199,11 @@ def life_safety_period() -> Workflow:
                      "deficiencies", "keep")
     steps = (
         s("read", "Read the record for the period: each obligation's standing, the periods covered, the reports unplaced or not read",
-          P, M, command="jason inspections; jason deadlines", repeat=PERIOD,
+          C, JASON, check=named_check("life-safety-standing"), command="jason inspections; jason deadlines", repeat=PERIOD,
           clock=_docs("the obligation row's cadence (19 CCR 904 for a sprinkler system; the specification's row)", "19 CCR 904(a)(1)"),
           record="each obligation's standing, in words (current, done late, upcoming, due soon, overdue, needs input, none on record)",
-          why="The page gives this read to jason (check life-safety-standing, wanted); until it exists the manager reads the command's "
-              "output and attests it. 'None on record' is not 'not done'; no skip."),
+          why="Read from the life-safety loader's calendar rows and periods; it passes when the record can be read, and an overdue "
+              "obligation or a period with nothing on file is its message. 'None on record' is not 'not done'; no skip."),
         s("applies", "Settle which obligations reach the system", B, M, ("read",), command="jason applies; jason applies --file-questions",
           repeat=ITEM, choices=(i.choice("applies", *after_applies), i.choice("does-not-apply")),
           why="Answered by fact (jason applies), by the manager when the fact is missing. An undetermined obligation is left open "
@@ -238,10 +235,12 @@ def life_safety_period() -> Workflow:
           record="the filing plan's counts and the library address of the report",
           why="The page makes this a filing plan; no approvals kind covers Drive filing (plan:drive-filing, wanted), so a person reads "
               "the plan first and applies it. A protected portal is a person's step: jason enters no password or code."),
-        s("read-report", "Read the filed report into the record", P, M, ("file",), command="jason models --filed", repeat=ITEM,
+        s("read-report", "Read the filed report into the record", C, JASON, ("file",), check=named_check("life-safety-reports-read"),
+          command="jason models --filed", repeat=ITEM,
           record="the reading: inspection date, interval, result, deficiencies, buildings",
-          why="The page makes this a job (job:life-safety-read-report, wanted; GPU lane after the local-ai preflight). A State form's "
-              "marks are read by a person, and no period is assigned from a file name."),
+          why="Passes when every filed report has a reading and at least one report is on file; a person runs `jason models --filed` "
+              "(GPU lane, after the local-ai preflight; job:life-safety-read-report is wanted). A State form's marks are read by a "
+              "person, and no period is assigned from a file name."),
         s("place", "Place what the reading could not, and record the occurrence", P, S, ("read-report",),
           command="jason inspections; jason schedule-evidence --record KEY DUE --by NAME", sop="duty-schedule#4", repeat=ITEM,
           record="the occurrence and its evidence (the report's library address)",
@@ -286,21 +285,22 @@ def deficiency() -> Workflow:
           record="the proposed row's id",
           why="The page makes this a job (job:life-safety-propose, wanted). The row id is a hash of report, location, device, and "
               "comment, so a second run adds none."),
-        s("confirm", "Confirm the row against the report", P, M, ("propose",), command="jason life-safety --confirm ID --by NAME",
-          record="the act 'confirmed': who and when",
-          why="No 'not a deficiency' act exists yet (a gap the page records)."),
-        s("impairs", "Say whether it impairs a scheduled safeguard", P, M, ("confirm",),
+        s("confirm", "Confirm the row against the report", C, JASON, ("propose",), check=named_check("deficiency-confirmed"),
+          command="jason life-safety --confirm ID --by NAME", record="the act 'confirmed': who and when",
+          why="Passes when the register shows a person's confirmation. No 'not a deficiency' act exists yet (a gap the page records)."),
+        s("impairs", "Say whether it impairs a scheduled safeguard", C, JASON, ("confirm",), check=named_check("deficiency-impairs-recorded"),
           command="jason life-safety --impairs ID --value yes|no --by NAME", record="the act 'impairs' or 'does not impair'",
-          why="A person's reading, never inferred; a later act corrects it. P2: never shown while an admin views as someone else."),
+          why="A person's reading, never inferred; a later act corrects it. Passes when one is recorded, and says nothing of its value. "
+              "P2: never shown while an admin views as someone else."),
         s("route", "Follow the recorded answer", B, M, ("impairs",), choices=(i.choice("impairs", "tell-insurer", "lift"),
                                                                                   i.choice("does-not-impair")),
           why="If it impairs, telling the insurer becomes required; otherwise it does not apply. The answer is the one recorded at `impairs`."),
-        s("tell-insurer", "Tell the insurer or agent; keep what was sent", P, M, ("route",),
-          command="jason life-safety --insurer-told ID --record REF --on DATE --by NAME",
+        s("tell-insurer", "Tell the insurer or agent; keep what was sent", C, JASON, ("route",),
+          check=named_check("deficiency-insurer-told"), command="jason life-safety --insurer-told ID --record REF --on DATE --by NAME",
           clock=_docs("the policy's protective-safeguards words; any number of days is the policy's (not read here)"),
           record="the day, and the library reference of what was sent",
-          why="The act 'insurer told'. A draft of the notice is the gmail-drafts case insurer-notice (wanted); the loader raises a banner "
-              "while no record shows the insurer was told."),
+          why="Passes when the act 'insurer told' is on the register. A draft of the notice is the gmail-drafts case insurer-notice "
+              "(wanted); the loader raises a banner while no record shows the insurer was told."),
         s("estimate", "Wait for the written repair estimate", W, M, ("confirm",), command="jason gmail --sync", skip=BY_MANAGER,
           clock=_docs("a written estimate 'before performing any repairs' (the licensee's duty; no number)", "19 CCR 904.2(k)"),
           why="19 CCR 904.2(k) is not on the shelf. Skipped, with the reason, when no repair is needed."),
@@ -310,20 +310,22 @@ def deficiency() -> Workflow:
         s("repair", "Wait for the repair", W, M, ("repair-decision",),
           clock=_docs("'immediate correction' (no number); a target is the board's to adopt, never stamped", "19 CCR 904.2(d)"),
           why="Passing a target a person recorded opens a follow-up. The invoice (line items) and the report arrive in the library."),
-        s("clear", "Link the record that cleared it", P, M, ("repair",),
+        s("clear", "Link the record that cleared it", C, JASON, ("repair",), check=named_check("deficiency-cleared"),
           command="jason life-safety --cleared ID --record REF --kind KIND --on DATE --by NAME",
           record="the clearing record's library reference, its kind (invoice lines, AES 10, a later passing report), and its day",
-          why="An invoice's subject line and free text are refused; a clearing record dated on or before the finding is refused."),
+          why="Passes when a clearing record is linked. An invoice's subject line and free text are refused; a clearing record dated "
+              "on or before the finding is refused."),
         s("lift", "Tell the insurer the impairment ended, if the policy says to", P, M, ("clear", "tell-insurer"), skip=BY_MANAGER,
           clock=_docs("the policy's words decide (not read here)"),
           why="Whether the insurer is told is a question for the board and the policy. Skipped, with the reason, when the policy does not ask."),
-        s("board-item", "Bring the deficiency to the board's attention as a board item", P, M, ("confirm",),
-          command="jason life-safety --severity ID --value urgent|high|normal --by NAME; jason life-safety --deadline ID --date D --basis B --by NAME",
+        s("board-item", "Bring the deficiency to the board's attention as a board item", C, JASON, ("confirm",),
+          check=named_check("deficiency-board-item"), command="jason life-safety --severity ID --value urgent|high|normal --by NAME; jason life-safety --deadline ID --date D --basis B --by NAME",
           clock=_person_day("a deadline a person records, with who set it (insurer, authority, documents, vendor, person); jason computes none",
                             "deadline_on"),
           record="the board item's id and the severity a person set (or jason's labeled proposal)",
           why="Decided 2026-10-11: every confirmed deficiency becomes a board item, proposed for the next agenda and prioritized by a "
-              "person's severity and any deadline. Until a severity is set, jason's proposal is labeled as one. The board closes the item, never a clear. No skip."),
+              "person's severity and any deadline. Until a severity is set, jason's proposal is labeled as one. The board closes the item, never a clear. "
+              "Passes when the item is on the board's list. No skip."),
     )
     phases = (
         i.phase("find", "Find and confirm", "propose", "confirm", "impairs", "route", "tell-insurer"),
@@ -353,11 +355,12 @@ def backflow_annual() -> Workflow:
         s("ask-program", "Ask which date counts, or about a discrepancy", P, M, ("assemblies",), skip=BY_MANAGER,
           record="the message's reference and the answer recorded",
           why="A message sent by a person (a gmail-drafts case, wanted). Skipped, with the reason, when the notice settles it."),
-        s("tester", "Check the tester against the published lists", P, M, command="jason backflow --fetch-testers", repeat=PERIOD,
+        s("tester", "Check the tester against the published lists", C, JASON, check=named_check("backflow-tester"),
+          command="jason backflow --fetch-testers", repeat=PERIOD,
           clock=_proposed("a list older than a year is flagged (proposed)"),
           record="the check: listed on the list dated D, under another business, not listed, or not fetched",
-          why="The page makes this a check and a dated fetch (check:backflow-tester, wanted). Matching is on the tester's name; "
-              "'listed' is never said as 'certified'."),
+          why="Read from the dated snapshot a person fetches (`jason backflow --fetch-testers`; the fetch is a job, wanted). Matching is "
+              "on the tester's name; 'listed' is never said as 'certified'."),
         s("hire", "Hire the tester and hand over the letter whole", P, M, ("tester",), record="the tester engaged and the assembly list given",
           why="The letter goes whole to the tester (lesson backflow-letter-goes-whole-to-the-tester)."),
         s("test", "Wait for the test and the filed report", W, M, ("hire",),
@@ -407,11 +410,13 @@ def elevated_elements() -> Workflow:
         s("facts", "Enter each building's facts from the record that states them", P, M, ("reach",), repeat=ITEM,
           record="the record that states each fact (attached units, responsibility, elements count, permit and certificate dates, inspection date and its report)",
           why="No date is entered without its report; a fact not stated stays unknown."),
-        s("due", "Count the next due day", P, M, ("facts",), command="jason deadlines; jason applies", repeat=ITEM,
+        s("due", "Count the next due day", C, JASON, ("facts",), check=named_check("elevated-due"),
+          command="jason deadlines; jason applies", repeat=ITEM,
           clock=_law("CIV 5551(b)(1)", "at least every nine years; six years from the certificate of occupancy for a building whose permit application was on or after the (k) date; "
                                        "the earliest day the record shows, never earlier", "due_on"),
           record="the due day and what it comes under, or the question for a building with no date on record",
-          why="The page gives this to jason (check:elevated-due, wanted). An unknown day is a question, never a guess."),
+          why="Counted from the building's record by the section's cycle. An unknown day is a question, never a guess: the check fails "
+              "until a person enters the fact."),
         s("engage", "Engage a licensed engineer or architect", D, S, ("due",), command="jason board",
           clock=_law("CIV 5551(b)(1)", "by a licensed structural or civil engineer or architect"),
           record="the board's decision record and the contract's library address",
@@ -473,11 +478,12 @@ def contract_notice_window() -> Workflow:
           clock=_docs("the term's end, as the contract's words give it", slot="term_ends"),
           record="the term's end and its source (recorded, implied, or needs input)", sop="onboard#18",
           why="Not skippable when the start is blank."),
-        s("window", "Count each window back from the term's end, both edges, with the delivery", P, M, ("confirm-term",), repeat=ITEM,
+        s("window", "Count each window back from the term's end, both edges, with the delivery", C, JASON, ("confirm-term",),
+          check=named_check("contract-window"), repeat=ITEM,
           command="to add: jason contract-terms --window KEY", sop="onboard#18",
           clock=_docs("the window opens (the contract's words); the earliest day a notice counts", slot="window_opens"),
           record="per clause (non-renewal, termination without cause, breach and cure): opens, closes, delivery",
-          why="The page gives this to jason (check:contract-window, wanted). A window has two edges; a notice outside either 'may not count'."),
+          why="Counted from the run's term end and the terms reading. A window has two edges; a notice outside either 'may not count'."),
         s("owed", "Read what the counterparty owes and whether it is on file", P, M, ("read",), command="jason contract-terms --list",
           record="the list: on file, not on file, not yet due",
           why="A deliverable worth tracking becomes a board item or a register row, a person's choice (check:contract-owed, wanted)."),
@@ -630,10 +636,12 @@ def paint_cycle() -> Workflow:
         s("refresh", "Refresh the catalog copy", P, M, command="jason paint --refresh", clock=_proposed("the copy is kept a week"),
           record="the copy's age after the refresh",
           why="A job on a person's ask (job:paint-refresh, wanted); it reads the network."),
-        s("watch", "Check each scheduled color against the catalog", P, M, command="jason paint --check", repeat=ITEM,
+        s("watch", "Check each scheduled color against the catalog", C, JASON, check=named_check("paint-catalog"),
+          command="jason paint --check", repeat=ITEM,
           clock=_proposed("quarterly, and with the January law review (proposed)"),
           record="per color: ok, renamed, discontinued, not found, or not checked",
-          why="The page gives this to jason (check:paint-catalog, wanted); the command exits 1 on a difference. A rename after an award reads 'changed since' and opens `substitute`."),
+          why="Read from the catalog copy on disk; it passes when the copy and the schedule can be read, and a difference is its message "
+              "(the command exits 1 on one). A rename after an award reads 'changed since' and opens `substitute`."),
         s("substitute", "Choose what substitutes for a renamed or discontinued color", D, S, ("watch",), repeat=ITEM, skip=BY_SECRETARY,
           command="jason paint --match \"CODE\" --exterior", record="the board's decision record",
           why="The law and the documents are silent, so a written policy is proposed; a rule on a CIV 4355(a) subject needs notice (CIV 4360(a), "
@@ -691,10 +699,10 @@ def loss_claim() -> Workflow:
           record="the policy's address and the pages recited"),
         s("notify", "Notify the carrier or agent", P, M, ("policy",), clock=_docs("the policy's words (no statute for this step was found in this family)"),
           record="the claim number and the library reference of what was sent", why="Not skippable."),
-        s("packet", "Assemble the five-question loss packet", P, M, ("record",), repeat=ITEM,
+        s("packet", "Assemble the five-question loss packet", C, JASON, ("record",), check=named_check("loss-packet"), repeat=ITEM,
           command="GET /api/loss-packet?unit=&incident=",
           record="the packet's reference; each step with its provisions recited and what the record shows",
-          why="The page gives this to jason (check:loss-packet, wanted). Held notes read, for example, 'no deductible guideline adopted'."),
+          why="The item is the unit's id; the message is counts only. Held notes read, for example, 'no deductible guideline adopted'."),
         s("confirm-step", "Confirm each of the five steps", P, M, ("packet",), repeat=ITEM,
           command="POST /api/write/loss-packet/confirm", record="the step confirmed, by name and day", why="jason confirms nothing."),
         s("guideline", "The board's deductible guideline: adopted, or a gap", D, S, ("packet",), command="jason rule-change",

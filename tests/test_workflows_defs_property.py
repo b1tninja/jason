@@ -25,28 +25,28 @@ KEYS = ("life-safety-period", "deficiency", "backflow-annual", "elevated-element
 SHELF = Path(__file__).resolve().parents[1] / "data"
 KIND = {"P": StepKind.PERSON, "C": StepKind.CHECK, "J": StepKind.JOB, "PL": StepKind.PLAN, "D": StepKind.DECISION,
         "W": StepKind.WAIT, "B": StepKind.BRANCH}
-ROLE = {"M": Role.MANAGER, "S": Role.SECRETARY, "PRES": Role.PRESIDENT}
+ROLE = {"M": Role.MANAGER, "S": Role.SECRETARY, "PRES": Role.PRESIDENT, "J": Role.JASON}
 
 # The page's step ids in its table's order, each with its kind and its role.
 EXPECTED: dict[str, tuple[tuple[str, str, str], ...]] = {
     "life-safety-period": (
-        ("read", "P", "M"), ("applies", "B", "M"), ("ask", "PL", "M"), ("send", "P", "M"), ("wait-reply", "W", "M"),
-        ("proposal", "D", "S"), ("entry", "P", "M"), ("visit", "W", "M"), ("file", "P", "M"), ("read-report", "P", "M"),
+        ("read", "C", "J"), ("applies", "B", "M"), ("ask", "PL", "M"), ("send", "P", "M"), ("wait-reply", "W", "M"),
+        ("proposal", "D", "S"), ("entry", "P", "M"), ("visit", "W", "M"), ("file", "P", "M"), ("read-report", "C", "J"),
         ("place", "P", "S"), ("authority", "P", "M"), ("deficiencies", "P", "M"), ("keep", "P", "M")),
     "deficiency": (
-        ("propose", "P", "M"), ("confirm", "P", "M"), ("impairs", "P", "M"), ("route", "B", "M"), ("tell-insurer", "P", "M"),
-        ("estimate", "W", "M"), ("repair-decision", "D", "S"), ("repair", "W", "M"), ("clear", "P", "M"), ("lift", "P", "M"),
-        ("board-item", "P", "M")),
+        ("propose", "P", "M"), ("confirm", "C", "J"), ("impairs", "C", "J"), ("route", "B", "M"), ("tell-insurer", "C", "J"),
+        ("estimate", "W", "M"), ("repair-decision", "D", "S"), ("repair", "W", "M"), ("clear", "C", "J"), ("lift", "P", "M"),
+        ("board-item", "C", "J")),
     "backflow-annual": (
-        ("notice-in", "P", "M"), ("assemblies", "P", "M"), ("ask-program", "P", "M"), ("tester", "P", "M"), ("hire", "P", "M"),
+        ("notice-in", "P", "M"), ("assemblies", "P", "M"), ("ask-program", "P", "M"), ("tester", "C", "J"), ("hire", "P", "M"),
         ("test", "W", "M"), ("receipt", "P", "M"), ("failed", "B", "M"), ("repair-retest", "W", "M"), ("file", "P", "M"),
         ("record", "P", "S"), ("next", "W", "M")),
     "elevated-elements": (
-        ("reach", "B", "M"), ("facts", "P", "M"), ("due", "P", "M"), ("engage", "D", "S"), ("list", "W", "M"),
+        ("reach", "B", "M"), ("facts", "P", "M"), ("due", "C", "J"), ("engage", "D", "S"), ("list", "W", "M"),
         ("inspect", "W", "M"), ("read", "P", "M"), ("threat", "B", "M"), ("preventive", "P", "M"), ("reserve", "P", "M"),
         ("keep", "P", "M"), ("next", "W", "M")),
     "contract-notice-window": (
-        ("read", "P", "M"), ("confirm-term", "P", "M"), ("window", "P", "M"), ("owed", "P", "M"), ("licence", "P", "M"),
+        ("read", "P", "M"), ("confirm-term", "P", "M"), ("window", "C", "J"), ("owed", "P", "M"), ("licence", "P", "M"),
         ("statement", "P", "M"), ("review", "D", "S"), ("choice", "B", "M"), ("draft", "P", "M"), ("approve", "P", "PRES"),
         ("send", "P", "M"), ("ack", "W", "M"), ("renew", "P", "S"), ("transition", "P", "PRES")),
     "improvement-request": (
@@ -55,12 +55,12 @@ EXPECTED: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("letter", "P", "M"), ("reconsider", "B", "M"), ("conditions", "P", "S"), ("work", "W", "M"), ("verify", "P", "M"),
         ("manual", "P", "M"), ("findings", "P", "M")),
     "paint-cycle": (
-        ("refresh", "P", "M"), ("watch", "P", "M"), ("substitute", "D", "S"), ("dates", "P", "M"), ("scope", "P", "M"),
+        ("refresh", "P", "M"), ("watch", "C", "J"), ("substitute", "D", "S"), ("dates", "P", "M"), ("scope", "P", "M"),
         ("bids", "W", "M"), ("award", "D", "S"), ("notice", "P", "M"), ("record", "P", "M"), ("doc", "P", "M"),
         ("request", "B", "M")),
     "loss-claim": (
         ("record", "P", "M"), ("history", "P", "M"), ("mitigate", "P", "M"), ("policy", "P", "M"), ("notify", "P", "M"),
-        ("packet", "P", "M"), ("confirm-step", "P", "M"), ("guideline", "D", "S"), ("ask-owner", "P", "M"),
+        ("packet", "C", "J"), ("confirm-step", "P", "M"), ("guideline", "D", "S"), ("ask-owner", "P", "M"),
         ("outcome", "W", "M"), ("members", "B", "M"), ("close", "P", "M")),
     "maintenance-program": (
         ("standing", "P", "M"), ("adopt", "D", "S"), ("sync", "P", "M"), ("read", "P", "M"), ("ask", "P", "M"),
@@ -83,8 +83,21 @@ LAW_CITES = {
 }
 
 
+# The twelve steps that are read-only checks, with the read each names (src/jason/workflows/checks/property.py).
+CHECK_STEPS = {
+    "life-safety-period.1": "life-safety-standing", "life-safety-period.10": "life-safety-reports-read",
+    "deficiency.2": "deficiency-confirmed", "deficiency.3": "deficiency-impairs-recorded", "deficiency.5": "deficiency-insurer-told",
+    "deficiency.9": "deficiency-cleared", "deficiency.11": "deficiency-board-item", "backflow-annual.4": "backflow-tester",
+    "elevated-elements.3": "elevated-due", "contract-notice-window.3": "contract-window", "paint-cycle.2": "paint-catalog",
+    "loss-claim.6": "loss-packet",
+}
+
+
 @pytest.fixture(autouse=True)
 def fresh():
+    from jason.workflows import checks
+
+    checks.load_all()                                             # the reads a check step names register themselves
     definitions.reset()
     yield
     definitions.reset()
@@ -149,7 +162,11 @@ def test_only_a_registered_plan_kind_a_plan_step_and_no_job_or_check_beyond_the_
         for s in wf.steps:
             assert not s.job or s.job in JOBS
             assert s.check is None or s.check.name in CHECKS
-    assert not {s.id for wf in built().values() for s in wf.steps if s.kind in (StepKind.JOB, StepKind.CHECK)}
+    assert not {s.id for wf in built().values() for s in wf.steps if s.kind is StepKind.JOB}
+    checks = {s.id: s for wf in built().values() for s in wf.steps if s.kind is StepKind.CHECK}
+    assert {i: s.check.name for i, s in checks.items()} == CHECK_STEPS
+    assert all(s.role is Role.JASON and s.skip is None for s in checks.values())     # jason reads; nobody skips a read
+    assert not any(s.check is not None for wf in built().values() for s in wf.steps if s.kind is not StepKind.CHECK)
 
 
 def test_spawns_name_definitions_of_the_family_and_only_where_the_page_opens_a_child_run():
@@ -292,6 +309,11 @@ def test_wanted_is_a_tuple_of_strings_each_with_a_kind_and_a_purpose():
     assert isinstance(prop.WANTED, tuple) and prop.WANTED and all(isinstance(w, str) for w in prop.WANTED)
     assert all(w.split(":", 1)[0] in {"check", "job", "plan", "template", "command", "role"} and " -- " in w for w in prop.WANTED)
     assert not (set(CHECKS) | set(JOBS)) & {w.split(":", 1)[1].split(" -- ")[0] for w in prop.WANTED}
+    wanted_checks = {w.split(":", 1)[1].split(" -- ")[0] for w in prop.WANTED if w.startswith("check:")}
+    assert wanted_checks == {"backflow-assemblies", "contract-owed", "contract-statement", "improvement-findings", "program-standing"}
+    assert not wanted_checks & set(CHECK_STEPS.values())
+    for step in (s for wf in built().values() for s in wf.steps if s.id in CHECK_STEPS):
+        assert "(check:" not in step.why and "check:" + CHECK_STEPS[step.id] not in step.why, step.id    # no becomes-text left
 
 
 def test_the_module_adds_nothing_to_the_readers_registries():
@@ -327,27 +349,73 @@ ROLES = {MANAGER: {"manager"}, SECRETARY: {"secretary", "director"}}
 DAY = date(2099, 6, 2)
 
 
-def test_a_deficiency_run_from_proposed_to_the_board_item_with_the_insurer_path_skipped(data):
+def seed_register(data, ident, acts):
+    """A made-up register row with the acts a person has recorded so far (the register is the only store the checks read)."""
+    import json
+
+    from jason.tasks import deficiencies
+
+    path = data / deficiencies.STORE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {"id": ident, "system": "alarm", "buildings": [], "location": "", "device": "", "comment": "", "report": {}, "acts": acts}
+    path.write_text(json.dumps({"deficiencies": [row]}), encoding="utf-8")
+
+
+def seed_board_item(data, ident):
+    from jason.community.board_items import BoardItem, ItemCategory
+    from jason.tasks import board_items, deficiencies
+
+    board_items.save(data, [BoardItem(deficiencies.item_id(ident), "A deficiency", "", "Decide", ItemCategory.SAFETY)])
+
+
+def test_a_deficiency_run_follows_the_register_from_proposed_to_the_board_item_with_the_insurer_path_skipped(data):
+    from jason.workflows.readers import StoreReaders
+
     general.register_general()
     n = lambda name: number("deficiency", name)               # noqa: E731
     roles_of = lambda by: ROLES.get(by, ())                   # noqa: E731
-    out = api.start(data, "deficiency", "def-0a1b2c3d", "Waterflow switch, Bldg. 1", {}, MANAGER, today=DAY)
+    readers = StoreReaders(data, today=DAY)
+    ident = "def-0a1b2c3d"
+    seed_register(data, ident, [{"act": "proposed", "by": "jason", "at": "2099-06-01T10:00:00+00:00"}])
+    out = api.start(data, "deficiency", ident, "Waterflow switch, Bldg. 1", {}, MANAGER, today=DAY)
     rid = out["run"]["id"]
-    api.open_run(data, rid, MANAGER, roles_of=roles_of, today=DAY)
+    api.open_run(data, rid, MANAGER, readers=readers, roles_of=roles_of, today=DAY)
 
     def state(name):
-        return next(s for s in api.show(data, rid, today=DAY)["steps"] if s["id"] == n(name))["state"]
+        return next(s for s in api.show(data, rid, today=DAY, readers=readers)["steps"] if s["id"] == n(name))["state"]
+
+    def message(name):
+        return next(s for s in api.show(data, rid, today=DAY, readers=readers)["steps"] if s["id"] == n(name))["reason"]
+
+    def again():
+        api.open_run(data, rid, MANAGER, readers=readers, roles_of=roles_of, today=DAY)
 
     assert state("propose") == "needs a person" and state("confirm") == "not started"
-    api.attest(data, rid, n("propose"), MANAGER, roles_of=roles_of, record="the proposed row def-0a1b2c3d", today=DAY)
-    with pytest.raises(Exception, match="role"):
-        api.attest(data, rid, n("confirm"), SECRETARY, roles_of=roles_of, record="confirmed", today=DAY)
-    api.attest(data, rid, n("confirm"), MANAGER, roles_of=roles_of, record="confirmed by A. Manager", today=DAY)
-    api.attest(data, rid, n("impairs"), MANAGER, roles_of=roles_of, record="does not impair", today=DAY)
-    api.attest(data, rid, n("route"), MANAGER, roles_of=roles_of, choice="does-not-impair", today=DAY)
+    api.attest(data, rid, n("propose"), MANAGER, roles_of=roles_of, record="the proposed row def-0a1b2c3d", readers=readers, today=DAY)
+    again()
+    assert state("confirm") == "failed" and "only proposed" in message("confirm")                                              # a check: the register has no confirmation yet
+    with pytest.raises(Exception, match="check step"):
+        api.attest(data, rid, n("confirm"), MANAGER, roles_of=roles_of, record="confirmed", readers=readers, today=DAY)
+
+    # a person records the acts in the register (jason life-safety ...); the run follows when it is opened again
+    acts = [{"act": "proposed", "by": "jason", "at": "2099-06-01T10:00:00+00:00"},
+            {"act": "confirmed", "by": "A. Manager", "at": "2099-06-02T10:00:00+00:00"}]
+    seed_register(data, ident, acts)
+    again()
+    assert state("confirm") == "done" and state("impairs") == "failed"
+    assert "A. Manager" not in message("confirm")                                   # who acted is not in what the run shows
+    acts.append({"act": "does not impair", "by": "A. Manager", "at": "2099-06-02T10:05:00+00:00"})
+    seed_register(data, ident, acts)
+    again()
+    assert state("impairs") == "done"
+    api.attest(data, rid, n("route"), MANAGER, roles_of=roles_of, choice="does-not-impair", readers=readers, today=DAY)
+    again()
 
     assert state("tell-insurer") == "skipped" and state("lift") == "skipped"      # the path the answer did not take
     assert state("estimate") in ("needs a person", "waiting")
-    assert state("board-item") == "needs a person"                                  # always on the board's attention
-    view = api.show(data, rid, today=DAY)
+    assert state("board-item") == "failed"                                           # confirmed, but the board has no item yet
+    seed_board_item(data, ident)
+    again()
+    assert state("board-item") == "done"
+    view = api.show(data, rid, today=DAY, readers=readers)
     assert view["definition"] == "deficiency" and view["state"] != "done"

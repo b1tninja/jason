@@ -9,7 +9,8 @@ Pure data. It imports only the engine's types, ``named_check``, and the standard
 kind already exists:
 
 - a ``plan`` step names a registered approvals kind (``owner-info-tags``, ``payhoa-mailroom-send``);
-- a ``job`` step names a registered job, and a ``check`` step a registered read (``outstanding-read``);
+- a ``job`` step names a registered job, and a ``check`` step a registered read (``outstanding-read``, or one of the members'
+  reads in ``jason.workflows.checks.members``, which ``definitions_general.register_general`` loads);
 - anything else is a ``person`` step that shows the command, and its ``why`` says what it will become. ``BECOMES`` maps such a
   step to the read, job, or kind it waits for; ``WANTED`` lists them once, for the report.
 
@@ -73,8 +74,7 @@ def notice_delivery() -> Workflow:
                         label="the last day to send: the law's, or the documents' stricter period, from the catalog row")
     steps = (
         step("1", "Read the notice's requirement before it goes: recipients, method, the clock with the documents' stricter period, content, evidence",
-             P, M, command="jason notices REQUIREMENT --catalog", sop=f"{key}#1", becomes="check notice-requirement-read",
-             record="the requirement read, and the key the batches will carry (REQUIREMENT-DATE)",
+             C, JASON, check=named_check("notice-requirement-read"), command="jason notices REQUIREMENT --catalog", sop=f"{key}#1",
              clock=ClockDef(ClockBasis.DOCUMENTS, label="law and the documents, from the catalog row"),
              why="Name every batch with the requirement's key and the date (lesson notice-key-names-requirement)."),
         step("2", "Plan the recipients", P, M, ("1",), command="jason delivery --notice RULE --ids data/notices/KEY/recipients.json",
@@ -112,12 +112,10 @@ def notice_delivery() -> Workflow:
         step("9", "A week on, read the letters' tracking: never mailed, returned, forwarded", W, M, ("7",), command="jason notices KEY --sync",
              clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="a week (proposed policy)"),
              why="A person notes the arrival after the sync."),
-        step("10", "Sync until nothing is owed", P, M, ("9",), command="jason notices KEY", sop=f"{key}#6",
-             becomes="check notice-owed-zero", record="owed is zero, and the day it was read",
-             why="The ledger is the record of each delivery."),
-        step("11", "Put the proof of notice together", P, M, ("10",), sop=f"{key}#7",
+        step("10", "Sync until nothing is owed", C, JASON, ("9",), check=named_check("notice-owed-zero"), command="jason notices KEY",
+             sop=f"{key}#6", why="The ledger is the record of each delivery."),
+        step("11", "Put the proof of notice together", C, JASON, ("10",), check=named_check("notice-proof"), sop=f"{key}#7",
              command="jason notices KEY --proof --event DATE [--general --posted DATE] [--have text_as_sent,...]",
-             becomes="check notice-proof", record="each evidence item on file, to attach, or owed; who was reached, and who only after the last day",
              clock=ClockDef(ClockBasis.DOCUMENTS, label="law and the documents, from the requirement's row (its windows)"),
              why="Counsel reads whether the proof is sufficient; the evidence items are the requirement's."),
         step("12", "Members reached only after the last day, or not at all", D, S, ("11",), skip=SkipRule((S,)),
@@ -125,9 +123,8 @@ def notice_delivery() -> Workflow:
              clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="the Act is silent beyond delivery; the practice in the notices guide is a policy for the board to consider"),
              why="Only on a finding: skipped, with the reason, when every member was reached in time. Counsel reads sufficiency; "
                  "the board adopts nothing here that is not written."),
-        step("13", "Keep the text and read the record", P, M, ("11",), command="jason cite jason://notice/KEY", sop=f"{key}#8",
-             becomes="check notice-kept-text", record="the notice's strength: delivered, sent with follow-ups owed, sent, or file",
-             why="A file alone is never proof: the strength reads from the ledger."),
+        step("13", "Keep the text and read the record", C, JASON, ("11",), check=named_check("notice-kept-text"),
+             command="jason cite jason://notice/KEY", sop=f"{key}#8", why="A file alone is never proof: the strength reads from the ledger."),
     )
     phases = _phases(key, ("before", "Before it goes", ("1", "2", "3")), ("read", "Read the delivery", ("4", "5", "6")),
                      ("follow", "Follow up", ("7", "8", "9", "10")), ("prove", "Prove it", ("11", "12", "13")))
@@ -144,9 +141,8 @@ def mailroom_letter() -> Workflow:
     key = "mailroom-letter"
     step = _maker(key)
     steps = (
-        step("1", "Keep the PDF within the page limit", P, M, command="jason mailroom --prices", sop=f"{key}#1",
-             becomes="check mailroom-pages", record="the page count, and what a letter costs in cents",
-             why="Four pages at most unless a person chooses otherwise; a sixth billed page adds 225 cents a letter. "
+        step("1", "Keep the PDF within the page limit", C, JASON, check=named_check("mailroom-pages"), command="jason mailroom --prices",
+             sop=f"{key}#1", why="Four pages at most unless a person chooses otherwise; a sixth billed page adds 225 cents a letter. "
                  "The vendor's pricing, not the law."),
         step("2", "Preview the recipients and the cost", P, M, ("1",), command="jason mailroom --pdf FILE --units UNITS", sop=f"{key}#3",
              becomes="job mailroom-preview", record="the recipients (by unit), the price a letter, the total in cents, and the preview's fingerprint",
@@ -164,8 +160,8 @@ def mailroom_letter() -> Workflow:
              becomes="kind payhoa-mailroom-cancel",
              clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="the cancel window is minutes (lesson letters-cannot-be-recalled)"),
              why="Ends when a person notes the letter cancelled or the window passed; after that the correction is a new notice."),
-        step("6", "Read the batch back", P, M, ("4",), command="jason mailroom --batch ID", becomes="check mailroom-batch-read",
-             record="every letter is processing or better", why="A letter that is not processing is a finding, not a retry."),
+        step("6", "Read the batch back", C, JASON, ("4",), check=named_check("mailroom-batch-read"), command="jason mailroom --batch ID",
+             why="A letter that is not processing is a finding, not a retry."),
         step("7", "A week on, read the tracking: never mailed, returned, forwarded", W, M, ("6",), sop=f"{key}#8",
              command="jason notices KEY --sync, else jason mailroom --letters KIND and --events COMMUNICATION",
              clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="a week (proposed policy)"),
@@ -186,9 +182,8 @@ def respond_sweep() -> Workflow:
         step("1", "Refresh the requests", P, M, command="jason sync-catalog", sop="respond#1", becomes="job catalog-sync",
              repeat=Repeat.PER_PERIOD, record="the catalog refreshed, with its age",
              why="Weekly, and the day before each board meeting."),
-        step("2", "Read the open requests with their clocks; open one respond-request for each, by request id", P, M, ("1",),
-             command="jason respond", sop="respond#1", becomes="check requests-read", repeat=Repeat.PER_PERIOD,
-             record="the requests read, and a respond-request opened for each (by request id, so none opens twice)",
+        step("2", "Read the open requests with their clocks; open one respond-request for each, by request id", C, JASON, ("1",),
+             check=named_check("requests-read"), command="jason respond", sop="respond#1", repeat=Repeat.PER_PERIOD,
              why="Anything overdue or due soon is named; a request read as other has its kind decided in its own run."),
         step("3", "Join the emailed requests PayHOA lacks", P, M, ("2",), command="jason request-links, then --create THREAD --yes",
              sop="respond#4", becomes="kind payhoa-request-create", repeat=Repeat.PER_ITEM, skip=by_manager,
@@ -197,9 +192,8 @@ def respond_sweep() -> Workflow:
         step("4", "Put on the agenda what the board decides", P, M, ("2",), command="jason board", skip=by_manager,
              record="the board items made (architectural, solar, EV charger, rental, and variance requests)",
              why="Before each meeting; skipped, with the reason, when nothing is the board's this week."),
-        step("5", "Monthly, read the answers on time, by kind, for the board", P, M, ("1",), command="jason respond --all", sop="respond#6",
-             becomes="check answers-on-time", repeat=Repeat.PER_PERIOD, skip=by_manager,
-             record="the figures read (counts under five shown as counts)",
+        step("5", "Monthly, read the answers on time, by kind, for the board", C, JASON, ("1",), check=named_check("answers-on-time"),
+             command="jason respond --all", sop="respond#6", repeat=Repeat.PER_PERIOD, skip=by_manager,
              why="Monthly, so a weekly sweep skips it with the reason in the other weeks."),
         step("6", "Label new requests' kinds in the gold set; measure before changing a kind rule", P, A, ("2",),
              command="jason respond --measure", sop="respond#7", skip=SkipRule((A, M)),
@@ -220,9 +214,8 @@ def respond_request() -> Workflow:
 
     records, resale, board, staff = paths("10", "11", "12", "13"), paths("14"), paths("15", "16", "17", "18", "19"), paths("20")
     steps = (
-        step("1", "Classify: kind, clock row, owner, due day", P, M, command="jason respond", sop="respond#1",
-             becomes="check request-classified", record="the kind, the clock row, the due day (PayHOA's own date beside it, never in its place)",
-             clock=ClockDef(ClockBasis.DOCUMENTS, label="per the clock row: the statute's, the documents', or a policy's"),
+        step("1", "Classify: kind, clock row, owner, due day", C, JASON, check=named_check("request-classified"), command="jason respond",
+             sop="respond#1", clock=ClockDef(ClockBasis.DOCUMENTS, label="per the clock row: the statute's, the documents', or a policy's"),
              why="A made-up due day is never shown."),
         step("2", "A kind read as other: decide its kind", P, M, ("1",), skip=by_manager, record="the kind, with a reason",
              why="Skipped unless the kind was read as other; a kind read wrongly is reopened here and the clock is recomputed."),
@@ -400,9 +393,8 @@ def form_campaign() -> Workflow:
     key = "form-campaign"
     step = _maker(key)
     steps = (
-        step("1", "Is the form offered? Tier, status, recitals, handler, marker", P, M, command="jason form-library --check [--tier T]",
-             becomes="check form-offered", record="ready, adjusted, not offered (the missing slot named), or failing",
-             why="On open."),
+        step("1", "Is the form offered? Tier, status, recitals, handler, marker", C, JASON, check=named_check("form-offered"),
+             command="jason form-library --check [--tier T]", why="On open."),
         step("2", "Stale against an amendment?", P, M, ("1",), command="jason form-library --check; jason law-history",
              becomes="check form-stale", spawns="form-library-review", record="'stale: read the amendment', or none",
              why="A stale form opens a form-library-review run; the statute's text on the shelf is the authority."),

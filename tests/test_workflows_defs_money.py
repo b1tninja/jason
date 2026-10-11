@@ -3,8 +3,8 @@ three screen pages monthly-review, county-tax-cycle, and delinquency-process).
 
 Everything here is plainly fake ("A. Manager", 2099 dates, "123 Main St"). The expected step tables are written out below from
 the page, not read back from the module: each row is (the page's word for the step, its kind here, its role). A page row of
-kind ``check`` or ``job`` is a ``person`` step here, because no money read or job is registered in ``readers.CHECKS`` or
-``readers.JOBS`` and this family adds none; its ``why`` says what it becomes.
+kind ``check`` is a ``check`` step (role jason) when ``jason.workflows.checks.money`` builds its read, else a ``person`` step
+whose ``why`` says what it becomes; a page row of kind ``job`` is a ``person`` step, because no money job is registered.
 """
 
 from __future__ import annotations
@@ -20,25 +20,26 @@ from jason.workflows import api, definitions
 from jason.workflows import definitions_general as general
 from jason.workflows.defs import all_builders, money
 from jason.workflows.readers import CHECKS, JOBS, StoreReaders
-from jason.workflows.types import ClockBasis, Elapsed, Repeat, Role, StepKind as K, StepRefused, parse_sop
+from jason.workflows.types import CheckResult, ClockBasis, Elapsed, Repeat, Role, StepKind as K, StepRefused, parse_sop
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 P, C, J, PL, D, W, B = K.PERSON, K.CHECK, K.JOB, K.PLAN, K.DECISION, K.WAIT, K.BRANCH
 M, TR, SE, PR, DI, AN = (Role.MANAGER, Role.TREASURER, Role.SECRETARY, Role.PRESIDENT, Role.DIRECTOR, Role.ANYONE)
+JA = Role.JASON
 
 SHELF = Path(__file__).resolve().parents[1] / "data"
 
 EXPECTED = {
     "bill-attach": (
-        ("snap", P, M), ("fetch", P, M), ("queue", P, M), ("srcs", P, M), ("dry", P, M), ("plan", PL, TR),
+        ("snap", C, JA), ("fetch", P, M), ("queue", C, JA), ("srcs", P, M), ("dry", P, M), ("plan", PL, TR),
         ("work", P, M), ("inv", P, M), ("hand", P, M),
     ),
     "payment-investigation": (
-        ("class", P, M), ("tried", P, M), ("rule", P, M), ("proof", P, TR), ("keep", P, TR), ("redry", P, M),
+        ("class", C, JA), ("tried", C, JA), ("rule", P, M), ("proof", P, TR), ("keep", P, TR), ("redry", P, M),
         ("attach", PL, TR), ("policy", D, SE), ("mail", W, M), ("out", B, M), ("esc", P, TR),
     ),
     "monthly-review": (
-        ("sync", P, M), ("attach", W, M), ("recon", P, TR), ("stmt", P, TR), ("bva", P, TR), ("ie", P, TR),
+        ("sync", P, M), ("attach", W, M), ("recon", C, JA), ("stmt", P, TR), ("bva", C, JA), ("ie", P, TR),
         ("regs", P, TR), ("inv", P, TR), ("xfer", P, TR), ("path", B, TR), ("rev", P, DI), ("rat", D, SE),
         ("rec", P, SE),
     ),
@@ -49,7 +50,7 @@ EXPECTED = {
         ("alt", D, SE), ("hand", P, M), ("off", D, SE), ("close", P, M),
     ),
     "fiscal-year": (
-        ("open", P, M), ("win", P, M), ("R1", P, TR), ("R2", D, SE), ("R3", P, M), ("R4", D, SE), ("R5", D, SE),
+        ("open", P, M), ("win", P, M), ("R1", C, JA), ("R2", D, SE), ("R3", P, M), ("R4", D, SE), ("R5", D, SE),
         ("B1", P, TR), ("B2", P, TR), ("B3", B, TR), ("B4", B, TR), ("B5", D, SE), ("B6", D, SE), ("B7", P, M),
         ("D1", P, M), ("D2", P, M), ("D3", P, TR), ("D4", P, TR), ("D5", P, TR), ("D6", D, SE), ("D7", W, M),
         ("D8", P, M), ("D9", P, M), ("D10", P, AN), ("D11", P, M), ("D12", P, M), ("D13", W, M), ("D14", P, M),
@@ -60,11 +61,11 @@ EXPECTED = {
         ("late", D, SE), ("sa", D, SE), ("lit", P, M),
     ),
     "insurance-renewal": (
-        ("due", P, M), ("quote", P, M), ("min", P, M), ("dec", D, SE), ("bind", P, M), ("chg", B, M), ("mem", P, M),
+        ("due", C, JA), ("quote", P, M), ("min", P, M), ("dec", D, SE), ("bind", P, M), ("chg", B, M), ("mem", P, M),
         ("sum", P, M),
     ),
     "county-tax-cycle": (
-        ("sync", P, M), ("stand", P, TR), ("bill", P, TR), ("pdf", P, TR), ("mail", P, TR), ("due", W, TR),
+        ("sync", P, M), ("stand", C, JA), ("bill", C, JA), ("pdf", P, TR), ("mail", P, TR), ("due", W, TR),
         ("pay", P, TR), ("rcpt", P, TR), ("att", PL, TR), ("cls", P, TR),
     ),
 }
@@ -156,17 +157,42 @@ def test_every_law_clock_resolves_on_the_shelf(key):
     assert all(resolve(c) is True for c in cites)
 
 
+BUILT = {
+    "bill-attach": {"snap": "bill-snapshot-fresh", "queue": "bill-queue-read"},
+    "payment-investigation": {"class": "payee-class-read", "tried": "stores-tried-read", "mail": "bill-mail-arrived"},
+    "monthly-review": {"attach": "bill-handed", "recon": "review-reconciliations", "bva": "review-budget"},
+    "fiscal-year": {"R1": "reserve-study-due"},
+    "insurance-renewal": {"due": "insurance-due"},
+    "county-tax-cycle": {"stand": "tax-standing", "bill": "tax-bill-files"},
+}
+"""The twelve reads (jason.workflows.checks.money) and the step each one is the check of: a check step, or a wait step the read ends."""
+
+
 @pytest.mark.parametrize("key", ALL)
-def test_no_step_names_a_read_or_a_job_nothing_registers(key):
+def test_each_check_a_step_names_is_a_registered_read_and_no_step_names_a_job(key):
+    from jason.workflows import checks
+
+    checks.load_all()
     wf = build(key)
-    assert not [s.id for s in wf.steps if s.kind in (C, J) or s.check is not None or s.job]
+    named = {s.id: getattr(s.check, "name", None) for s in wf.steps if s.check is not None}
+    assert named == {money.step_id(key, word): name for word, name in BUILT.get(key, {}).items()}
+    assert all(name in CHECKS for name in named.values())
+    assert not [s.id for s in wf.steps if s.kind is J or s.job]
+    assert all(s.check is not None for s in wf.steps if s.kind is C)                  # a check step names its read
+    assert all(s.role is JA for s in wf.steps if s.kind is C)
     assert {s.plan_kind for s in wf.steps if s.plan_kind} <= {"payhoa-attach-bills", "payhoa-mailroom-send"}
     assert {s.plan_kind for s in wf.steps if s.plan_kind} <= {k.key for k in registry.kinds()}
 
 
-def test_it_adds_nothing_to_the_readers_and_what_it_wants_is_not_there_yet():
+def test_it_adds_no_job_and_what_it_still_wants_is_not_there_yet_while_what_it_built_is_no_longer_wanted():
+    from jason.workflows import checks
+
+    checks.load_all()
     names = {w.split(":")[0].split(" ", 1)[1] for w in money.WANTED}
+    built = {name for words in BUILT.values() for name in words.values()}
+    assert len(built) == 12
     assert not names & set(CHECKS) and not names & set(JOBS)
+    assert built <= set(CHECKS) and not built & names
 
 
 @pytest.mark.parametrize("key", ALL)
@@ -304,7 +330,8 @@ def test_the_monthly_review_has_the_boards_the_directors_and_the_subcommittee_pa
     for word, cite in (("recon", "CIV 5500(a)"), ("stmt", "CIV 5500(d)"), ("bva", "CIV 5500(c)"), ("ie", "CIV 5500(e)"),
                        ("regs", "CIV 5500(f)")):
         s = wf.step(sid("monthly-review", word))
-        assert (s.clock.basis, s.clock.cite, s.role) == (ClockBasis.LAW, cite, TR) and s.skip is None
+        role = JA if word in ("recon", "bva") else TR                            # a read is jason's; the rest are the treasurer's
+        assert (s.clock.basis, s.clock.cite, s.role) == (ClockBasis.LAW, cite, role) and s.skip is None
     assert wf.step(sid("monthly-review", "xfer")).clock.cite == "CIV 5502(a)"
     assert [d.name for d in wf.dates] == ["month_end", "next_meeting"] and [d.required for d in wf.dates] == [True, False]
 
@@ -402,7 +429,7 @@ def test_importing_the_module_loads_nothing_beyond_the_engine_types():
     import sys
 
     code = ("import sys\n"
-            "import jason.workflows.types\n"
+            "import jason.workflows.types, jason.workflows.readers\n"
             "before = set(sys.modules)\n"
             "import jason.workflows.defs.money\n"
             "print(sorted(set(sys.modules) - before))\n")
@@ -429,8 +456,15 @@ def drive(data, key, word, by, **more):
 RID = [""]
 
 
-def test_an_insurance_renewal_runs_from_the_term_end_to_done(data):
+def passing(monkeypatch, *names):
+    """The named reads answer ok, so a run can be driven without the stores they read (their own tests read the stores)."""
+    for name in names:
+        monkeypatch.setitem(CHECKS, name, lambda r, v, i="", n=name: CheckResult(True, (), f"{n} read"))
+
+
+def test_an_insurance_renewal_runs_from_the_term_end_to_done(data, monkeypatch):
     key = "insurance-renewal"
+    passing(monkeypatch, "insurance-due")
     general.register_general()
     out = api.start(data, key, "policy:ending-2099", "Example policy", {"term_end": "2099-06-30"}, MANAGER, yes=True, today=DAY)
     RID[0] = out["run"]["id"]
@@ -439,10 +473,11 @@ def test_an_insurance_renewal_runs_from_the_term_end_to_done(data):
     def states():
         return {s["id"]: s["state"] for s in api.show(data, RID[0], today=DAY)["steps"]}
 
-    assert states()[sid(key, "due")] == "needs a person" and states()[sid(key, "quote")] == "not started"
+    assert states()[sid(key, "due")] == "done" and states()[sid(key, "quote")] == "needs a person"      # the read answered at open
+    with pytest.raises(StepRefused):
+        drive(data, key, "due", MANAGER, record="by a person's word")                                    # a read is done by its result
     with pytest.raises(StepRefused):
         drive(data, key, "dec", SECRETARY_, outcome="approved", record="the minutes")                    # not yet: it needs the proposals
-    drive(data, key, "due", MANAGER, record="Example policy, 120 days to the term end, in the window")
     drive(data, key, "quote", MANAGER, record="the agent's proposal, in the library")
     drive(data, key, "min", MANAGER, record="no finding against the required limits")
     with pytest.raises(StepRefused):
@@ -458,15 +493,19 @@ def test_an_insurance_renewal_runs_from_the_term_end_to_done(data):
 
 
 @pytest.mark.parametrize("path, ratified", [("meeting", False), ("every-director", True), ("subcommittee", True)])
-def test_a_monthly_review_asks_for_the_ratification_only_on_the_independent_paths(data, path, ratified):
+def test_a_monthly_review_asks_for_the_ratification_only_on_the_independent_paths(data, monkeypatch, path, ratified):
     key = "monthly-review"
+    passing(monkeypatch, "review-reconciliations", "review-budget")
     general.register_general()
     out = api.start(data, key, "month:2099-09", "September", {"month_end": "2099-09-30"}, MANAGER, yes=True, today=DAY)
     RID[0] = out["run"]["id"]
     api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)
     for word in ("sync", "attach"):
         api.skip(data, RID[0], sid(key, word), MANAGER, roles_of=roles_of, reason="the board reviews the stored books", readers=StoreReaders(data), today=DAY)
-    for word in ("recon", "stmt", "bva", "ie", "regs", "xfer"):
+    api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)       # the reads run now
+    states0 = {s["id"]: s["state"] for s in api.show(data, RID[0], today=DAY)["steps"]}
+    assert states0[sid(key, "recon")] == states0[sid(key, "bva")] == "done"                                  # done by their reads
+    for word in ("stmt", "ie", "regs", "xfer"):
         drive(data, key, word, TREASURER_, record=f"{word} read")
     api.skip(data, RID[0], sid(key, "inv"), TREASURER_, roles_of=roles_of, reason="no finding", readers=StoreReaders(data), today=DAY)
     drive(data, key, "path", TREASURER_, choice=path, record=path)

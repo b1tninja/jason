@@ -28,7 +28,7 @@ ROLE = {"M": Role.MANAGER, "S": Role.SECRETARY, "A": Role.ADMINISTRATOR, "J": Ro
 # id, the kind the page gives it, the kind it is built as, its role, what it needs (ids as the page numbers them)
 EXPECTED = {
     "notice-delivery": """
-        1  check    person    M  -
+        1  check    check     J  -
         2  job      person    M  1
         3  wait     wait      M  1
         4  job      person    M  3
@@ -37,27 +37,27 @@ EXPECTED = {
         7  plan     person    M  6
         8  person   person    M  7
         9  wait     wait      M  7
-        10 check    person    M  9
-        11 check    person    M  10
+        10 check    check     J  9
+        11 check    check     J  10
         12 decision decision  S  11
-        13 check    person    M  11""",
+        13 check    check     J  11""",
     "mailroom-letter": """
-        1 check  person M -
+        1 check  check  J -
         2 job    person M 1
         3 person person M 2
         4 plan   plan   M 2,3
         5 wait   wait   M 4
-        6 check  person M 4
+        6 check  check  J 4
         7 wait   wait   M 6""",
     "respond-sweep": """
         1 job    person M -
-        2 check  person M 1
+        2 check  check  J 1
         3 plan   person M 2
         4 person person M 2
-        5 check  person M 1
+        5 check  check  J 1
         6 person person A 2""",
     "respond-request": """
-        1  check    person   M -
+        1  check    check    J -
         2  person   person   M 1
         3  check    person   M 1
         4  decision decision S 3
@@ -97,7 +97,7 @@ EXPECTED = {
         9  branch branch N 8,6
         10 check  person N 9""",
     "form-campaign": """
-        1   check    person   M -
+        1   check    check    J -
         2   check    person   M 1
         3   branch   branch   M 1
         4   person   person   M 3
@@ -207,8 +207,18 @@ def test_plans_jobs_and_checks_name_only_what_is_registered_and_the_module_adds_
     plans = {s.plan_kind for w in built().values() for s in w.steps if s.kind is StepKind.PLAN}
     assert plans == {"payhoa-mailroom-send", "owner-info-tags"} and plans <= kinds
     assert not [s.id for w in built().values() for s in w.steps if s.kind is StepKind.JOB]
+    from jason.workflows import checks
+
+    checks.load_all()                                  # the members' reads live in jason.workflows.checks.members
     names = {s.check.name for w in built().values() for s in w.steps if s.check is not None}
-    assert names == {"outstanding-read"} and names <= set(CHECKS)
+    assert names == {"outstanding-read", "notice-requirement-read", "notice-owed-zero", "notice-proof", "notice-kept-text",
+                     "mailroom-pages", "mailroom-batch-read", "requests-read", "answers-on-time", "request-classified",
+                     "form-offered"} and names <= set(CHECKS)
+    # a step built as a check is jason's, and every one of them stays among the checks the page names
+    for w in built().values():
+        for s in w.steps:
+            if s.check is not None:
+                assert s.kind is StepKind.CHECK and s.role is Role.JASON and not s.job and not s.plan_kind, s.id
     # a plan step is never a person step with a plan kind, and no other step carries a kind or a job
     for w in built().values():
         for s in w.steps:
@@ -440,6 +450,32 @@ def readers_for(data):
     return StoreReaders(data, community=object(), today=DAY)
 
 
+class Community:
+    """The few things the request reads ask of a profile: topic rules and senders (none)."""
+
+    def topic_rules(self):
+        return ()
+
+    def senders(self):
+        return ()
+
+
+def store_a_request(data, ident=101):
+    """One made-up records request in the PayHOA requests store, received 2099-01-05, so the classifying read has one to find."""
+    import sqlite3
+
+    data.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(data / "payhoa.db")
+    con.execute("create table units(id integer, label text)")
+    con.execute("create table requests(id integer, form_name text, unit_id integer, status text, created_at text, raw_json text)")
+    con.execute("insert into units values (1, '101 Main St')")
+    raw = {"createdAt": "2099-01-05T18:00:00Z", "comments": [], "answers": [
+        {"question": {"label": "Title"}, "answer": "Records request"}, {"question": {"label": "Message"}, "answer": "Copies of the budget records"}]}
+    con.execute("insert into requests values (?, 'General Request', 1, 'open', '2099-01-05T18:00:00Z', ?)", (ident, json.dumps(raw)))
+    con.commit()
+    con.close()
+
+
 def test_a_run_of_the_form_library_review_starts_opens_and_a_person_attests_a_person_step(data):
     register_mine()
     out = api.start(data, "form-library-review", "period:2099", "Library review 2099", {}, ADMIN, today=DAY)
@@ -469,25 +505,33 @@ def test_a_run_of_the_form_library_review_starts_opens_and_a_person_attests_a_pe
 
 def test_a_request_run_with_a_legal_clock_needs_yes_and_a_chosen_path_skips_the_others(data):
     register_mine()
+    store_a_request(data)
+
+    def readers():
+        return StoreReaders(data, community=Community(), today=DAY)
+
     with pytest.raises(StepRefused, match="legal clock"):
-        api.start(data, "respond-request", "request:email:EXAMPLE1", "A records request", {"received_on": "2099-01-05"}, MANAGER, today=DAY)
+        api.start(data, "respond-request", "request:101", "A records request", {"received_on": "2099-01-05"}, MANAGER, today=DAY)
     with pytest.raises(StepRefused, match="received_on"):
-        api.start(data, "respond-request", "request:email:EXAMPLE1", "A records request", {}, MANAGER, yes=True, today=DAY)
-    rid = api.start(data, "respond-request", "request:email:EXAMPLE1", "A records request", {"received_on": "2099-01-05"}, MANAGER,
+        api.start(data, "respond-request", "request:101", "A records request", {}, MANAGER, yes=True, today=DAY)
+    rid = api.start(data, "respond-request", "request:101", "A records request", {"received_on": "2099-01-05"}, MANAGER,
                     yes=True, today=DAY)["run"]["id"]
-    api.open_run(data, rid, MANAGER, readers=readers_for(data), roles_of=roles_of, yes=True, today=DAY)
+    api.open_run(data, rid, MANAGER, readers=readers(), roles_of=roles_of, yes=True, today=DAY)
+    # the classifying step is jason's check: it reads the stored request, and no person attests it
+    assert {s["id"].split(".", 1)[1]: s["state"] for s in api.show(data, rid, today=DAY)["steps"]}["1"] == "done"
+    with pytest.raises(StepRefused, match="done by its result"):
+        api.attest(data, rid, "respond-request.1", MANAGER, roles_of=roles_of, readers=readers(), today=DAY, record="by hand")
 
     def act(fn, step, by=MANAGER, **more):
-        return getattr(api, fn)(data, rid, f"respond-request.{step}", by, roles_of=roles_of, readers=readers_for(data), today=DAY, **more)
+        return getattr(api, fn)(data, rid, f"respond-request.{step}", by, roles_of=roles_of, readers=readers(), today=DAY, **more)
 
-    act("attest", "1", record="kind staff question; the clock row; due per the row")
     act("skip", "2", reason="the kind was not read as other")
     act("attest", "3", record="the authority recited")
     with pytest.raises(StepRefused, match="secretary"):
         act("skip", "4", by=VISITOR, reason="x")
     act("skip", "4", by=SECRETARY, reason="the authority read gave a clock")
     act("attest", "8", choice="staff")
-    api.open_run(data, rid, MANAGER, readers=readers_for(data), roles_of=roles_of, today=DAY)
+    api.open_run(data, rid, MANAGER, readers=readers(), roles_of=roles_of, today=DAY)
     state = {s["id"].split(".", 1)[1]: s["state"] for s in api.show(data, rid, today=DAY)["steps"]}
     for n in ("10", "11", "12", "13", "14", "15", "16", "17", "18", "19"):
         assert state[n] == "skipped", n
@@ -495,7 +539,7 @@ def test_a_request_run_with_a_legal_clock_needs_yes_and_a_chosen_path_skips_the_
     # the closing step needs the staff answer, and the skipped paths do not hold it
     assert state["22"] == "not started"
     act("attest", "20", record="answered in the thread")
-    api.open_run(data, rid, MANAGER, readers=readers_for(data), roles_of=roles_of, today=DAY)
+    api.open_run(data, rid, MANAGER, readers=readers(), roles_of=roles_of, today=DAY)
     assert {s["id"].split(".", 1)[1]: s["state"] for s in api.show(data, rid, today=DAY)["steps"]}["22"] == "needs a person"
     # a legal step cannot be skipped
     with pytest.raises(StepRefused, match="cannot be skipped"):

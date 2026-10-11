@@ -17,42 +17,44 @@ from jason.workflows import api, definitions
 from jason.workflows import definitions_general as general
 from jason.workflows.defs import all_builders, board
 from jason.workflows.readers import CHECKS, JOBS
-from jason.workflows.types import ClockBasis, Role, StepKind, StepState, parse_sop
+from jason.workflows.resume import Readers
+from jason.workflows.types import CheckResult, ClockBasis, Role, StepKind, StepState, parse_sop
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 REPO = Path(__file__).resolve().parents[1]
 SHELF = REPO / "data"
-KINDS = {"p": StepKind.PERSON, "pl": StepKind.PLAN, "d": StepKind.DECISION, "w": StepKind.WAIT, "b": StepKind.BRANCH}
+KINDS = {"p": StepKind.PERSON, "pl": StepKind.PLAN, "d": StepKind.DECISION, "w": StepKind.WAIT, "b": StepKind.BRANCH,
+         "c": StepKind.CHECK}
 ROLES = {"m": Role.MANAGER, "s": Role.SECRETARY, "t": Role.TREASURER, "a": Role.ADMINISTRATOR, "j": Role.JASON,
          "any": Role.ANYONE}
 
 # key -> (builder, rows "number kind role sop"); "-" is no procedure address
 TABLE = {
     "board-meeting": (board.board_meeting, """
-        1 p m board-packet#1;  2 p s board-packet#1;  3 b s board-packet#2;  4 p m board-packet#5;  5 p m board-packet#7
+        1 p m board-packet#1;  2 c j board-packet#1;  3 b s board-packet#2;  4 p m board-packet#5;  5 p m board-packet#7
         6 p t board-packet#7;  7 p m board-packet#8;  8 p m board-packet#8;  9 p s board-packet#9;  10 p s -
-        11 pl s -;  12 p s -;  13 w s -;  14 p s board-packet#10;  15 p s -;  16 d s -;  17 p s -;  18 p s board-packet#3
-        19 p s board-packet#3;  20 p s board-packet#4;  21 d s board-packet#4;  22 p s -"""),
+        11 pl s -;  12 p s -;  13 w j -;  14 p s board-packet#10;  15 p s -;  16 d s -;  17 p s -;  18 p s board-packet#3
+        19 c j board-packet#3;  20 p s board-packet#4;  21 d s board-packet#4;  22 c j -"""),
     "rule-change": (board.rule_change, """
         0 p m -;  1 b any rule-change#1;  2 p m -;  3 p any rule-change#2;  4 p m rule-change#2;  5 p m -
         6 p s rule-change#4;  7 p s rule-change#3;  8 p s rule-change#5;  9 w s rule-change#5;  10 p s -;  11 w s -
-        12 w j -;  13 d s -;  14 p s rule-change#6;  15 p s -;  16 w s -;  17 w s -;  18 b s -;  19 p m rule-change#7
+        12 w j -;  13 d s -;  14 c j rule-change#6;  15 p s -;  16 w s -;  17 w s -;  18 b s -;  19 p m rule-change#7
         20 p m -"""),
     "election": (board.election, """
         1 b s election#1;  2 p any election#2;  2.1 d s -;  2.2 b s -;  3 p s -;  4 p s -;  5 p s -;  6 p s -
         7 p s election#4;  8 p s -;  9 p s -;  10 b s -;  10.1 d s -;  11 p s election#4;  12 pl m -;  12.1 p m -
         13 w j -;  14 p s -;  15 b s -;  15.1 p s -;  16 p s -;  17 p s election#6;  18 w s -"""),
     "hearing": (board.hearing, """
-        1 p m -;  2 p m -;  3 w s -;  4 p m -;  5 p m -;  6 pl m -;  7 p m -;  8 p m -;  9 w s -;  10 p s -;  11 d s -
+        1 p m -;  2 c j -;  3 w s -;  4 p m -;  5 p m -;  6 pl m -;  7 p m -;  8 p m -;  9 w s -;  10 p s -;  11 d s -
         12 b s -;  13 p m -;  14 w s -;  15 p s -;  16 p s -"""),
     "law-review": (board.law_review, """
-        1 p m law-review#1;  2 p m law-review#2;  3 p m law-review#3;  4 p m law-review#4;  5 p m law-review#5
+        1 p m law-review#1;  2 c j law-review#2;  3 p m law-review#3;  4 c j law-review#4;  5 p m law-review#5
         6 p m law-review#6;  7 p m law-review#7;  8 p a law-review#8;  9 p m law-review#9;  10 p m law-review#10
         11 p m law-review#11;  12 d s law-review#12;  13 d s -;  14 p m -"""),
     "duty-schedule": (board.duty_schedule, """
-        1 p m duty-schedule#1;  2 p m duty-schedule#2;  3 p m duty-schedule#3;  4 p any duty-schedule#4
+        1 c j duty-schedule#1;  2 p m duty-schedule#2;  3 p m duty-schedule#3;  4 p any duty-schedule#4
         5 b m duty-schedule#5;  5.1 pl m duty-schedule#5;  5.2 d s duty-schedule#5;  6 p m duty-schedule#6
-        7 p m duty-schedule#7;  8 d s duty-schedule#8"""),
+        7 c j duty-schedule#7;  8 d s duty-schedule#8"""),
     "document-duties": (board.document_duties, """
         1 p m document-duties#1;  2 p m document-duties#2;  3 p m document-duties#3;  4 p m document-duties#4
         5 p a document-duties#5"""),
@@ -193,11 +195,30 @@ def test_every_decision_step_is_recorded_by_the_secretary_and_no_person_step_is_
     assert sum(1 for w in build_all().values() for s in w.steps if s.kind is StepKind.DECISION) == 11
 
 
-def test_plans_use_only_the_registered_kinds_and_no_step_names_a_check_or_a_job_that_is_not_registered():
+# step id -> the read it names (jason.workflows.checks.board): the ten person steps that became checks
+CHECKED = {
+    "board-meeting.2": "meeting-clocks", "board-meeting.13": "notice-delivery-read", "board-meeting.19": "minutes-checks",
+    "board-meeting.22": "run-complete", "rule-change.14": "rule-stages", "hearing.2": "hearing-dates",
+    "law-review.2": "readings-stale", "law-review.4": "shelf-cites", "duty-schedule.1": "schedule-due",
+    "duty-schedule.7": "schedule-coverage",
+}
+
+
+def test_plans_use_only_the_registered_kinds_and_every_check_a_step_names_is_registered_and_no_job_is_named():
     plans = sorted((s.id, s.plan_kind) for w in build_all().values() for s in w.steps if s.kind is StepKind.PLAN)
     assert plans == [("board-meeting.11", "gmail-drafts"), ("duty-schedule.5.1", "gmail-drafts"),
                      ("election.12", "payhoa-mailroom-send"), ("hearing.6", "gmail-drafts")]
-    assert not [s.id for w in build_all().values() for s in w.steps if s.check is not None or s.job or s.kind in (StepKind.CHECK, StepKind.JOB)]
+    from jason.workflows.checks import load_all
+
+    load_all()
+    named = {s.id: s.check.name for w in build_all().values() for s in w.steps if s.check is not None}
+    assert named == CHECKED
+    assert all(name in CHECKS for name in named.values())
+    assert not [s.id for w in build_all().values() for s in w.steps if s.job or s.kind is StepKind.JOB]
+    for w in build_all().values():
+        for s in w.steps:
+            if s.check is not None:
+                assert s.role is Role.JASON and s.kind in (StepKind.CHECK, StepKind.WAIT) and "Becomes" not in s.why, s.id
     assert "payhoa-mailroom-send" in (definitions.default_plan_kinds() or {"payhoa-mailroom-send"})
 
 
@@ -253,11 +274,15 @@ def test_the_module_imports_only_the_engine_types_and_the_standard_library():
             mods.add(node.module)
         elif isinstance(node, ast.Import):
             mods.update(a.name for a in node.names)
-    assert mods == {"__future__", "typing", "jason.workflows.types"}
+    assert mods == {"__future__", "typing", "jason.workflows.readers", "jason.workflows.types"}
 
 
-def test_nothing_was_added_to_the_reads_or_the_jobs():
-    assert not [n for n in CHECKS if n.startswith(("meeting", "rule-", "election", "hearing", "manual", "schedule"))]
+def test_the_reads_of_this_family_are_the_ten_in_checks_board_and_no_job_was_added():
+    from jason.workflows.checks import board as reads, load_all
+
+    load_all()
+    assert {n for n in CHECKS if CHECKS[n].__module__ == reads.__name__} == set(CHECKED.values())
+    assert not [n for n in board.WANTED if n.partition(":")[2] in CHECKED.values()]
     assert set(JOBS) >= {"payhoa-form-test", "notices-sync"}
 
 
@@ -289,6 +314,13 @@ def test_a_branch_skips_the_steps_of_the_paths_not_taken():
     assert fold  # the fold reads these choices; the run below shows it
 
 
+class Pass(Readers):
+    """Every named read passes: these tests are about the paths, not the stores (the reads have tests of their own)."""
+
+    def check(self, step, view, item=""):
+        return CheckResult(True, (), "read") if step.check is not None else None
+
+
 ROLES_OF = {"J. Manager": {"manager"}, "S. Secretary": {"secretary"}, "T. Treasurer": {"treasurer"}, "A. Admin": {"administrator"}}
 
 
@@ -308,6 +340,11 @@ def states(data, rid, day=date(2099, 9, 1)):
     return {s["id"]: s["state"] for s in api.show(data, rid, today=day)["steps"]}
 
 
+def settle(data, rid):
+    """Open the run again with readers that pass every read, so a ready ``check`` step is done."""
+    api.open_run(data, rid, "J. Manager", readers=Pass(), roles_of=roles_of, today=date(2099, 9, 1))
+
+
 def attest(data, rid, step, by, **more):
     return api.attest(data, rid, step, by, roles_of=roles_of, record=more.pop("record", "recorded"), today=date(2099, 9, 1), **more)
 
@@ -316,13 +353,13 @@ def test_an_emergency_meeting_skips_the_notice_steps_and_an_executive_only_one_s
     day = date(2099, 10, 20)
     rid = start(data, "board-meeting", {"meeting_on": day.isoformat()})
     attest(data, rid, "board-meeting.1", "J. Manager")
-    attest(data, rid, "board-meeting.2", "S. Secretary")
+    settle(data, rid)
     attest(data, rid, "board-meeting.3", "S. Secretary", choice="emergency")
     got = states(data, rid)
     assert [got[f"board-meeting.{i}"] for i in (9, 10, 11, 12, 13)] == ["skipped"] * 5 and got["board-meeting.20"] != "skipped"
     rid2 = start(data, "board-meeting", {"meeting_on": day.isoformat()}, subject="2099-10-21")
-    for step, who in (("1", "J. Manager"), ("2", "S. Secretary")):
-        attest(data, rid2, f"board-meeting.{step}", who)
+    attest(data, rid2, "board-meeting.1", "J. Manager")
+    settle(data, rid2)
     attest(data, rid2, "board-meeting.3", "S. Secretary", choice="executive_only")
     got2 = states(data, rid2)
     assert got2["board-meeting.20"] == "skipped" and got2["board-meeting.9"] != "skipped"

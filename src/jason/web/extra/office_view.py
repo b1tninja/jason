@@ -302,9 +302,10 @@ def runs_for(root: Path, reading: list[str]) -> list[dict[str, Any]]:
     for r in api.runs(root, state="open"):
         wf = definitions.find(str(r.get("definition") or ""))
         step = wf.step(str(r.get("current") or "")) if wf is not None else None
-        if step is None or step.role.value not in reading:
+        held = [role.value for role in step.acting_roles if role.value in reading] if step is not None else []
+        if not held:                    # a step several roles may act on is the dock of each of them
             continue
-        out.append({"type": "run", "office": step.role.value, "id": str(r.get("id") or ""),
+        out.append({"type": "run", "office": held[0], "id": str(r.get("id") or ""),
                     "definition": str(r.get("definition") or ""), "title": wf.title if wf is not None else "",
                     "label": str(r.get("label") or ""), "step": step.id, "stepTitle": step.title,
                     "state": str(r.get("state") or ""), "due": str(r.get("due") or "") or None, "screen": "",

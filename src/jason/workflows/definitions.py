@@ -7,7 +7,9 @@ the same key overrides the earlier one. Importing this module loads no profile a
 ``validate`` refuses (docs/workflows-engine.md, section 2): a step id repeated; a ``needs`` that names no step; a cycle; a
 legal step (a law clock, or ``legal=True``) with a skip rule; a ``plan`` step whose approvals kind is not registered; a
 ``job`` step whose job is not; a ``spawns`` that names no definition; a ``law`` clock that cites nothing or whose section
-does not resolve. Each registry (the approvals kinds, the jobs, the definitions, the statutes) is an argument, so a test
+does not resolve; a step whose ``roles`` are not distinct ``Role`` values (the primary ``role`` is not repeated among them);
+a ``na`` (not-applicable outcome) on a branch or with bad roles (a legal step may carry one though it has no skip rule); a
+``waits_on_child`` with no ``spawns``; a date slot that repeats, or has a bad timing or roles. Each registry (the approvals kinds, the jobs, the definitions, the statutes) is an argument, so a test
 supplies its own; with none given, the approvals kinds are read from ``jason.approvals.registry`` when first needed, and
 a registry that is not given and cannot be read is skipped, never guessed. A definition that fails does not register,
 and the failure names the row.
@@ -18,7 +20,7 @@ from __future__ import annotations
 from typing import Callable, Collection, Iterable
 
 from jason.workflows.types import (
-    ClockBasis, InvalidWorkflow, Problem, Role, StepKind, Workflow, parse_sop,
+    ClockBasis, DateTiming, InvalidWorkflow, Problem, Role, StepKind, Workflow, parse_sop,
 )
 
 LawResolver = Callable[[str], "bool | None"]
@@ -81,10 +83,18 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
             bad(s.id, "spawns", f"spawns {s.spawns}, which is not a definition")
         if s.is_legal and s.skip is not None:
             bad(s.id, "legal-skip", "a legal step has no skip rule")
-        if s.kind is StepKind.DECISION and s.role in (Role.ANYONE, Role.JASON, Role.SCHEDULER):
+        _roles(s.id, "roles", s.roles, bad, primary=s.role)
+        every = [r for r in (s.role, *s.roles) if isinstance(r, Role)]
+        if s.kind is StepKind.DECISION and any(r in (Role.ANYONE, Role.JASON, Role.SCHEDULER) for r in every):
             bad(s.id, "role", "a decision is recorded by an office (the secretary), not by anyone or by jason")
-        if s.kind is StepKind.PERSON and s.role in (Role.JASON, Role.SCHEDULER):
+        if s.kind is StepKind.PERSON and any(r in (Role.JASON, Role.SCHEDULER) for r in every):
             bad(s.id, "role", "a person's step is not jason's")
+        if s.na is not None:
+            _roles(s.id, "na", s.na.roles, bad)
+            if s.kind is StepKind.BRANCH:
+                bad(s.id, "na", "a branch step has no not-applicable outcome: its path is chosen")
+        if s.waits_on_child and not s.spawns:
+            bad(s.id, "waits", "waits_on_child needs a step that spawns a child run")
         if s.clock is not None:
             _clock(s.id, s.clock, slots, resolve_law, bad)
         if s.sop and parse_sop(s.sop) is None:
@@ -101,9 +111,16 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
         for sid in ph.steps:
             if sid not in ids:
                 bad(ph.key, "phase", f"phase {ph.key} names {sid}, which is not a step")
+    names: set[str] = set()
     for d in workflow.dates:
+        if d.name in names:
+            bad(d.name, "date", f"date slot {d.name} repeats")
+        names.add(d.name)
         if d.after and d.after not in slots:
             bad(d.name, "date", f"date {d.name} comes after {d.after}, which is not a slot")
+        if not isinstance(d.timing, DateTiming):
+            bad(d.name, "date", f"date {d.name} has a timing that is not a DateTiming")
+        _roles(d.name, "date", d.roles, bad)
 
     # a cycle: depth-first over needs
     state: dict[str, int] = {}
@@ -123,6 +140,19 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
     for sid in needs:
         visit(sid, [])
     return out
+
+
+def _roles(row, code, roles, bad, primary=None) -> None:
+    """``roles`` must be ``Role`` values, each once (and not the step's primary, which is already one of its roles)."""
+    seen = []
+    for r in roles:
+        if not isinstance(r, Role):
+            bad(row, code, f"{r!r} is not a Role")
+        elif r in seen:
+            bad(row, code, f"role {r.value} repeats")
+        elif primary is not None and r is primary:
+            bad(row, code, f"role {r.value} is the step's primary role; roles lists the others")
+        seen.append(r)
 
 
 def _clock(row, clock, slots, resolve_law, bad) -> None:

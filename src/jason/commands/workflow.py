@@ -8,8 +8,11 @@ A workflow is a registered definition (``jason.workflows.definitions``); a run i
 - ``--open RUN --by NAME [--yes]``: a draft becomes active and the resume check runs; it appends only what changed.
 - ``--show RUN [--events]``, ``--verify RUN``, ``--reindex``, ``--from-sop KEY``: read (``--reindex`` rewrites the cache
   ``data/workflows/index.json``; ``--from-sop`` prints a DRAFT definition from a procedure and registers nothing).
-- ``--attest RUN STEP``, ``--arrived RUN STEP``, ``--skip RUN STEP``, ``--reopen RUN STEP``, ``--pause RUN``,
-  ``--resume RUN``, ``--note RUN``, ``--cancel RUN``: a named person's act, each with ``--by``.
+- ``--attest RUN STEP``, ``--arrived RUN STEP``, ``--skip RUN STEP``, ``--na RUN STEP``, ``--reopen RUN STEP``, ``--pause RUN``,
+  ``--resume RUN``, ``--note RUN``, ``--cancel RUN``, ``--set-date RUN SLOT=YYYY-MM-DD``: a named person's act, each with
+  ``--by``. ``--na`` records a step as not applicable (``--reason`` and ``--record``; not a skip, so a legal step may be
+  recorded this way). ``--set-date`` gives a late or optional date slot a day after the start (``--record``; a correction
+  also needs ``--reason``).
 
 Whether a name holds the role a step needs is read from the community's officers (``jason.access.community_officers``,
 which adds the portfolio's managers) and jason's administrators. A profile that names none leaves every role-gated act
@@ -31,7 +34,7 @@ import sys
 from datetime import date
 from typing import Any, Callable, Iterable
 
-WRITES = ("start", "open", "attest", "arrived", "skip", "pause", "resume", "reopen", "note", "cancel")
+WRITES = ("start", "open", "attest", "arrived", "skip", "na", "set_date", "pause", "resume", "reopen", "note", "cancel")
 ACTS = ("list", "definitions", "show", "verify", "reindex", "from_sop") + WRITES
 
 
@@ -125,7 +128,8 @@ def _dump(value: Any) -> str:
 
 def _event_line(e: dict[str, Any]) -> str:
     detail = e.get("detail") or {}
-    bits = [f"{k}={detail[k]}" for k in ("what", "reason", "record", "outcome", "choice", "text", "item", "child", "ok", "message")
+    bits = [f"{k}={detail[k]}" for k in ("what", "reason", "record", "outcome", "choice", "text", "item", "child", "slot", "day",
+                                        "ok", "message")
             if detail.get(k) not in (None, "", [])]
     return (f"  n={e['n']:<3} {e['at']}  {e['kind']:<17} {e.get('step', '') or '-':<20} {e.get('by', '') or '-'}"
             + (f"  ({'; '.join(str(b) for b in bits)})" if bits else ""))
@@ -152,13 +156,19 @@ def show_lines(run: dict[str, Any], *, events: bool = False) -> list[str]:
         mark = ">" if s["id"] == run["current"] else " "
         who = f"  by {s['by']} {s['at']}" if s["by"] and s["state"] in ("done", "skipped") else ""
         rec = f"  record {s['record']}" if s["record"] else ""
-        out.append(f" {mark} {s['id']:<22} {s['state']:<14} {s['kind']:<9} {s['role']:<14} {s['title']}{who}{rec}")
+        roles = "/".join(s.get("roles") or [s["role"]])
+        na = "  (not applicable)" if s.get("na") else ""
+        out.append(f" {mark} {s['id']:<22} {s['state']:<14} {s['kind']:<9} {roles:<14} {s['title']}{who}{rec}{na}")
         if s["reason"]:
             out.append(f"{'':27}{s['reason']}")
         for c in s["changed"]:
             out.append(f"{'':27}changed since: {c.get('address', '')} was {c.get('was', '')}, now {c.get('now', '')}")
         for it in s["items"]:
             out.append(f"{'':27}item {it['item']}: {it['state']}")
+    open_slots = [d for d in run.get("dateSlots", ()) if d.get("settable")]
+    if open_slots:
+        out.append("  dates a person may set (--set-date): " + ", ".join(
+            f"{d['name']}" + (f" (now {d['value']}; a correction needs a reason)" if d.get("value") else " (not set)") for d in open_slots))
     if run["clocks"]:
         out += ["", "  Clocks"]
         for c in run["clocks"]:
@@ -243,6 +253,13 @@ def _dates(pairs: list[str] | None) -> dict[str, str]:
             raise ValueError(f"--date takes NAME=YYYY-MM-DD, not {raw!r}")
         out[name.strip()] = value.strip()
     return out
+
+
+def _slot_day(pair: str) -> tuple[str, str]:
+    name, sep, value = pair.partition("=")
+    if not sep or not name.strip() or not value.strip():
+        raise ValueError(f"--set-date takes RUN SLOT=YYYY-MM-DD, not {pair!r}")
+    return name.strip(), value.strip()
 
 
 def _as_of(args: argparse.Namespace) -> date | None:
@@ -332,6 +349,15 @@ def cmd_workflow(args: argparse.Namespace) -> int:
         elif act == "skip":
             run, step = args.skip
             out = api.skip(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, readers=readers, expect=expect, today=today)
+        elif act == "na":
+            run, step = args.na
+            out = api.not_applicable(root, run, step, by, roles_of=roles_of, reason=args.reason or "", record=args.record or "",
+                                     item=item, readers=readers, expect=expect, today=today)
+        elif act == "set_date":
+            run, pair = args.set_date
+            slot, day = _slot_day(pair)
+            out = api.set_date(root, run, slot, day, by, roles_of=roles_of, record=args.record or "", reason=args.reason or "",
+                               readers=readers, expect=expect, today=today)
         elif act == "reopen":
             run, step = args.reopen
             out = api.reopen(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, readers=readers, expect=expect, today=today)
@@ -458,6 +484,12 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                         "--outcome; a branch --choice)")
     p.add_argument("--arrived", nargs=2, metavar=("RUN", "STEP"), help="note that what a wait step waits for has come (with --by)")
     p.add_argument("--skip", nargs=2, metavar=("RUN", "STEP"), help="skip a step its definition lets be skipped (with --reason, --by)")
+    p.add_argument("--na", nargs=2, metavar=("RUN", "STEP"),
+                   help="record a step as not applicable, which is not a skip (with --reason, --record, --by); only a step "
+                        "whose definition declares the outcome")
+    p.add_argument("--set-date", dest="set_date", nargs=2, metavar=("RUN", "SLOT=YYYY-MM-DD"),
+                   help="give a late or optional date slot a day after the start (with --record, --by; a correction also "
+                        "--reason)")
     p.add_argument("--reopen", nargs=2, metavar=("RUN", "STEP"), help="open a done, skipped, or failed step again (with --reason, --by)")
     p.add_argument("--pause", metavar="RUN", help="pause a run (with --reason, --by)")
     p.add_argument("--resume", metavar="RUN", help="lift a pause (with --by)")
@@ -467,7 +499,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--reindex", action="store_true", help="rebuild data/workflows/index.json from the events")
     p.add_argument("--from-sop", dest="from_sop", metavar="KEY",
                    help="print a DRAFT definition from a procedure (jason sop lists them); it is never registered")
-    p.add_argument("--record", metavar="REF", help="with --attest: the record that shows it (minutes, a sent notice, a library id)")
+    p.add_argument("--record", metavar="REF", help="with --attest, --na, or --set-date: the record that shows it (minutes, a sent "
+                                                   "notice, a library id)")
     p.add_argument("--what", metavar="TEXT", help="with --attest or --arrived: what was done, in a few words")
     p.add_argument("--outcome", metavar="WORD", help="with --attest on a decision step: adopted, approved, denied, rejected, "
                                                      "withdrawn, tabled, or pending (only a final one finishes the step)")
@@ -476,7 +509,8 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--item", action="append", metavar="ITEM", help="with --start: an item of the run (repeat); with an act "
                                                                    "on a per-item step: the item")
     p.add_argument("--step", metavar="STEP", help="with --note: the step it is about")
-    p.add_argument("--reason", metavar="TEXT", help="why: a skip, a pause, a reopen, or a cancel")
+    p.add_argument("--reason", metavar="TEXT", help="why: a skip, a not-applicable record, a pause, a reopen, a cancel, or a "
+                                                    "date correction")
     p.add_argument("--text", metavar="TEXT", help="with --note: the note")
     p.add_argument("--expect", type=int, metavar="N", help="the run's n you last saw; a run that moved on is refused")
     p.add_argument("--as-of", dest="as_of", metavar="YYYY-MM-DD", help="read the clocks as of this day (default: today)")

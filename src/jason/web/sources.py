@@ -931,7 +931,7 @@ EXTRA_LOADERS: dict[str, str] = {
 }
 EXTRA_WRITERS: dict[str, str] = {
     "controls": "jason.web.extra.controls:write",  # <control key> {act: propose}: a board item with the provision as evidence, in the signer's name (P2); adopts nothing
-    "work": "jason.web.extra.work:write",  # <definition>/<run id> {act: attest|arrived|skip|reopen|pause|resume|note|cancel|open, step?, record?, reason?, text?, expect?, yes?} and <definition>/start {subject, label, dates, yes?, dryRun?}: the engine's own act in the signer's name (P2); records and decides nothing outward
+    "work": "jason.web.extra.work:write",  # <definition>/<run id> {act: attest|arrived|skip|na|set-date|reopen|pause|resume|note|cancel|open, step?, slot?, day?, record?, reason?, text?, expect?, yes?} and <definition>/start {subject, label, dates, yes?, dryRun?}: the engine's own act in the signer's name (P2); records and decides nothing outward
     "registers": "jason.web.extra.registers:write",
     "life-safety": "jason.web.extra.life_safety:write",  # <deficiency id> {act}: confirm, impairs, cleared, insurer-told, or propose; append only, in the signer's name (P2)
     "bill-investigation": "jason.web.extra.bill_investigation:write",  # <tx> {outcome, doc?, note?}: a person's outcome, append only, in the signer's name; attaches and approves nothing

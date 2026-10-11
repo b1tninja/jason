@@ -8,7 +8,8 @@ hearing's matter, member, and unit are exactly what must not show in a run list.
 marked held. Even then its run id is opaque and its subject is a handle, never an address (docs/workflows/board-
 governance.md, section 5).
 
-Pure data, like ``definitions_general``: it imports only the engine's types, and no store, client, or profile. Nothing here
+Pure data, like ``definitions_general``: it imports only the engine's types and ``named_check`` (a name, not a read), and no
+store, client, or profile. The reads themselves are ``jason.workflows.checks.board``. Nothing here
 names an association: a run's dates are slots asked at start, a statute is cited by key and checked against the
 authorities shelf, and whoever holds a role acts.
 
@@ -16,9 +17,11 @@ How the page's table became steps (the reasons are in each step's ``why``):
 
 - **Step ids** are ``<key>.<n>`` with n the page's number (``rule-change.0`` is r0). A page row that holds two kinds is
   its number and a dotted one (``duty-schedule.5``, ``duty-schedule.5.1``).
-- **A step the page gives to jason** (a check or a job) is a ``person`` step, because no read or job of that name is
-  registered (``readers.CHECKS`` and ``JOBS`` are not touched here). Its ``why`` says what it becomes, and ``WANTED``
-  lists them. A ``plan`` is used only for a registered approvals kind: ``gmail-drafts`` (cases ``meeting-notice``,
+- **A step the page gives to jason** (a check or a job) is a ``check`` step where the read is registered
+  (``jason.workflows.checks.board``: ``meeting-clocks``, ``notice-delivery-read``, ``minutes-checks``, ``run-complete``,
+  ``rule-stages``, ``hearing-dates``, ``readings-stale``, ``shelf-cites``, ``schedule-due``, ``schedule-coverage``), and
+  otherwise a ``person`` step, because no read or job of that name is registered. Its ``why`` says what it becomes, and
+  ``WANTED`` lists them. A ``plan`` is used only for a registered approvals kind: ``gmail-drafts`` (cases ``meeting-notice``,
   ``hearing``, ``proposal-request``) and ``payhoa-mailroom-send``.
 - **A decision step** is recorded by the secretary at the board's meeting; the run never takes the vote.
 - **A law clock** is cited only where the statute is on the shelf. A computed date is the plain day-count of the
@@ -32,22 +35,21 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from jason.workflows.readers import named_check
 from jason.workflows.types import (
     Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
 )
 
-P, PL, D, W, B = StepKind.PERSON, StepKind.PLAN, StepKind.DECISION, StepKind.WAIT, StepKind.BRANCH
+P, PL, D, W, B, C = StepKind.PERSON, StepKind.PLAN, StepKind.DECISION, StepKind.WAIT, StepKind.BRANCH, StepKind.CHECK
 M, S, T, A = Role.MANAGER, Role.SECRETARY, Role.TREASURER, Role.ADMINISTRATOR
 JASON, ANYONE = Role.JASON, Role.ANYONE
 EACH = Repeat.PER_ITEM
 
 WANTED: tuple[str, ...] = (
     # reads that would be `check` steps (names to add to readers.CHECKS)
-    "check:meeting-clocks", "check:notice-delivery-read", "check:executive-note-open", "check:minutes-checks",
-    "check:run-complete", "check:rule-in-force", "check:rule-authority", "check:notice-text", "check:rule-stages",
-    "check:election-rules-window", "check:hearing-dates", "check:hearing-delivery-read", "check:hearing-requirements-met",
-    "check:hearing-minutes-note", "check:readings-stale", "check:shelf-cites", "check:retire-reasons",
-    "check:schedule-due", "check:schedule-coverage", "check:manual-headings", "check:manual-concordance",
+    "check:executive-note-open", "check:rule-in-force", "check:rule-authority", "check:notice-text",
+    "check:election-rules-window", "check:hearing-delivery-read", "check:hearing-requirements-met",
+    "check:hearing-minutes-note", "check:retire-reasons", "check:manual-headings", "check:manual-concordance",
     "check:manual-template-equal",
     # jobs (names to add to readers.JOBS)
     "job:meetings-sync", "job:board-reports-refresh", "job:board-packet-build", "job:board-notice-draw",
@@ -114,11 +116,11 @@ def board_meeting() -> Workflow:
              record="the catalog rebuilt, and when",
              why="A notice already sent must be on record before the clocks are read (SOP board-packet); cadences already run it."
                  + _become("the job `meetings-sync`")),
-        step("2", "Read the clocks forward: the last day to notice the meeting, and the minutes owed from the last one", P, S, ("1",),
-             sop="board-packet#1", command="jason schedule-evidence --watch", clock=notice_by,
-             record="the notice-by day and the minutes still owed",
+        step("2", "Read the clocks forward: the last day to notice the meeting, and the minutes owed from the last one", C, JASON, ("1",),
+             sop="board-packet#1", command="jason schedule-evidence --watch", clock=notice_by, check=named_check("meeting-clocks"),
              why="Notice is 'at least four days before the meeting' (CIV 4920(a)), or the longer period in the governing documents "
-                 "(4920(b)(3)); the last meeting's minutes are due within 30 days (4950(a))." + _become("the check `meeting-clocks`")),
+                 "(4920(b)(3)); the last meeting's minutes are due within 30 days (4950(a)). Fails when the notice-by day has passed "
+                 "with no notice on record in time (a later meeting day, noticed in time, is then needed); it never marks 4920 met."),
         step("3", "Say the kind and format of the meeting", B, S, ("2",), sop="board-packet#2",
              command="jason notices --catalog --fact board_meeting=ordinary --fact meeting_format=in_person",
              choices=(Choice("ordinary", tuple(sid(n) for n in ("9", "10", "11", "12", "13", "20"))),
@@ -162,11 +164,11 @@ def board_meeting() -> Workflow:
              record="where and when it was posted and sent",
              why="Delivery is 'by general delivery pursuant to Section 4045' (CIV 4920(c)); none on record is not none given, so the "
                  "posting is recorded. Read and link: the posting is recorded on `#/meetings` and the step reads done when it appears."),
-        step("13", "Read delivery until nothing is owed", W, S, ("12",), clock=notice_by,
-             command="jason notices board-meeting-DATE --sync",
+        step("13", "Read delivery until nothing is owed", W, JASON, ("12",), clock=notice_by,
+             command="jason notices board-meeting-DATE --sync", check=named_check("notice-delivery-read"),
              why="A file never meets the notice clock; only a delivery, or a send with follow-ups listed, does. Past the notice-by "
-                 "day with no delivery on record the run says so in the law's words (4920(a)). Ends when a person notes the delivery."
-                 + _become("the check `notice-delivery-read` with jason as the role")),
+                 "day with no delivery on record the run says so in the law's words (4920(a)). Ends when the notice ledger shows "
+                 "every copy has an outcome and one reached a member, or a posting is recorded."),
         step("14", "Share the packet with the directors", P, S, ("8",), sop="board-packet#10", command="Drive (outside the console)",
              clock=_policy("before the meeting", "meeting_on", 0), record="that the packet was shared, and when",
              why="The directors read the same packet at the same level of access."),
@@ -186,10 +188,10 @@ def board_meeting() -> Workflow:
              command="jason meetings --sync; jason board --minutes DATE", record="the minutes draft, marked DRAFT",
              why="Start soon: the minutes are due within 30 days (step 20). A local model runs only after the GPU preflight; if it "
                  "fails, the secretary writes them by hand." + _become("the job `minutes-draft`")),
-        step("19", "Read jason's checks on the draft", P, S, ("18",), sop="board-packet#3",
-             command="jason board --minutes DATE --recheck; jason minutes-privacy",
-             record="the quorum counted and the blanks listed, clean",
-             why="A draft that claims a quorum the count does not support blocks the next step." + _become("the check `minutes-checks`")),
+        step("19", "Read jason's checks on the draft", C, JASON, ("18",), sop="board-packet#3",
+             command="jason board --minutes DATE --recheck; jason minutes-privacy", check=named_check("minutes-checks"),
+             why="A draft that claims a quorum the count does not support blocks the next step. The quorum is counted and the "
+                 "blanks listed; lines are counted, never quoted."),
         step("20", "Fill the blanks, make the minutes available, and record it", P, S, ("19",), sop="board-packet#4",
              command="#/minutes-review; jason schedule --done KEY DUE --by NAME --evidence TEXT",
              clock=_law("CIV 4950(a)", "minutes available to members within 30 days of the meeting", "meeting_on", 30),
@@ -201,8 +203,8 @@ def board_meeting() -> Workflow:
              command="jason record-stages --meeting DATE", clock=_person_day("the next meeting", "next_meeting_on", 0),
              record="the decision id on that meeting's approval item",
              why="The next minutes state the approval in words ('approved: stated'); 'listed, not stated' keeps it open."),
-        step("22", "Close the run", P, S, tuple(str(i) for i in range(1, 22)), record="that every step is done or skipped",
-             why="A late-found fact reopens the run." + _become("the check `run-complete`")),
+        step("22", "Close the run", C, JASON, tuple(str(i) for i in range(1, 22)), check=named_check("run-complete"),
+             why="A late-found fact reopens the run."),
     )
     phases = _phases(sid, ("prepare", "Prepare", ("1", "2", "3", "4", "5", "6", "7", "8")),
                      ("notice", "Notice", ("9", "10", "11", "12", "13", "14")),
@@ -281,9 +283,9 @@ def rule_change() -> Workflow:
              clock=_person_day("the decision meeting", "decision_on", 0),
              why="Made at a board meeting after notice and comments (CIV 4360(a), (b)); the secretary records it, the run takes no vote. If "
                  "the words change at the meeting, whether a new notice is needed is a reading for counsel."),
-        step("14", "Record the adoption from the minutes and read the stages", P, S, ("13",), sop="rule-change#6",
-             command="jason record-stages --change KEY", record="the adoption, with the minutes reference",
-             why="The adopted words are entered from the minutes, not typed." + _become("the check `rule-stages`")),
+        step("14", "Record the adoption from the minutes and read the stages", C, JASON, ("13",), sop="rule-change#6",
+             command="jason record-stages --change KEY", check=named_check("rule-stages"),
+             why="The adopted words are entered from the minutes, not typed; the step passes when the stages show an adoption on record."),
         step("15", "Notice the adopted change", P, S, ("14",),
              clock=_law("CIV 4360(c)", "adoption notice delivered by", "decision_on", 15),
              command="jason rule-change KEY (section c)", record="the adoption notice, and its delivery day",
@@ -467,11 +469,11 @@ def hearing() -> Workflow:
              record="the matter in the board's words, the discipline the documents authorize, the penalty schedule in effect on the day",
              why="A monetary penalty may not exceed the lesser of the schedule's amount in effect at the time of the violation and $100 "
                  "per violation, unless CIV 5850(d) is met in an open meeting. No schedule check is built; this is a person's statement."),
-        step("2", "Compute the dates", P, M, ("1",), command="jason hearing --address ADDRESS --date DATE [--notice-on DATE]", clock=notice_by,
-             record="notice by, the executive-meeting notice by, and the decision notice by",
+        step("2", "Compute the dates", C, JASON, ("1",), command="jason hearing --address ADDRESS --date DATE [--notice-on DATE]", clock=notice_by,
+             check=named_check("hearing-dates"),
              why="The notice is 'at least 10 days prior to the meeting' (CIV 5855(a)); an executive-session-only meeting needs two days' "
                  "notice (4920(b)(2)). A suspension notice period of 15 days is a code constant citing Corporations Code 7341, which is "
-                 "not on the shelf: it is not recited and is not a clock here." + _become("the check `hearing-dates`")),
+                 "not on the shelf: it is not recited and is not a clock here. The read names the hearing by its handle and shows days only."),
         step("3", "Agenda item in executive session", W, S, ("2",), command="#/agenda",
              why="A `board-meeting` run holds it by its 4935 subject only ('member discipline'); if the member asks, the board 'shall meet "
                  "in executive session' (CIV 5855(b), 4935(b))."),
@@ -543,15 +545,15 @@ def law_review() -> Workflow:
         step("1", "Refresh the law and the change history", P, M, sop="law-review#1", command="jason export-authorities; jason law-history --export",
              clock=_policy("each January, and when a law takes effect mid-year"), record="the export date, and the year's chaptered bills",
              why="No statute sets the review; the board adopts it as a duty assignment." + _become("the job `law-export`")),
-        step("2", "Set aside the readings whose words changed", P, M, ("1",), sop="law-review#2", command="jason readings --stale",
-             record="the stale readings, each redone or confirmed", why="Each is redone or confirmed by the board or counsel before it is used."
-             + _become("the check `readings-stale`")),
+        step("2", "Set aside the readings whose words changed", C, JASON, ("1",), sop="law-review#2", command="jason readings --stale",
+             check=named_check("readings-stale"),
+             why="Each is redone or confirmed by the board or counsel before it is used; the stale ones are listed by key."),
         step("3", "Keep the earlier versions of the changed sections", P, M, ("1",), sop="law-review#3",
              command="jason law-history --versions --since YEAR --shelf", record="the versions kept, with the range in force; shelf differs: 0",
              why="A miss is a citation to correct." + _become("the job `law-versions`")),
-        step("4", "Check the shelf holds the sections the documents cite", P, M, ("1",), sop="law-review#4", repeat=EACH,
-             command="jason reference --cites WORK; jason ingest SOURCE", record="each cited-not-exported section added or noted",
-             why="A person adds a row for each gap." + _become("the check `shelf-cites`")),
+        step("4", "Check the shelf holds the sections the documents cite", C, JASON, ("1",), sop="law-review#4",
+             command="jason reference --cites WORK; jason ingest SOURCE", check=named_check("shelf-cites"),
+             why="A person adds a row for each gap; the step lists them and passes when none is left."),
         step("5", "Refresh the documents' outlines", P, M, ("1",), sop="law-review#5", command="jason outlines --fetch",
              record="the outlines current, with the written dates pinned", why="A document added or adopted since is a citable document."
              + _become("the job `outlines-fetch`")),
@@ -601,9 +603,10 @@ def duty_schedule() -> Workflow:
     """Every duty owned, every clock set, each occurrence done (SOP ``duty-schedule``). The subject is a month (YYYY-MM)."""
     sid, step = _ids(DS)
     steps = (
-        step("1", "Read what falls due, by role", P, M, sop="duty-schedule#1", repeat=EACH, command="jason schedule --days 45",
-             clock=_policy("each month before the board meeting", "board_meeting_on", 0), record="the occurrences read: done, overdue, due soon, upcoming",
-             why="Each duty keeps its own clock, the law's or the documents'." + _become("the check `schedule-due`")),
+        step("1", "Read what falls due, by role", C, JASON, sop="duty-schedule#1", command="jason schedule --days 45",
+             clock=_policy("each month before the board meeting", "board_meeting_on", 0), check=named_check("schedule-due"),
+             why="Each duty keeps its own clock, the law's or the documents'; the read counts the occurrences done, overdue, due "
+                 "soon, and upcoming."),
         step("2", "Read people's own tasks and events", P, M, ("1",), sop="duty-schedule#2", command="jason schedule --read-google --people",
              record="the classes: covered, untracked recurring, one-off; stale tasks",
              why="A task proposed to close is closed by its owner in Google." + _become("the job `schedule-read-google`")),
@@ -626,9 +629,9 @@ def duty_schedule() -> Workflow:
              record="the dated occurrences on the board calendar, and the open ones on each role's Tasks list",
              why="A check-off in Google is weaker evidence; record the minutes' item too."
                  + _become("a plan of kind `google.calendar` and `google.tasks`")),
-        step("7", "Check coverage", P, M, ("1",), sop="duty-schedule#7", command="jason duties --documents KEY; jason schedule --coverage",
-             record="duties with no owner, and duties on a clock nothing schedules",
-             why="A non-empty list blocks the board's adoption (step 8)." + _become("the check `schedule-coverage`")),
+        step("7", "Check coverage", C, JASON, ("1",), sop="duty-schedule#7", command="jason duties --documents KEY; jason schedule --coverage",
+             check=named_check("schedule-coverage"),
+             why="Lists the duties with no owner and the duties on a clock nothing schedules. A non-empty list blocks the board's adoption (step 8)."),
         step("8", "The board adopts the assignments", D, S, ("7",), sop="duty-schedule#8", repeat=EACH, command="{REPORT:schedule}",
              record="each assignment adopted, changed, declined, or not applicable, with the minutes",
              why="Until adopted, an assignment reads 'proposed, not adopted'."),

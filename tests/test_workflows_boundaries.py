@@ -151,13 +151,14 @@ def test_the_roles_are_the_consoles_offices_plus_the_engines_own():
     access = pytest.importorskip("jason.web.access")
     holders = {r.holder for r in access.SEE_RULES} - {access.ROSTER}
     assert holders <= {r.value for r in Role}, holders - {r.value for r in Role}
-    assert {r.value for r in Role} - holders == {"administrator", "jason", "scheduler", "anyone"}
+    assert {r.value for r in Role} - holders == {"administrator", "developer", "reviewer", "jason", "scheduler", "anyone"}
     assert Role.parse("Vice President") is Role.VICE_PRESIDENT and Role.parse("wizard") is None and Role.parse(Role.JASON) is Role.JASON
 
 
 def test_the_clock_bases_map_to_the_followups_bases_and_counterparty_has_none_yet():
     from jason.tasks.followups import Basis
 
-    assert {b.value for b in ClockBasis} == {"law", "documents", "counterparty", "proposed policy", "person"}
+    assert {b.value for b in ClockBasis} == {"law", "documents", "counterparty", "provider", "proposed policy", "person"}
     assert followup_basis(ClockBasis.LAW) is Basis.LAW and followup_basis(ClockBasis.PROPOSED_POLICY) is Basis.PROPOSED_POLICY
     assert followup_basis(ClockBasis.COUNTERPARTY) is None or followup_basis(ClockBasis.COUNTERPARTY).value == "counterparty"
+    assert followup_basis(ClockBasis.PROVIDER) is None or followup_basis(ClockBasis.PROVIDER).value == "provider"

@@ -24,7 +24,7 @@ from jason.workflows.types import ClockBasis, Role, StepKind, StepRefused, parse
 from test_workflows_support import data  # noqa: F401 - the `data` fixture
 
 ROOT = Path(__file__).resolve().parent.parent
-ROLE = {"M": Role.MANAGER, "S": Role.SECRETARY, "A": Role.ADMINISTRATOR, "N": Role.ANYONE}
+ROLE = {"M": Role.MANAGER, "S": Role.SECRETARY, "A": Role.ADMINISTRATOR, "N": Role.ANYONE, "J": Role.JASON}
 KINDS = {k.value: k for k in StepKind}
 
 # id (as the page names it), the kind the page gives it, the kind it is built as, its role, what it needs
@@ -61,9 +61,9 @@ EXPECTED = {
         6 job    person M 5
         7 plan   person M 6
         8 job    person M 1
-        9 check  person M 7""",
+        9 check  check J 7""",
     "record-slot": """
-        1  check  person M -
+        1  check  check J -
         2  branch person N 1
         3  person person N 2
         4  job    person N 3
@@ -74,32 +74,32 @@ EXPECTED = {
         9  person person N 2
         10 wait   wait   N 9
         11 person person N 3
-        12 check  person M 1""",
+        12 check  check J 1""",
     "split-document": """
         1 person person N -
         2 job    person N 1
         3 person person N 2
-        4 check  person N 3
+        4 check  check J 3
         5 branch branch N 4
         6 person person N 4,5
         7 job    person N 6
         8 person person N 1""",
     "onboard": """
         ST-0  branch   branch   M -
-        ST-1  check    person   M -
+        ST-1  check    check   J -
         ST-2  person   person   A ST-1
         ST-3  job      person   M ST-2
         ST-4  check    person   M ST-2
         ST-5  person   person   A ST-1
         ST-6  person   person   A ST-1
-        ST-7  check    person   M ST-4,ST-5,ST-6
+        ST-7  check    check   J ST-4,ST-5,ST-6
         IN-1  check    person   M ST-7
         IN-2  person   person   N IN-1
         IN-3  person   person   M ST-7
         IN-4  wait     wait     M IN-3
         IN-5  person   person   M IN-4
         IN-6  job      person   M ST-7
-        IN-7  check    person   M IN-1,IN-5,IN-6
+        IN-7  check    check   J IN-1,IN-5,IN-6
         ES-1  person   person   M IN-7
         ES-2  person   person   N ES-1
         ES-3  person   person   N ST-7,ES-3b
@@ -107,15 +107,15 @@ EXPECTED = {
         ES-4  person   person   N ES-3
         ES-5  person   person   M ES-3,ES-4
         ES-6  person   person   M ES-5
-        ES-7  check    person   M ES-2,ES-6
+        ES-7  check    check   J ES-2,ES-6
         OP-1  person   person   M ST-7
         OP-2  person   person   N ES-3
         OP-3  person   person   A ST-6
-        OP-4  check    person   M OP-1,OP-2,OP-3
+        OP-4  check    check   J OP-1,OP-2,OP-3
         AD-1  person   person   M ES-6
         AD-2  person   person   N AD-1
-        AD-3  check    person   M ST-7,IN-7,ES-7,OP-4
-        AD-4  check    person   M AD-2,AD-3
+        AD-3  check    check   J ST-7,IN-7,ES-7,OP-4
+        AD-4  check    check   J AD-2,AD-3
         AD-5  person   person   M ST-7,IN-7,ES-7,OP-4,AD-4
         CM-1  person   person   M ST-7,ST-0
         CM-2  decision decision S CM-1
@@ -129,7 +129,7 @@ EXPECTED = {
         5 person person M 4
         6 wait   wait   M 2""",
     "key-document": """
-        1 check  person M -
+        1 check  check J -
         2 person person M 1
         3 wait   wait   M 2
         4 person person N 3
@@ -281,11 +281,39 @@ def test_wanted_lists_each_unbuilt_read_job_and_kind_once_and_none_of_them_exist
         records.becomes("job", "not-in-the-list")
 
 
-def test_no_step_names_a_plan_a_job_or_a_check_because_none_of_this_family_is_registered():
+CHECK_STEPS = {
+    "ingest.9": "ingest-gate", "record-slot.1": "record-slots-read", "record-slot.12": "onboard-gates-read",
+    "split-document.4": "split-review", "key-document.1": "key-document-status", "onboard.ST-1": "active-community",
+    "onboard.ST-7": "onboard-gate-start", "onboard.IN-7": "onboard-gate-ingest", "onboard.ES-7": "onboard-gate-establish",
+    "onboard.OP-4": "onboard-gate-operate", "onboard.AD-3": "onboard-checklist", "onboard.AD-4": "onboard-gate-adopt",
+}
+"""The steps built as a read, and the read each names (jason.workflows.checks.records)."""
+
+
+def test_no_step_names_a_plan_or_a_job_and_each_check_step_is_jasons_and_names_a_registered_read():
+    from jason.workflows import checks
+
+    checks.load_all()
+    found = {}
     for w in everything().values():
         for s in w.steps:
-            assert s.kind not in (StepKind.PLAN, StepKind.JOB, StepKind.CHECK), s.id
-            assert not s.job and not s.plan_kind and s.check is None, s.id
+            assert s.kind not in (StepKind.PLAN, StepKind.JOB), s.id
+            assert not s.job and not s.plan_kind, s.id
+            if s.kind is StepKind.CHECK:
+                found[s.id] = s.check.name
+                assert s.role is Role.JASON and not s.record, s.id
+                assert s.check.name in CHECKS, s.id
+            else:
+                assert s.check is None, s.id
+    assert found == CHECK_STEPS and len(found) == 12
+    assert not set(found.values()) & {w.partition(":")[2] for w in records.WANTED}, "a read built now is no longer wanted"
+
+
+def test_the_reads_wanted_are_the_ones_no_existing_function_answers_safely():
+    left = sorted(w for w in records.WANTED if w.startswith("check:"))
+    assert left == [f"check:{n}" for n in (
+        "designation-on-file", "document-kind-read", "key-document-verified", "parcel-strand-gaps", "profile-own-facts",
+        "quotes-verified", "record-compare", "request-kinds-mapped", "scratch-room")]
 
 
 def test_the_child_runs_name_definitions_that_exist():
@@ -615,13 +643,14 @@ def test_a_parcel_title_run_goes_from_start_to_done_on_a_temporary_data_folder(d
     assert not list(data.rglob("*.pdf"))                                                     # a run writes only its own events
 
 
-def test_onboard_a_new_association_skips_the_change_of_manager_block_and_the_fork_is_a_persons_answer(data):
+def test_onboard_a_new_association_skips_the_change_of_manager_block_and_the_fork_is_a_persons_answer(data, monkeypatch):
+    monkeypatch.setenv("JASON_COMMUNITY", "example")
     general.register_general()
     key = "onboard"
     rid = api.start(data, key, "association:example", "A new association", {}, MANAGER, today=DAY)["run"]["id"]
     reopen(data, rid)
     st = states(data, rid, key)
-    assert st["ST-0"] == "needs a person" and st["ST-1"] == "needs a person" and st["CM-1"] == "not started"
+    assert st["ST-0"] == "needs a person" and st["ST-1"] == "done" and st["CM-1"] == "not started"     # the active community is the run's
     with pytest.raises(StepRefused, match="choose one of"):
         act(data, rid, "attest", key, "ST-0", choice="neither")
     act(data, rid, "attest", key, "ST-0", choice="new-association")
@@ -635,16 +664,19 @@ def test_onboard_a_new_association_skips_the_change_of_manager_block_and_the_for
         act(data, rid, "attest", key, "ST-5", record="the sign-ins made")
 
 
-def test_onboard_a_change_of_manager_keeps_the_block_and_the_secretary_alone_records_the_boards_decision(data):
+def test_onboard_a_change_of_manager_keeps_the_block_and_the_secretary_alone_records_the_boards_decision(data, monkeypatch):
+    monkeypatch.setenv("JASON_COMMUNITY", "example")
     general.register_general()
     key = "onboard"
     dates = {"term_ends": "2099-12-31", "transition_on": "2099-11-15"}
     rid = api.start(data, key, "association:example", "A change of manager", dates, MANAGER, today=DAY)["run"]["id"]
     reopen(data, rid)
     act(data, rid, "attest", key, "ST-0", choice="change-of-manager")
-    act(data, rid, "attest", key, "ST-1", record="the active profile, named")
+    with pytest.raises(StepRefused, match="not a person's|done by its result"):
+        act(data, rid, "attest", key, "ST-1", record="the active profile, named")             # a read, not a person's word
     reopen(data, rid)
     st = states(data, rid, key)
+    assert st["ST-1"] == "done"
     assert st["CM-1"] == "not started" and st["CM-2"] == "not started" and st["ST-0"] == "done"
     clocks = {c["key"]: c for c in api.show(data, rid, today=DAY)["clocks"]}
     assert clocks["onboard.CM-1"]["due"] == "2099-12-31" and clocks["onboard.CM-1"]["basis"] == "documents"
@@ -652,12 +684,27 @@ def test_onboard_a_change_of_manager_keeps_the_block_and_the_secretary_alone_rec
     assert not any(c["basis"] == "law" for c in clocks.values())
 
 
-def test_a_record_slot_run_started_with_two_slots_is_done_slot_by_slot(data):
+def test_onboard_a_wrong_community_blocks_the_steps_after_the_first_read(data, monkeypatch):
+    monkeypatch.setenv("JASON_COMMUNITY", "another")
     general.register_general()
+    key = "onboard"
+    rid = api.start(data, key, "association:example", "A new association", {}, MANAGER, today=DAY)["run"]["id"]
+    reopen(data, rid)
+    act(data, rid, "attest", key, "ST-0", choice="new-association")
+    reopen(data, rid)
+    shown = {s["id"]: s for s in api.show(data, rid, today=DAY)["steps"]}
+    assert shown["onboard.ST-1"]["state"] == "failed" and "another" in shown["onboard.ST-1"]["reason"]
+    assert shown["onboard.ST-2"]["state"] in ("blocked", "not started")
+
+
+def test_a_record_slot_run_started_with_two_slots_is_done_slot_by_slot(data, monkeypatch):
+    from jason.workflows.types import CheckResult
+
+    general.register_general()
+    monkeypatch.setitem(CHECKS, "record-slots-read", lambda readers, view, item="": CheckResult(True, (), "2 slots read"))
     key = "record-slot"
     rid = api.start(data, key, "association:example", "The checklist", {}, MANAGER, items=["slot-1", "slot-2"], today=DAY)["run"]["id"]
     reopen(data, rid)
-    act(data, rid, "attest", key, "1", record="2 slots read")
     reopen(data, rid)
     s2 = next(s for s in api.show(data, rid, today=DAY)["steps"] if s["id"] == f"{key}.2")
     assert {i["item"] for i in s2["items"]} == {"slot-1", "slot-2"} and s2["state"] == "needs a person"

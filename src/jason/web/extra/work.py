@@ -9,7 +9,8 @@ the small acts, over ``jason.workflows``.
 - ``GET /api/work-definitions[?family=&key=&role=&mine=1]``: the workflows jason has, with drift from their procedures; with
   ``key`` one definition read whole (its steps, clocks, and the statute words a law clock cites).
 - ``POST /api/write/work/<definition>/<run id>`` with ``{act, step?, record?, reason?, text?, ...}``: ``attest``, ``arrived``,
-  ``skip``, ``reopen``, ``pause``, ``resume``, ``note``, ``cancel``, ``open``, each one ``jason.workflows.api`` function with
+  ``skip``, ``na`` (a step recorded as not applicable, with a reason and a record), ``set-date`` (a late or optional date slot
+  given a day, with a record), ``reopen``, ``pause``, ``resume``, ``note``, ``cancel``, ``open``, each one ``jason.workflows.api`` function with
   the signed-in person's own name as ``by`` and the roles their offices hold. ``POST /api/write/work/start`` (or
   ``.../<definition>/start``) with ``{definition, subject, label, dates, items?, yes?, dryRun?}`` starts a draft run.
 
@@ -35,22 +36,24 @@ from typing import Any, Iterable
 
 Args = dict[str, str]
 
-ACTS = ("attest", "arrived", "skip", "reopen", "pause", "resume", "note", "cancel", "open")
+ACTS = ("attest", "arrived", "skip", "na", "set-date", "reopen", "pause", "resume", "note", "cancel", "open")
 GROUPS = (("yours", "Yours"), ("others", "Waiting on others"), ("clock", "Waiting on a clock"), ("board", "The board"))
 DUE_FILTERS = ("soon", "week", "overdue", "legal", "past")
 WEEK = 7
-BASIS_WORDS = {"law": "LEGAL", "documents": "DOCUMENTS", "counterparty": "COUNTERPARTY", "proposed policy": "PROPOSED",
-               "person": "PERSON"}
+BASIS_WORDS = {"law": "LEGAL", "documents": "DOCUMENTS", "counterparty": "COUNTERPARTY", "provider": "PROVIDER",
+               "proposed policy": "PROPOSED", "person": "PERSON"}
 READING_LABEL = "jason's reading, not the provision"
 ACTING_REFUSED = "Viewing as {who} (admin view): go back to yourself first. A step is recorded in a person's own name."
 DECISION_ELSEWHERE = ("A decision is recorded in Decisions by the secretary; this screen does not record it, and the step "
                       "reads done once the decision is on record.")
 PLAN_ELSEWHERE = "A plan is decided and applied in Approvals; the run reads the result."
 NO_RUN = "no run {rid} of {definition}"
-ROLE_REFUSALS = (" role that ", "may not skip", "may not cancel", "engine's own name", " allows only ",
+ROLE_REFUSALS = (" role that ", "may not skip", "may not record", "may not set date", "may not cancel",
+                 "engine's own name", " allows only ",
                  "made the first, so a different person")
 KEPT = ("what", "reason", "record", "outcome", "motion", "choice", "item", "ok", "message", "text", "status", "job", "approval",
-        "child", "definition", "until", "found", "activated", "legal_clock", "draft", "subject", "label", "dates")
+        "child", "definition", "until", "found", "activated", "legal_clock", "draft", "subject", "label", "dates", "slot", "day",
+        "was")
 TEXTS = frozenset({"what", "reason", "record", "outcome", "motion", "message", "text", "label", "subject"})
 CAVEATS = (
     "Read from the stores on disk. jason decides nothing: a date is the law's, the documents', a counterparty's, jason's "
@@ -115,6 +118,10 @@ class Who:
         if word in ("jason", "scheduler"):
             return False
         return bool(self.account) and (word == "anyone" or word in self.roles)
+
+    def holds_step(self, sd: Any) -> bool:
+        """Whether the viewer holds any role that may act on the step (its primary role or one of the others)."""
+        return any(self.holds(r) for r in sd.acting_roles)
 
     def roles_of(self, name: str) -> tuple[str, ...]:
         """The engine's ``roles_of``: the signer's roles, and no one else's."""
@@ -229,6 +236,11 @@ def _words(role: Any) -> str:
     return word if word in ("jason", "scheduler", "anyone") else f"the {word}"
 
 
+def _step_words(sd: Any) -> str:
+    """Who may act on a step in words: the one role, or each of its roles joined by "or"."""
+    return " or ".join(_words(r) for r in sd.acting_roles)
+
+
 # -- the pressing step, whose move it is, the group ------------------------------------------------------------------------
 
 
@@ -277,7 +289,7 @@ def _waiting_on(wf: Any, view: Any, sv: Any) -> dict[str, Any]:
                 "detail": "the next time the run is opened" if sv.state is StepState.READY else _mask(sv.reason)}
     if sd.kind is StepKind.DECISION:
         return {"kind": "board", "word": f"the board; the {sd.role.value} records", "role": sd.role.value, "detail": ""}
-    return {"kind": "office", "word": _words(sd.role), "role": sd.role.value, "detail": ""}
+    return {"kind": "office", "word": _step_words(sd), "role": sd.role.value, "detail": ""}
 
 
 def _group(wf: Any, view: Any, sv: Any, who: Who) -> str:
@@ -296,7 +308,7 @@ def _group(wf: Any, view: Any, sv: Any, who: Who) -> str:
         return "clock" if dated and not sd.spawns else "others"
     if sd.kind is StepKind.DECISION:
         return "board"
-    if sv.state in (StepState.NEEDS_PERSON, StepState.FAILED, StepState.READY) and who.holds(sd.role):
+    if sv.state in (StepState.NEEDS_PERSON, StepState.FAILED, StepState.READY) and who.holds_step(sd):
         return "yours"
     return "others"
 
@@ -320,7 +332,7 @@ def _row(wf: Any, run: Any, view: Any, who: Who, day: date) -> dict[str, Any]:
                     else {"id": "", "title": "", "n": 0, "of": len(wf.steps), "kind": "", "state": "", "role": ""}),
         "owner": sd.role.value if sd is not None else "",
         "waitingOn": _waiting_on(wf, view, sv) if open_run else None,
-        "mine": bool(sd is not None and who.holds(sd.role) and open_run and view.state.value != "paused"),
+        "mine": bool(sd is not None and who.holds_step(sd) and open_run and view.state.value != "paused"),
         "due": due, "pastLaw": bool(view.past_law), "age": _age(view, day), "paused": view.state.value == "paused",
         "pausedReason": _mask(view.paused_reason),
     }
@@ -567,7 +579,7 @@ def _notice(sd: Any, ctx: Who, view: Any) -> dict[str, Any]:
 
     sv = view.step(sd.id)
     acting = view.state in ACTING
-    holds = ctx.holds(sd.role)
+    holds = ctx.holds_step(sd)
     offered, refused = [], {}
 
     def refuse(act: str, why: str) -> None:
@@ -579,7 +591,7 @@ def _notice(sd: Any, ctx: Who, view: Any) -> dict[str, Any]:
         elif sv.state is not StepState.NEEDS_PERSON:
             refuse("attest", f"This step is {sv.state.value}, not waiting on a person.")
         elif not holds:
-            refuse("attest", f"Waiting on {_words(sd.role)}.")
+            refuse("attest", f"Waiting on {_step_words(sd)}.")
         else:
             offered.append("attest")
     elif sd.kind is StepKind.DECISION:
@@ -590,23 +602,31 @@ def _notice(sd: Any, ctx: Who, view: Any) -> dict[str, Any]:
         if acting and sv.state is StepState.WAITING and holds:
             offered.append("arrived")
         elif not holds:
-            refuse("arrived", f"Waiting on {_words(sd.role)}.")
+            refuse("arrived", f"Waiting on {_step_words(sd)}.")
     if sd.skip is None or sd.is_legal:
         refuse("skip", "Skip is not offered: this step is required by the law." if sd.is_legal
                else "Skip is not offered: the definition gives this step no skip rule.")
     else:
-        allowed = sd.skip.roles or (sd.role,)
+        allowed = sd.skip.roles or sd.acting_roles
         if not acting or sv.state in (StepState.DONE, StepState.SKIPPED, StepState.SUPERSEDED):
             refuse("skip", f"This step is {sv.state.value}.")
         elif not any(ctx.holds(r) for r in allowed):
             refuse("skip", f"Only {', '.join(_words(r) for r in allowed)} may skip this step.")
         else:
             offered.append("skip")
+    if sd.na is not None:        # a step with the not-applicable outcome (a legal step may carry it; it is not a skip)
+        allowed = sd.na.roles or sd.acting_roles
+        if not acting or sv.state in (StepState.DONE, StepState.SKIPPED, StepState.SUPERSEDED):
+            refuse("na", f"This step is {sv.state.value}.")
+        elif not any(ctx.holds(r) for r in allowed):
+            refuse("na", f"Only {', '.join(_words(r) for r in allowed)} may record this step as not applicable.")
+        else:
+            offered.append("na")
     if sv.state in (StepState.DONE, StepState.SKIPPED, StepState.FAILED) and view.state not in (RunState.CANCELLED, RunState.DRAFT):
         if holds:
             offered.append("reopen")
         else:
-            refuse("reopen", f"Only {_words(sd.role)} may reopen this step.")
+            refuse("reopen", f"Only {_step_words(sd)} may reopen this step.")
     return {"acts": offered, "notOffered": refused}
 
 
@@ -622,12 +642,17 @@ def _run_acts(wf: Any, view: Any, ctx: Who, acting_as: str) -> dict[str, Any]:
              or any(wf.step(s.id) is not None and wf.step(s.id).is_legal and s.state not in (StepState.DONE, StepState.SKIPPED)
                     for s in view.steps))
     cancel_ok = not legal or any(ctx.holds(r) for r in CANCEL_ROLES)
+    settable = [d for d in view.date_slots if d.settable]
+    may_set = [d.name for d in settable if (wf.slot(d.name).roles == () or any(ctx.holds(r) for r in wf.slot(d.name).roles))]
     return {
         "open": one(state is RunState.DRAFT, "" if state is RunState.DRAFT else f"The run is {state.value}, not a draft.",
                     needsYes=wf.has_legal_clock()),
         "pause": one(state in ACTING, "" if state in ACTING else f"The run is {state.value}; only a running run is paused."),
         "resume": one(state is RunState.PAUSED, "" if state is RunState.PAUSED else f"The run is {state.value}, not paused."),
         "note": one(True),
+        "setDate": one(bool(may_set), ("" if may_set else ("No date is left to set on this run." if not settable
+                                                           else "Only the roles the definition names may set these dates.")),
+                       slots=may_set),
         "cancel": one(state not in (RunState.CANCELLED, RunState.DONE) and cancel_ok,
                       "" if state not in (RunState.CANCELLED, RunState.DONE) and cancel_ok
                       else (f"The run is already {state.value}." if state in (RunState.CANCELLED, RunState.DONE)
@@ -662,6 +687,13 @@ def _sentence(e: Any, titles: dict[str, str], order: dict[str, int]) -> str:
         return f"{who} noted that what {step} waits for has come"
     if k == "skipped":
         return f"{who} skipped {step}" + (f": {note('reason')}" if note("reason") else "")
+    if k == "not-applicable":
+        return (f"{step[:1].upper()}{step[1:]} recorded as not applicable by {who}" + (f": {note('reason')}" if note("reason") else "")
+                + (f" ({note('record')})" if note("record") else ""))
+    if k == "date-set":
+        return (f"{who} set date {d.get('slot', '?')} to {d.get('day', '?')}"
+                + (f", correcting {d['was']}" if d.get("was") else "") + (f": {note('reason')}" if note("reason") else "")
+                + (f" ({note('record')})" if note("record") else ""))
     if k == "reopened":
         return f"{who} reopened {step}" + (f": {note('reason')}" if note("reason") else "")
     if k == "check-ran":
@@ -729,6 +761,26 @@ def _changed_rows(view: Any, events: list[Any], titles: dict[str, str], order: d
     return out
 
 
+def _na_outcome(sd: Any) -> dict[str, Any] | None:
+    """The not-applicable outcome a step declares: who may record it and what it asks for (a legal step may carry one)."""
+    if sd.na is None:
+        return None
+    return {"roles": [r.value for r in (sd.na.roles or sd.acting_roles)], "reasonRequired": sd.na.reason_required,
+            "recordRequired": sd.na.record_required}
+
+
+def _slot_rows(view: Any, wf: Any) -> list[dict[str, Any]]:
+    """Each date slot of the run: its day, who set it after the start, and whether a person may set it now."""
+    out = []
+    for d in view.date_slots:
+        slot = wf.slot(d.name)
+        out.append({"name": d.name, "label": d.label, "value": d.value or None, "required": d.required, "late": d.late,
+                    "settable": d.settable, "correction": d.correction, "timing": d.timing, "sets": d.sets,
+                    "setBy": d.set_by or None, "setAt": d.set_at or None, "record": _mask(d.record) or None,
+                    "after": slot.after if slot is not None else "", "roles": [r.value for r in (slot.roles if slot else ())]})
+    return out
+
+
 def _step_controls(root: Path, wf: Any, steps: list[dict[str, Any]], events: list[Any], day: date) -> list[dict[str, str]]:
     """Put ``controls`` on each step an adopted control bites on (docs/console/screens/controls.md, "The required-by-a-control
     line"): one row for each gate, with the sentence the engine refuses with. Nothing is added when no controls source is
@@ -745,10 +797,11 @@ def _step_controls(root: Path, wf: Any, steps: list[dict[str, Any]], events: lis
         attestable = []
         for sd in wf.steps:
             if sd.kind in (StepKind.PERSON, StepKind.DECISION) or (sd.kind is StepKind.BRANCH and sd.check is None) or (
-                    sd.skip is not None and not sd.is_legal):
-                attestable.append((sd.id, sd.role.value))
-        pending = {sid: api.pending_first(events, sid, "attest") or api.pending_first(events, sid, "skip")
-                   for sid, _ in attestable}
+                    sd.skip is not None and not sd.is_legal) or sd.na is not None:
+                attestable.append((sd.id, sd.role.value, tuple(r.value for r in sd.acting_roles)))
+        pending = {sid: (api.pending_first(events, sid, "attest") or api.pending_first(events, sid, "skip")
+                         or api.pending_first(events, sid, "na"))
+                   for sid, *_ in attestable}
         rows = view.step_controls(root, wf.key, wf.family, attestable, today=day, pending=pending, community=_community())
     except Exception as exc:  # noqa: BLE001 - the page says what it could not read
         return [{"what": "The controls the board adopted", "why": f"could not be read here ({type(exc).__name__}); the server still refuses an act a control forbids"}]
@@ -791,12 +844,14 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
         mine = by_step.get(sd.id, [])
         step: dict[str, Any] = {
             "id": sd.id, "n": i, "of": len(wf.steps), "title": sd.title, "kind": sd.kind.value, "role": sd.role.value,
+            "roles": [r.value for r in sd.acting_roles], "na": sv.na, "naOutcome": _na_outcome(sd),
+            "waitsOnChild": sd.waits_on_child, "children": list(sv.children),
             "state": sv.state.value, "reason": _mask(sv.reason), "phase": phase[0], "phaseTitle": phase[1],
             "group": _step_group(wf, sd.id), "why": sd.why, "command": sd.command, "sop": sd.sop, "legal": sd.is_legal,
             "needsRecord": sd.record, "record": _mask(sv.record), "by": sv.by, "at": sv.at, "current": bool(pressing and pressing.id == sd.id),
             "blockedBy": list(sv.blocked_by), "items": [{"item": it, "state": st.value} for it, st in sv.items],
             "choice": sv.choice, "choices": [c.key for c in sd.choices], "spawns": sd.spawns,
-            "skip": ({"roles": [r.value for r in (sd.skip.roles or (sd.role,))], "reasonRequired": sd.skip.reason_required}
+            "skip": ({"roles": [r.value for r in (sd.skip.roles or sd.acting_roles)], "reasonRequired": sd.skip.reason_required}
                      if sd.skip is not None and not sd.is_legal else None),
             "clock": ({"slot": sd.clock.slot, "days": sd.clock.days, "label": sd.clock.label, "cite": sd.clock.cite,
                        **_basis(sd.clock)} if sd.clock is not None else None),
@@ -804,7 +859,7 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
                 {"address": _safe_address(c.get("address")), "was": c.get("was"), "now": c.get("now")} for c in sv.changed],
             "waitingOn": (_waiting_on(wf, view, sv) if sv.state.value in ("ready", "running", "waiting", "needs a person", "failed")
                           else None),
-            "yours": bool(who.holds(sd.role) and sv.state.value in ("needs a person", "failed", "ready")),
+            "yours": bool(who.holds_step(sd) and sv.state.value in ("needs a person", "failed", "ready")),
             **_notice(sd, who, view),
         }
         if acting_as:
@@ -857,6 +912,7 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
             "id": rid, "definition": wf.key, "definitionTitle": wf.title, "family": wf.family, "label": _mask(view.label),
             "subject": _mask(view.subject), "subjectKind": wf.subject, "state": view.state.value, "n": run.n, "updated": view.updated,
             "opened": view.opened_at, "openedBy": view.owner, "dates": dict(view.dates), "itemCount": len(view.items),
+            "dateSlots": _slot_rows(view, wf), "openSlots": [d.name for d in view.date_slots if d.settable],
             "parent": view.parent, "children": list(view.children), "pausedReason": _mask(view.paused_reason),
             "cancelledReason": _mask(view.cancelled_reason), "torn": bool(run.torn), "corrupt": run.corrupt,
             "orphans": list(view.orphans), "pastLaw": list(view.past_law), "age": _age(view, day),
@@ -925,11 +981,12 @@ def _definition_row(wf: Any, who: Who, find: Any, drifted: dict[str, list[str]])
         "key": wf.key, "title": wf.title, "family": wf.family, "subjectKind": wf.subject, "steps": len(wf.steps),
         "phases": [{"key": p.key, "title": p.title, "steps": len(p.steps)} for p in wf.phases],
         "dates": [{"name": d.name, "label": d.label, "required": d.required, "after": d.after,
-                   "rule": f"may not come before {d.after}" if d.after else ""} for d in wf.dates],
+                   "rule": f"may not come before {d.after}" if d.after else "", "late": d.late, "settable": d.settable,
+                   "timing": d.timing.value} for d in wf.dates],
         "legalClock": wf.has_legal_clock(), "procedure": wf.procedure,
         "procedureSteps": len(proc.steps) if proc is not None else None,
         "drift": {"ok": not why, "why": why}, "cadence": "", "startable": True, "startedBy": [], "needsYes": wf.has_legal_clock(),
-        "roles": sorted({s.role.value for s in wf.steps}), "mySteps": any(who.holds(s.role) for s in wf.steps),
+        "roles": sorted({r.value for s in wf.steps for r in s.acting_roles}), "mySteps": any(who.holds_step(s) for s in wf.steps),
         "lessons": [{"key": l.key, "status": l.status.value} for l in found if l is not None],
     }
 
@@ -948,12 +1005,15 @@ def _definition_page(wf: Any, root: Path, day: date) -> dict[str, Any]:
 
     return {
         "key": wf.key, "title": wf.title, "family": wf.family, "subjectKind": wf.subject, "procedure": wf.procedure,
-        "dates": [{"name": d.name, "label": d.label, "required": d.required, "after": d.after} for d in wf.dates],
+        "dates": [{"name": d.name, "label": d.label, "required": d.required, "after": d.after, "late": d.late,
+                   "settable": d.settable, "timing": d.timing.value} for d in wf.dates],
         "clocks": [clock(c) for c in wf.clocks],
-        "steps": [{"id": s.id, "n": i, "title": s.title, "kind": s.kind.value, "role": s.role.value, "needs": list(s.needs),
+        "steps": [{"id": s.id, "n": i, "title": s.title, "kind": s.kind.value, "role": s.role.value,
+                   "roles": [r.value for r in s.acting_roles], "naOutcome": _na_outcome(s), "waitsOnChild": s.waits_on_child,
+                   "needs": list(s.needs),
                    "why": s.why, "command": s.command, "plan": s.plan_kind, "job": s.job, "evidence": [_safe_address(e) for e in s.evidence],
                    "record": s.record, "legal": s.is_legal, "repeat": s.repeat.value, "spawns": s.spawns, "sop": s.sop,
-                   "skip": ({"roles": [r.value for r in (s.skip.roles or (s.role,))], "reasonRequired": s.skip.reason_required}
+                   "skip": ({"roles": [r.value for r in (s.skip.roles or s.acting_roles)], "reasonRequired": s.skip.reason_required}
                             if s.skip is not None and not s.is_legal else None),
                    "clock": clock(s.clock) if s.clock is not None else None, "phase": phases.get(s.id, ("", ""))[0],
                    "group": _step_group(wf, s.id)} for i, s in enumerate(wf.steps, 1)],
@@ -1126,6 +1186,12 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             out = api.arrived(root, rid, _need(body, "step"), by, roles_of=who.roles_of, what=text("what"), item=text("item"), **common)
         elif act == "skip":
             out = api.skip(root, rid, _need(body, "step"), by, roles_of=who.roles_of, reason=text("reason"), item=text("item"), **common)
+        elif act == "na":
+            out = api.not_applicable(root, rid, _need(body, "step"), by, roles_of=who.roles_of, reason=text("reason"),
+                                     record=text("record"), item=text("item"), **common)
+        elif act == "set-date":
+            out = api.set_date(root, rid, _need(body, "slot"), _need(body, "day"), by, roles_of=who.roles_of,
+                               record=text("record"), reason=text("reason"), **common)
         elif act == "reopen":
             out = api.reopen(root, rid, _need(body, "step"), by, roles_of=who.roles_of, reason=text("reason"), item=text("item"), **common)
         elif act == "pause":

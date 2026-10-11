@@ -47,16 +47,17 @@ export const DUE_FILTERS: readonly { value: string; label: string }[] = [
 
 // -- the basis of a date ----------------------------------------------------------------------------------------------------
 
-export type BasisWord = "law" | "documents" | "counterparty" | "proposed policy" | "person";
+export type BasisWord = "law" | "documents" | "counterparty" | "provider" | "proposed policy" | "person";
 
 export interface BasisLook { word: string; glyph: GlyphName; meaning: string }
 
-/** The five basis words the engine uses, the word the screen shows for each, a glyph named for the idea, and what the
- * date is. A word outside the five is shown as it came (no glyph). */
+/** The basis words the engine uses, the word the screen shows for each, a glyph named for the idea, and what the date is.
+ * A word outside these is shown as it came (no glyph). */
 export const BASES: Readonly<Record<BasisWord, BasisLook>> = {
   law: { word: "LEGAL", glyph: "scale", meaning: "The law's own date: the provision is recited on the run." },
   documents: { word: "DOCUMENTS", glyph: "file-text", meaning: "A date the governing documents or a sent notice set." },
   counterparty: { word: "COUNTERPARTY", glyph: "handshake", meaning: "A date a vendor, an authority, or the other side stated." },
+  provider: { word: "PROVIDER", glyph: "handshake", meaning: "A date a service provider stated." },
   "proposed policy": { word: "PROPOSED", glyph: "proposal", meaning: "proposed, not the law's: jason's proposal until the board adopts it." },
   person: { word: "PERSON", glyph: "user", meaning: "A date a person set." },
 };
@@ -158,6 +159,10 @@ export interface RunStep {
   needsRecord: string; record: string; by: string; at: string; current: boolean; blockedBy: string[];
   items: { item: string; state: string }[]; choice: string; choices: string[]; spawns: string | null;
   skip: { roles: string[]; reasonRequired: boolean } | null; clock: StepClock | null;
+  /** Every role that may act on the step (`role` is the primary); the not-applicable outcome the definition declares, and
+   * whether the step is recorded as one; the child runs spawned from the step and whether it waits for them. */
+  roles?: string[]; na?: boolean; naOutcome?: { roles: string[]; reasonRequired: boolean; recordRequired: boolean } | null;
+  children?: string[]; waitsOnChild?: boolean;
   evidence: StepEvidence[]; links: RunLink[]; changed: StepChange[]; waitingOn: WaitingOn | null; yours: boolean;
   acts: string[]; notOffered: Record<string, string>;
   decision?: DecisionRead; plan?: PlanRead; job?: JobRead;
@@ -185,7 +190,13 @@ export interface HistoryEvent {
 
 export interface ChangedRow { step: string; stepTitle: string; n: number; address: string; was: string | null; now: string | null; at: string | null; pending: boolean }
 
-export interface RunAct { offered: boolean; why: string; needsYes?: boolean; legal?: boolean }
+export interface RunAct { offered: boolean; why: string; needsYes?: boolean; legal?: boolean; slots?: string[] }
+
+/** One date slot of a run: its day, who set it after the start, and whether a person may set it now (`set-date`). */
+export interface RunDateSlot {
+  name: string; label: string; value: string | null; required: boolean; late: boolean; settable: boolean; correction: boolean;
+  timing: string; sets: number; setBy: string | null; setAt: string | null; record: string | null; after: string; roles: string[];
+}
 
 export interface Run {
   id: string; definition: string; definitionTitle: string; family: string; label: string; subject: string; subjectKind: string;
@@ -193,7 +204,8 @@ export interface Run {
   itemCount: number; parent: string | null; children: string[]; pausedReason: string; cancelledReason: string;
   torn: boolean; corrupt: number | null; orphans: string[]; pastLaw: string[]; age: RunAge;
   current: { id: string; title: string; n: number; of: number } | null;
-  acts: { open: RunAct; pause: RunAct; resume: RunAct; note: RunAct; cancel: RunAct };
+  acts: { open: RunAct; pause: RunAct; resume: RunAct; note: RunAct; cancel: RunAct; setDate?: RunAct };
+  dateSlots?: RunDateSlot[]; openSlots?: string[];
   cancelWill: { openSteps: string[]; childRuns: string[] };
 }
 
@@ -204,7 +216,9 @@ export interface RunPage {
   pending: { kind: string; step: string; stepTitle: string }[]; viewer: { roles: string[] }; problems: Problem[]; notComposed: Problem[];
 }
 
-export interface DefinitionDate { name: string; label: string; required: boolean; after: string; rule?: string }
+export interface DefinitionDate {
+  name: string; label: string; required: boolean; after: string; rule?: string; late?: boolean; settable?: boolean; timing?: string;
+}
 
 /** A row of the catalog (`_definition_row`). */
 export interface DefinitionRow {
@@ -218,6 +232,7 @@ export interface DefinitionClock extends BasisInfo { slot: string; days: number 
 export interface DefinitionStep {
   id: string; n: number; title: string; kind: StepKind; role: string; needs: string[]; why: string; command: string; plan: string;
   job: string; evidence: string[]; record: string; legal: boolean; repeat: string; spawns: string | null; sop: string;
+  roles?: string[]; naOutcome?: { roles: string[]; reasonRequired: boolean; recordRequired: boolean } | null; waitsOnChild?: boolean;
   skip: { roles: string[]; reasonRequired: boolean } | null; clock: DefinitionClock | null; phase: string; group: string;
 }
 /** `definition` of `?key=`: the row, read whole. The page's `steps` replace the row's count (the loader merges the two). */

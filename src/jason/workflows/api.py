@@ -7,7 +7,7 @@ and appends one event; ``expect`` is the ``n`` the caller last saw, and a run th
 (the web layer from the sign-in, a test from a table) supplies it, and none supplied means no roles, so every act that
 needs one is refused. ``readers`` is the injectable world a resume and a ``show`` read (see ``jason.workflows.resume``).
 
-``gates`` is the one place a caller adds a requirement to a person's attestation or skip (an adopted control, say):
+``gates`` is the one place a caller adds a requirement to a person's attestation, skip, or not-applicable record (an adopted control, say):
 ``gates(StepAsk) -> GateVerdict``. None means the default, which is looked up when an act is made and not before
 (``_default_gates``), so importing the engine loads no control and no profile; a gate that adds nothing leaves the act as
 it was. A gate may refuse (the act is refused with its sentence and nothing is written) or ask for a second, different
@@ -26,8 +26,8 @@ from typing import Any, Callable, Iterable, Mapping
 from jason.workflows import definitions, fold, resume as resume_mod, steps, store
 from jason.workflows.resume import Readers
 from jason.workflows.types import (
-    ClockView, EventKind, Gates, GateVerdict, Link, RunChanged, RunState, RunView, StepAsk, StepRefused, StepView,
-    Workflow, WorkflowError,
+    ClockView, DateView, EventKind, Gates, GateVerdict, Link, RunChanged, RunState, RunView, StepAsk, StepRefused,
+    StepView, Workflow, WorkflowError,
 )
 
 OPEN_STATES = frozenset({"draft", "active", "paused", "waiting", "failed"})
@@ -60,7 +60,14 @@ def _step(s: StepView) -> dict[str, Any]:
     return {"id": s.id, "title": s.title, "kind": s.kind.value, "role": s.role.value, "state": s.state.value,
             "reason": s.reason, "by": s.by, "at": s.at, "record": s.record, "blockedBy": list(s.blocked_by),
             "changed": [dict(c) for c in s.changed], "items": [{"item": i, "state": st.value} for i, st in s.items],
-            "choice": s.choice}
+            "choice": s.choice, "roles": [r.value for r in s.roles] or [s.role.value], "na": s.na,
+            "children": list(s.children)}
+
+
+def _slot(d: DateView) -> dict[str, Any]:
+    return {"name": d.name, "label": d.label, "value": d.value, "required": d.required, "late": d.late,
+            "settable": d.settable, "correction": d.correction, "timing": d.timing, "setBy": d.set_by, "setAt": d.set_at,
+            "record": d.record, "sets": d.sets}
 
 
 def _link(link: Link) -> dict[str, str]:
@@ -74,7 +81,8 @@ def view_dict(view: RunView, run: store.Run | None = None) -> dict[str, Any]:
            "pausedReason": view.paused_reason, "cancelledReason": view.cancelled_reason,
            "steps": [_step(s) for s in view.steps], "clocks": [_clock(c) for c in view.clocks],
            "links": [_link(l) for l in view.links], "orphans": list(view.orphans), "children": list(view.children),
-           "pastLaw": list(view.past_law)}
+           "pastLaw": list(view.past_law), "dateSlots": [_slot(d) for d in view.date_slots],
+           "openSlots": [d.name for d in view.date_slots if d.settable]}
     if run is not None:
         out["torn"] = run.torn
         out["corrupt"] = run.corrupt
@@ -162,7 +170,7 @@ def pending_first(events: Iterable[Any], step_id: str, act: str, item: str = "")
     for e in reversed(list(events)):
         if e.step != step_id or (item and str(e.detail.get("item", "")) != item):
             continue
-        if e.kind in (EventKind.ATTESTED, EventKind.DECIDED, EventKind.SKIPPED, EventKind.REOPENED):
+        if e.kind in (EventKind.ATTESTED, EventKind.DECIDED, EventKind.SKIPPED, EventKind.NOT_APPLICABLE, EventKind.REOPENED):
             return ""
         if e.kind is EventKind.NOTE and e.detail.get("first_of_two"):
             return e.by if e.detail["first_of_two"] == act else ""
@@ -181,7 +189,8 @@ def _gated(act: steps.Act, wf: Workflow, view: RunView, run: store.Run, step_id:
     first = pending_first(run.events, step_id, name, item)
     texts = tuple(t for t in (*words, view.subject, view.label, *(s.record for s in view.steps)) if t)
     ask = StepAsk(data_dir, run_id, wf.key, wf.family, step_id, sd.role.value if sd else "", name, by,
-                  tuple(sorted(r.value for r in steps.roles_held(by, roles_of))), first, texts, day)
+                  tuple(sorted(r.value for r in steps.roles_held(by, roles_of))), first, texts, day,
+                  tuple(r.value for r in sd.acting_roles) if sd else ())
     try:
         verdict = gate(ask)
     except WorkflowError:
@@ -197,9 +206,9 @@ def _gated(act: steps.Act, wf: Workflow, view: RunView, run: store.Run, step_id:
     if first:
         return steps.Act(act.kind, act.step, {**act.detail, "confirms": first})
     kept = {k: v for k, v in act.detail.items() if k in ("item", "record", "reason")}
+    did = {"attest": "attested", "skip": "skipped", "na": "recorded as not applicable"}.get(name, name)
     return steps.Act(EventKind.NOTE, act.step, {
-        **kept, "first_of_two": name,
-        "text": f"{'attested' if name == 'attest' else 'skipped'} as the first of two; a second, different person confirms"})
+        **kept, "first_of_two": name, "text": f"{did} as the first of two; a second, different person confirms"})
 
 
 # --- start, open, show, list ----------------------------------------------------------------------------------------
@@ -318,6 +327,36 @@ def skip(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: 
     return _do(data_dir, run_id, by, make, expect=expect, today=today, at=at, readers=readers, needs_run=True)
 
 
+def not_applicable(data_dir: Path | str, run_id: str, step_id: str, by: str, *,
+                   roles_of: Callable[[str], Iterable[Any]] | None = None, reason: str = "", record: str = "", item: str = "",
+                   readers: Readers | None = None, expect: int | None = None, at: str | None = None,
+                   today: date | None = None, gates: Gates | None = None) -> dict[str, Any]:
+    """Record a step as not applicable (its definition must declare ``na``): a person holding one of its roles, with a reason
+    and a record. The step is done as not applicable, which satisfies what needs it; the legal clock on it is kept and reads
+    "not applicable, recorded". It is not a skip, and a legal step may be recorded this way. The same gates apply as to a skip."""
+    day = _today(today)
+
+    def make(wf: Workflow, view: RunView, run: store.Run) -> steps.Act:
+        act = steps.na_act(wf, view, step_id, by=by, roles_of=roles_of, reason=reason, record=record, item=item)
+        return _gated(act, wf, view, run, step_id, "na", by, roles_of=roles_of, gates=gates, data_dir=data_dir,
+                      run_id=run_id, day=day, item=item, words=(reason, record))
+    return _do(data_dir, run_id, by, make, expect=expect, today=today, at=at, readers=readers, needs_run=True)
+
+
+def set_date(data_dir: Path | str, run_id: str, slot: str, day: str, by: str, *,
+             roles_of: Callable[[str], Iterable[Any]] | None = None, record: str = "", reason: str = "",
+             readers: Readers | None = None, expect: int | None = None, at: str | None = None,
+             today: date | None = None) -> dict[str, Any]:
+    """Give a date slot a day after the run started (the slot must be ``late`` or optional on the definition). A person, with
+    the record that shows the day; a slot that already has a day is corrected, which needs a ``reason``. Append-only: the
+    latest ``date-set`` wins and every clock is read from the dates as they stand."""
+    day_now = _today(today)
+    return _do(data_dir, run_id, by,
+               lambda wf, v: steps.date_set_act(wf, v, slot=slot, day=day, by=by, roles_of=roles_of, record=record, reason=reason,
+                                                today=day_now),
+               expect=expect, today=today, at=at, readers=readers)
+
+
 def reopen(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
            reason: str = "", item: str = "", readers: Readers | None = None, expect: int | None = None, at: str | None = None,
            today: date | None = None) -> dict[str, Any]:
@@ -354,7 +393,8 @@ def spawned(data_dir: Path | str, run_id: str, step_id: str, by: str, *, child: 
             readers: Readers | None = None, expect: int | None = None, at: str | None = None,
             today: date | None = None) -> dict[str, Any]:
     """Record that a step started a child run (the parent step then waits on it). The child is started with ``start``,
-    its ``parent`` naming this run."""
+    its ``parent`` naming this run. A step may start several: call this once for each (a child already recorded from this
+    step is refused). A step with ``waits_on_child`` is not done until each of them is done or cancelled."""
     def make(wf: Workflow, v: RunView) -> steps.Act:
         sd = wf.step(step_id)
         if sd is None or not sd.spawns:
@@ -364,6 +404,11 @@ def spawned(data_dir: Path | str, run_id: str, step_id: str, by: str, *, child: 
         if v.state not in steps.ACTING:
             raise StepRefused(f"the run is {v.state.value}")
         _person(by)
+        if not (child or "").strip():
+            raise StepRefused(f"{step_id}: a child run is named by its id")
+        sv = v.step(step_id)
+        if sv is not None and child in sv.children:
+            raise StepRefused(f"child run {child} is already recorded from {step_id}")
         return steps.Act(EventKind.SPAWNED, step_id, {"child": child, "definition": sd.spawns})
     return _do(data_dir, run_id, by, make, expect=expect, today=today, at=at, readers=readers)
 
@@ -385,5 +430,5 @@ def reindex(data_dir: Path | str, *, today: date | None = None) -> dict[str, Any
     return {"ok": True, "runs": len(rows), "rows": rows}
 
 
-__all__ = ["arrived", "attest", "cancel", "note", "open_run", "pause", "pending_first", "reindex", "reopen", "resume_run",
-           "runs", "show", "skip", "spawned", "start", "verify", "view_dict"]
+__all__ = ["arrived", "attest", "cancel", "not_applicable", "note", "open_run", "pause", "pending_first", "reindex", "reopen",
+           "resume_run", "runs", "set_date", "show", "skip", "spawned", "start", "verify", "view_dict"]

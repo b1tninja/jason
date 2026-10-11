@@ -564,9 +564,11 @@ def _gate_sentence(c: Control, gate: str, roles: tuple[OfficerRole, ...], future
     return f"{who} {'will allow' + when if future else 'allows'} only {names} to record this step"
 
 
-def _step_lack(gate: str, roles: tuple[OfficerRole, ...], role: str, roster: Iterable[Any] | None) -> str:
-    """What the roster lacks to satisfy a gate on a step whose definition names ``role``; "" when it can or when the roster
-    was not read. A second person holds the step's role too (the engine asks it of each person who acts)."""
+def _step_lack(gate: str, roles: tuple[OfficerRole, ...], role: str, roster: Iterable[Any] | None,
+               step_roles: Iterable[str] = ()) -> str:
+    """What the roster lacks to satisfy a gate on a step whose definition names ``role`` (and, for a step several roles may
+    act on, ``step_roles``); "" when it can or when the roster was not read. A second person holds one of the step's roles too
+    (the engine asks it of each person who acts)."""
     if roster is None:
         return ""
     held = _holders(roster)
@@ -575,18 +577,25 @@ def _step_lack(gate: str, roles: tuple[OfficerRole, ...], role: str, roster: Ite
             return "the roster has no " + " or ".join(r.value for r in roles)
         return ""
     if gate == "second":
-        try:
-            office = OfficerRole(role)
-        except ValueError:
+        words = [r for r in dict.fromkeys((role, *step_roles)) if r]
+        offices = []
+        for word in words:
+            try:
+                offices.append(OfficerRole(word))
+            except ValueError:
+                continue
+        if not offices:
             return ""
-        people = held.get(office, set())
+        people = set().union(*(held.get(o, set()) for o in offices))
+        names = " or ".join(o.value for o in offices)
         if len(people) < 2:
-            return f"the roster has no {office.value}" if not people else f"the roster lacks a second {office.value}"
+            return f"the roster has no {names}" if not people else f"the roster lacks a second {names}"
     return ""
 
 
 def step_gates(workflow_key: str, step_id: str, role: str = "", *, controls: Iterable[Control] = (),
-               roster: Iterable[Any] | None = None, today: date | None = None, family: str = "") -> StepGates:
+               roster: Iterable[Any] | None = None, today: date | None = None, family: str = "",
+               step_roles: Iterable[str] = ()) -> StepGates:
     """The gates the adopted controls add to one step: those in force bind from their date (the roster that cannot satisfy
     one refuses the act, never weakens it), those adopted but not yet in force are listed as ``waiting`` and as ``future``
     gates and bind nothing. A control that is not adopted is never here. Pure: no store is read."""
@@ -615,7 +624,7 @@ def step_gates(workflow_key: str, step_id: str, role: str = "", *, controls: Ite
                                      ("roles", bool(c_roles), c_roles)):
             if not asked:
                 continue
-            lack = "" if future else _step_lack(gate, offices, role, roster)
+            lack = "" if future else _step_lack(gate, offices, role, roster, step_roles)
             row = StepGate(c, gate, _gate_sentence(c, gate, offices, future), offices, lack, future)
             gates.append(row)
             if lack:
@@ -652,7 +661,7 @@ def approved_decisions(data_dir: Path | str | None) -> frozenset[str]:
 
 def step_unmet(gates: StepGates, *, by: str, held: Iterable[str] = (), first_by: str = "", texts: Iterable[str] = (),
                data_dir: Path | str | None = None, approved: Iterable[str] | None = None) -> list[str]:
-    """Why this person's attestation or skip may not be recorded now, each reason the sentence the run page shows; empty
+    """Why this person's attestation, skip, or not-applicable record may not be recorded now, each reason the sentence the run page shows; empty
     when every gate in force is met. ``held``: the offices ``by`` holds. ``first_by``: who made the first of two, when one is
     waiting. ``texts``: the words the act and the run carry, where a resolution is cited by the id of a decision that is on
     record with an approving outcome. Date reached, from the control's day: a gate not yet in force is never asked."""
@@ -683,7 +692,7 @@ def step_unmet(gates: StepGates, *, by: str, held: Iterable[str] = (), first_by:
 
 def workflow_gate(ask: Any) -> Any:
     """The gate the workflow engine is given by default (``jason.workflows.api``): the controls the board adopted, read when a
-    person attests or skips a step. Reads nothing, and so adds nothing, when no controls source is configured, or none
+    person attests, skips, or records a step as not applicable. Reads nothing, and so adds nothing, when no controls source is configured, or none
     governs this step. Returns the engine's ``GateVerdict``: the refusals (each a sentence), and whether a second person
     must confirm."""
     from jason.controls import store
@@ -696,7 +705,7 @@ def workflow_gate(ask: Any) -> Any:
     if not any(c.state is ControlState.ADOPTED and step_applies(c, ask.workflow, ask.step, ask.family) for c in controls):
         return GateVerdict()
     got = step_gates(ask.workflow, ask.step, ask.role, controls=controls, roster=_community_roster(), today=ask.today,
-                     family=ask.family)
+                     family=ask.family, step_roles=getattr(ask, "step_roles", ()))
     if not got.any:
         return GateVerdict()
     unmet = step_unmet(got, by=ask.by, held=ask.roles, first_by=ask.first_by, texts=ask.texts, data_dir=root)

@@ -1,8 +1,8 @@
 """The money family of general workflow definitions (docs/workflows/money.md, section 2; the three screen pages
 docs/console/screens/monthly-review.md, county-tax-cycle.md, and delinquency-process.md).
 
-Pure data: this module imports only the engine's types (no step names a read, see below), and the definitions are rows,
-like a rule row. It names no association. A run's dates are slots asked at
+Pure data: this module imports only the engine's types and ``named_check`` (a step names a read, it does not import one),
+and the definitions are rows, like a rule row. It names no association. A run's dates are slots asked at
 start, a statute is cited by key (``CIV 5500(a)``) and is checked against the authorities shelf when the row registers.
 
 **Ids.** The page's tables name a step with a short word (``snap``, ``lienvote``, ``R1``). Here a step's id is
@@ -10,11 +10,12 @@ start, a statute is cited by key (``CIV 5500(a)``) and is checked against the au
 word, and ``table_ids(key)`` is the whole map, for a test or a doc.
 
 **What is a person's step now.** The engine registers a ``check`` only by a name in ``jason.workflows.readers.CHECKS`` and a
-``job`` only by a name in ``readers.JOBS``; neither holds a money read yet, and this family adds none. A page's ``check`` or
-``job`` row is therefore a ``person`` step whose ``why`` says what it becomes and names it ``(wanted: check NAME)`` or
-``(wanted: job NAME)``; ``WANTED`` lists each, with what it would read. The same is true of a ``plan`` the approvals
-registry has no kind for. Plans used: ``payhoa-attach-bills`` (the bill, once matched, is attached after a person decides)
-and ``payhoa-mailroom-send`` (a mailed notice, charged to the association, two people).
+``job`` only by a name in ``readers.JOBS``. Twelve money reads exist (``jason.workflows.checks.money``), and the rows that
+name them are ``check`` steps (role jason; a wait step names one as the check that ends it). No money job is registered, so a
+page's ``check`` or ``job`` row with no read yet is a ``person`` step whose ``why`` says what it becomes and names it
+``(wanted: check NAME)`` or ``(wanted: job NAME)``; ``WANTED`` lists each, with what it would read. The same is true of a
+``plan`` the approvals registry has no kind for. Plans used: ``payhoa-attach-bills`` (the bill, once matched, is attached
+after a person decides) and ``payhoa-mailroom-send`` (a mailed notice, charged to the association, two people).
 
 **Not here.** ``delinquency_account`` is built and validates but is left out of ``BUILDERS``: a run about one parcel and one
 owner's balance is an executive-session matter (CIV 4935), and the Work backend (src/jason/web/extra/work.py) cannot yet hold
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
+from jason.workflows.readers import named_check
 from jason.workflows.types import (
     Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
 )
@@ -41,6 +43,7 @@ weekend or a holiday is counted is for counsel."""
 P, C, J, PL, D, W, B = (StepKind.PERSON, StepKind.CHECK, StepKind.JOB, StepKind.PLAN, StepKind.DECISION, StepKind.WAIT,
                         StepKind.BRANCH)
 M, TR, SE, PR, DI, AN = (Role.MANAGER, Role.TREASURER, Role.SECRETARY, Role.PRESIDENT, Role.DIRECTOR, Role.ANYONE)
+JA = Role.JASON
 
 SKIP_M, SKIP_TR, SKIP_SE = SkipRule((M,)), SkipRule((TR,)), SkipRule((SE,))
 SKIP_ANY_OFFICER = SkipRule((M, TR, SE))
@@ -71,17 +74,8 @@ def _plan(name: str) -> str:
 
 WANTED: tuple[str, ...] = (
     # --- checks (readers.CHECKS): read-only, from the stores on disk
-    "check bill-snapshot-fresh: bill-attach.snapshot {syncedAt, ageDays, stale} against the integration's 2-day stale-after",
-    "check bill-queue-read: bill-attach.counts and rows[].status (matched, ambiguous, no match, unrouted, no source yet, "
-    "not checked, already attached, no bill expected)",
-    "check bill-handed: the bill-attach run for the month is done or handed (a wait step's arrival)",
-    "check payee-class-read: bill-investigation.routing {payeeClass, source, byRule} for the transaction",
-    "check stores-tried-read: bill-investigation tried[] with each store's age, and candidates[]",
-    "check bill-mail-arrived: a mail item or portal file arrives that matches the transaction's amount",
-    "check review-reconciliations: reconciliations per account, covered through the month, open items (CIV 5500(a), (b))",
     "check review-statements: the library holds a bank statement for each account for the month (not built: no check pairs "
     "a statement to a month)",
-    "check review-budget: budget variance by category for the month (CIV 5500(c))",
     "check review-income-expense: books pl for the month, operating and reserve (CIV 5500(e))",
     "check review-registers: check register, general ledger, delinquent assessment receivable report runs (CIV 5500(f))",
     "check review-transfers: reserve_transfers against the board's prior written approval (CIV 5502(a); not built: no run "
@@ -94,8 +88,6 @@ WANTED: tuple[str, ...] = (
     "check delinquency-closed: balance zero and no lien of record",
     "check delinquency-plan-request: a payment plan request arrives within the notice's window (CIV 5665(b))",
     "check fiscal-window: the CIV 5300(a) and 5310(a) window from the notice catalog; 'date not on record' is a state",
-    "check reserve-study-due: reserves latest study date, next visit and review due (CIV 5550(a); applies only when the "
-    "components' value reaches the statute's threshold)",
     "check reserve-plan-match: the budget's reserve contribution against the adopted funding plan",
     "check budget-limits: the CIV 5605 limits (20 percent of the preceding year's regular assessment; 5 percent of budgeted "
     "gross expenses for special assessments) (not built)",
@@ -107,12 +99,9 @@ WANTED: tuple[str, ...] = (
     "check reserve-notice: borrowings[].documents.notice, the agenda 'Notice of Intent to Borrow' (CIV 5515(a), 4920)",
     "check reserve-two-signatures: the bank's record of two signatures (not read by jason)",
     "check reserve-restored: a repayment found by amount, a lead (CIV 5515(d))",
-    "check insurance-due: insurance-renewals.policies[].daysToTermEnd, renewalWindow, standing",
     "check insurance-limits: insurance_policies.findings against the CIV 5800, 5805, 5806 limits",
     "check insurance-changed: memberNoticeNeeded and the term against the term before (ChangeKind)",
     "check insurance-summary: insurance_rows for the fiscal year (CIV 5300(b)(9))",
-    "check tax-standing: tax_standing per parcel (unpaid newest year, delinquent older years, years with no bill)",
-    "check tax-bill-files: each bill row has a file under tax-bills/",
     "check tax-mailed-bill: tax_bill_checks, a mailed bill's amounts against the stored bill",
     "check tax-years-closed: balances zero per parcel",
     # --- jobs (readers.JOBS): a command a worker runs, found in the queue by its arguments
@@ -129,8 +118,9 @@ WANTED: tuple[str, ...] = (
     "plan annual-packet-docs: --make-templates --yes and --build --draft --yes (Docs and a draft PDF)",
 )
 """What the page's ``check``, ``job``, and ``plan`` rows would register to become engine steps, each with what it reads.
-Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here (a test keeps the two in step). Nothing here is
-registered: this family adds nothing to ``readers.CHECKS`` or ``readers.JOBS``."""
+Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here (a test keeps the two in step). The twelve reads the
+stores on disk already answer are built (``jason.workflows.checks.money``) and are no longer wanted; this family adds
+nothing to ``readers.JOBS``."""
 
 
 # --- a table of rows, assembled into a definition ---------------------------------------------------------------------
@@ -193,16 +183,16 @@ BA = "bill-attach"
 
 def _bill_attach_rows() -> tuple[_Row, ...]:
     return (
-        _row("snap", "Is the PayHOA snapshot fresh", P, M, command="jason invoices --fetch",
+        _row("snap", "Is the PayHOA snapshot fresh", C, JA, command="jason invoices --fetch",
              record="the snapshot's syncedAt and its age in days", clock=_policy("stale after 2 days: the integration's default, payhoa-transactions"),
-             why="The queue never reports a count from nothing: a snapshot older than its stale-after is said first. Skip never."
-                 + _check("bill-snapshot-fresh")),
+             check=named_check("bill-snapshot-fresh"),
+             why="The queue never reports a count from nothing: a snapshot older than its stale-after is said first. Skip never. "
+                 "A stale snapshot fails the check; refresh it at the terminal and the check passes on the next read."),
         _row("fetch", "Refresh the snapshot", P, M, "snap", command="jason invoices --fetch", skip=SKIP_M,
              record="the new syncedAt", why="A PayHOA read that fetches no write. Skipped, with the reason, when the snapshot is fresh."
                                            + _job("bill-snapshot-fetch")),
-        _row("queue", "Read the queue by status", P, M, "snap", record="the counts by status",
-             why="Matched, ambiguous, no match, unrouted, no source yet, not checked, already attached, no bill expected; a loader, no command."
-                 + _check("bill-queue-read")),
+        _row("queue", "Read the queue by status", C, JA, "snap", record="the counts by status", check=named_check("bill-queue-read"),
+             why="Matched, ambiguous, no match, unrouted, no source yet, not checked, already attached, no bill expected; a loader, no command."),
         _row("srcs", "Read each source that has a pending payment", P, M, "queue", repeat=Repeat.PER_ITEM, skip=SKIP_M,
              command="jason fetch-bills; jason sync-tax; jason vendors --sync", record="the source and its new stamp",
              clock=_policy("each source's stale-after in jason cadence"),
@@ -244,12 +234,12 @@ PI = "payment-investigation"
 
 def _payment_investigation_rows() -> tuple[_Row, ...]:
     return (
-        _row("class", "Name the payee class and the rule that chose it", P, M, record="the class, the source, and the rule",
-             why="routing {payeeClass, source, byRule}. A miss stays a miss." + _check("payee-class-read")),
-        _row("tried", "Search every store on disk by amount", P, M, "class", repeat=Repeat.PER_ITEM,
+        _row("class", "Name the payee class and the rule that chose it", C, JA, record="the class, the source, and the rule",
+             check=named_check("payee-class-read"), why="routing {payeeClass, source, byRule}. A miss stays a miss."),
+        _row("tried", "Search every store on disk by amount", C, JA, "class", repeat=Repeat.PER_ITEM,
              record="the stores tried, each with its age, and the candidates (a document or a payment proof)",
-             why="A store not read says 'not read' with its command; the others still show. A candidate is a lead, not the bill."
-                 + _check("stores-tried-read")),
+             check=named_check("stores-tried-read"),
+             why="A store not read says 'not read' with its command; the others still show. A candidate is a lead, not the bill."),
         _row("rule", "Propose a payee row when none selected it", P, M, "class", skip=SKIP_M, record="the board item (a finding)",
              command="jason board --set", why="Skipped when a row selected it."),
         _row("proof", "Fetch the bill or the receipt from the payee's own site", P, TR, "tried", skip=SKIP_TR,
@@ -269,9 +259,9 @@ def _payment_investigation_rows() -> tuple[_Row, ...]:
              why="The law is silent, so the board decides a written policy once for the association, not for each payment; its "
                  "wording is a proposal until adopted (Civil Code 4350). On the receipt-only path only."),
         _row("mail", "Wait for a scan or a vendor invoice", W, M, "out", command="jason mail; jason vendors --sync",
-             clock=_policy("re-check at each monthly pass; no number is the law's"),
+             clock=_policy("re-check at each monthly pass; no number is the law's"), check=named_check("bill-mail-arrived"),
              why="Ends when a mail item or portal file matches the amount; a later sync that finds the bill reopens the run. On the "
-                 "waiting-for-mail path only." + _arrives("bill-mail-arrived")),
+                 "waiting-for-mail path only. The read finds a lead by amount; a person confirms it is the bill."),
         _row("out", "Record the outcome", B, M, "tried", evidence=("file:bills/investigations.json",),
              command="POST /api/write/bill-investigation/<tx>", record="the outcome row: outcome, by, at, document, note",
              choices=(("attached-bill", ""), ("attached-receipt-only", "policy"), ("not-our-bill", ""),
@@ -309,19 +299,23 @@ def _monthly_review_rows() -> tuple[_Row, ...]:
              record="each source's stamp against its stale-after",
              why="Ledger, budget, reconciliations, and reports are stale after 9 days (the integration defaults; proposed policy, not the "
                  "law's). One item a source; skipped when current." + _job("books-sync")),
-        _row("attach", "Bills attached for the month", W, M, skip=SKIP_M,
-             why="Links to the bill-attach run for the month; skipped, with the reason, when the board reviews without it."
-                 + _arrives("bill-handed")),
-        _row("recon", "Reconciliations current: operating, reserve", P, TR, "sync", repeat=Repeat.PER_ITEM,
+        _row("attach", "Bills attached for the month", W, M, skip=SKIP_M, check=named_check("bill-handed"),
+             why="Links to the bill-attach run for the month; skipped, with the reason, when the board reviews without it. Ends when "
+                 "that run has handed the pass to the treasurer."),
+        _row("recon", "Reconciliations current: operating, reserve", C, JA, "sync", repeat=Repeat.PER_ITEM,
+             check=named_check("review-reconciliations"),
              command="jason reconcile", record="each account, covered through which month, and its open items",
              clock=_duty("CIV 5500(a)", "review a current reconciliation on a monthly basis, operating and reserve (CIV 5500(a), (b))"),
-             why="Whether it is 'current' is the reviewer's judgment, not jason's." + _check("review-reconciliations")),
+             why="The read says which month each account is reconciled through and counts the open items. Whether it is 'current' is "
+                 "the reviewer's judgment, not jason's."),
         _row("stmt", "Latest bank statements on file", P, TR, repeat=Repeat.PER_ITEM, command="jason library",
              record="the statement filed for each account for the month, or none filed",
              clock=_duty("CIV 5500(d)", "review the latest account statements from the financial institutions"),
              why="One item an account." + _check("review-statements")),
-        _row("bva", "Actual against budget", P, TR, "sync", command="jason budget", record="the variance by category and the snapshot's age",
-             clock=_duty("CIV 5500(c)", "review actual operating revenues and expenses against the budget"), why="" + _check("review-budget")),
+        _row("bva", "Actual against budget", C, JA, "sync", command="jason budget", record="the variance by category and the snapshot's age",
+             clock=_duty("CIV 5500(c)", "review actual operating revenues and expenses against the budget"),
+             check=named_check("review-budget"),
+             why="The read counts the categories off budget year to date; what the variance means is the reviewer's."),
         _row("ie", "Income and expense statement, operating and reserve", P, TR, "sync",
              command="jason books pl; jason report treasurers-report period=previous-month --doc --yes",
              record="the statement read for the month", clock=_duty("CIV 5500(e)", "review an income and expense statement"),
@@ -483,10 +477,10 @@ def _fiscal_year_rows() -> tuple[_Row, ...]:
              record="the window's first and last day, and the dated day inside it",
              why="'Date not on record' is a state, a question for the manager, never a guess." + _check("fiscal-window")),
         # --- R: the reserve
-        _row("R1", "The study is due", P, TR, "open", skip=SKIP_M, repeat=Repeat.PER_PERIOD, command="jason reserves --year Y",
-             record="the latest study date and the next visit and review due",
+        _row("R1", "The study is due", C, JA, "open", skip=SKIP_M, repeat=Repeat.PER_PERIOD, command="jason reserves --year Y",
+             record="the latest study date and the next visit and review due", check=named_check("reserve-study-due"),
              why="CIV 5550(a): at least once every three years. It applies only if the components' value reaches the statute's "
-                 "threshold; skipped, with the reason, when 'does not apply' is answered." + _check("reserve-study-due")),
+                 "threshold, which the read does not know; skipped, with the reason, when 'does not apply' is answered or nothing is due."),
         _row("R2", "Commission or update the study", D, SE, "R1", skip=SKIP_SE, record="the decision record",
              why="Skipped when the study is not due."),
         _row("R3", "File the study", P, M, "R2", command="jason library", record="the library file of the study",
@@ -649,9 +643,11 @@ IR = "insurance-renewal"
 
 def _insurance_renewal_rows() -> tuple[_Row, ...]:
     return (
-        _row("due", "The term end is near", P, M, command="jason insurance", record="the policy, the days to its term end, and its standing",
+        _row("due", "The term end is near", C, JA, command="jason insurance", record="the policy, the days to its term end, and its standing",
              clock=_policy("90 days before the term end: WINDOW_DAYS; the profile's schedule may set its own", "term_end", -90),
-             why="" + _check("insurance-due")),
+             check=named_check("insurance-due"),
+             why="The read says the days left and whether that is inside the window; it passes when a term end is read, so an early "
+                 "renewal is not blocked."),
         _row("quote", "Gather the agent's proposals", P, M, "due", command="jason gmail --sync; jason mail",
              record="the proposals in the library or mail", why="Gmail headers are leads."),
         _row("min", "Required limits and coverages", P, M, "quote", command="jason policies",
@@ -697,10 +693,13 @@ def _county_tax_rows() -> tuple[_Row, ...]:
              record="the catalog read, per parcel, and its stamp",
              clock=_policy("monthly on the 1st; stale after 35 days"),
              why="One item a parcel; skipped when current. Another county needs its own tax adapter." + _job("tax-catalog-sync")),
-        _row("stand", "Read each parcel's standing", P, TR, "sync", repeat=Repeat.PER_ITEM, record="unpaid, delinquent, and years with no bill",
-             why="Newest year unpaid reads 'due', never 'delinquent', until a bill date is entered." + _check("tax-standing")),
-        _row("bill", "Every bill has its PDF", P, TR, "sync", repeat=Repeat.PER_ITEM, record="the bill row has a file under tax-bills/",
-             why="One item a bill." + _check("tax-bill-files")),
+        _row("stand", "Read each parcel's standing", C, JA, "sync", repeat=Repeat.PER_ITEM, record="unpaid, delinquent, and years with no bill",
+             check=named_check("tax-standing"),
+             why="Newest year unpaid reads 'due', never 'delinquent', until a bill date is entered. It passes when the bills are read "
+                 "and says what it found, so an older year unpaid does not block the step that pays it."),
+        _row("bill", "Every bill has its PDF", C, JA, "sync", repeat=Repeat.PER_ITEM, record="the bill row has a file under tax-bills/",
+             check=named_check("tax-bill-files"),
+             why="One item a bill. A bill with no file fails the check until a person saves it (jason county-tax --import-bill)."),
         _row("pdf", "Save a missing bill", P, TR, "bill", repeat=Repeat.PER_ITEM, skip=SKIP_TR,
              command="jason county-tax --import-bill FILE --apn A --year Y --by NAME", record="the bill row", why="Skipped when present."),
         _row("mail", "The mailed bill matches the catalog", P, TR, "sync", repeat=Repeat.PER_ITEM, skip=SKIP_TR,

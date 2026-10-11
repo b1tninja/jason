@@ -16,28 +16,32 @@ registered run to every viewer whose offices open P2 and has no per-definition v
 administrator's runs in the manager's and the board's Work list. Add ``ADMIN_BUILDERS`` to ``BUILDERS`` when the backend can
 hide a definition from any viewer who is not an administrator signed in as themselves.
 
-This module is pure data: it imports only ``jason.workflows.types`` and the standard library, and loads no profile, store,
-or client. It names no association, person, address, or id. A run's subject is an opaque id and its label carries no sender
+This module is pure data: it imports only ``jason.workflows.types``, ``named_check``, and the standard library, and loads no
+profile, store, or client. It names no association, person, address, or id. A run's subject is an opaque id and its label carries no sender
 name or address: a period (``period:YYYY-MM-DD``), a Gmail thread id, a draft case and key, a request key. jason sends,
 mails, scans, forwards, shreds, discards, connects, and revokes nothing in any of them: each such act is a person's step or
 an approvals plan a person decides.
 
-No step here is a ``check`` or a ``job``. A ``check`` names a read in ``readers.CHECKS`` and a ``job`` a name in
-``readers.JOBS``; none of the reads this family wants is registered, and an unregistered check can only fail. So each is a
-``person`` step whose ``why`` says what it becomes, and ``WANTED`` lists the reads, jobs, and approvals kinds to add. The
-one registered ``plan`` kind it needs is ``gmail-drafts``.
+No step here is a ``job``. A ``check`` names a read in ``readers.CHECKS`` and a ``job`` a name in ``readers.JOBS``; an
+unregistered check can only fail. Eleven reads are registered by ``jason.workflows.checks.platform`` (disk only: no network,
+no service contacted, no write, no vault asked), and their steps are ``check`` steps (``mail-triage.1`` and ``.4``, a wait's
+arrival on ``.9``, ``.12``; ``email-conversation.1`` and ``.3``; ``response-inbox.2`` and ``.10``; ``integration-connect.1``;
+``service-run.1``, ``.2``, and ``.10``), role ``jason``. The other steps that want a read, a job, or an approvals kind are
+still ``person`` steps whose ``why`` says what they become, and ``WANTED`` lists what is left to add. The one registered
+``plan`` kind it needs is ``gmail-drafts``.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable
 
+from jason.workflows.readers import named_check
 from jason.workflows.types import (
     Choice, ClockBasis, ClockDef, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
 )
 
-P, B, D, W, PL = StepKind.PERSON, StepKind.BRANCH, StepKind.DECISION, StepKind.WAIT, StepKind.PLAN
-M, A, S = Role.MANAGER, Role.ADMINISTRATOR, Role.SECRETARY
+P, B, D, W, PL, C = StepKind.PERSON, StepKind.BRANCH, StepKind.DECISION, StepKind.WAIT, StepKind.PLAN, StepKind.CHECK
+M, A, S, JASON = Role.MANAGER, Role.ADMINISTRATOR, Role.SECRETARY, Role.JASON
 ITEM = Repeat.PER_ITEM
 
 MANAGER_OR_SECRETARY = SkipRule((M, S))
@@ -54,27 +58,20 @@ CASES: tuple[str, ...] = ("proposal-request", "hearing", "meeting-notice")
 """The three cases of the approvals kind ``gmail-drafts``; a run's subject is ``<case>:<key>``."""
 
 WANTED: tuple[str, ...] = (
-    # reads (readers.CHECKS): each is a read-only look at a store that exists today
-    "check mail-fresh (mail-triage.1): the mail store's newest read against the mail source's stale-after",
+    # reads (readers.CHECKS) still to add; the eleven built are in jason.workflows.checks.platform. Not possible today:
+    #   thread-leads (jason.tasks.threads.threads writes reports/threads.json), mail-findings and draft-source/draft-preview
+    #   (the profile and settings, or Google), thread-closed (a person's note has no store), integration-state (the state needs
+    #   the Status rows and a credential probe), vault-answers (the vault is the development environment's store: not asked),
+    #   service-limits and service-verify (jason.limits and the Status rows are outside the checks package's allow-list)
     "check mail-findings (mail-triage.3): the findings of `jason mail --checks` as a count",
-    "check mail-lanes (mail-triage.4): the lanes of `mail_brief` (act, review, not scanned)",
-    "check mail-scanned (mail-triage.9): a scan requested for a letter has arrived (ends the wait)",
-    "check mail-period-chosen (mail-triage.12): `chosen` equals `items` in the mail-triage loader",
-    "check gmail-fresh (email-conversation.1): the Gmail store's syncedAt against its stale-after",
-    "check thread-status (email-conversation.3): awaiting us / awaiting them / notice / internal, from the last message",
     "check thread-leads (email-conversation.7): payments, letters, Drive files, PayHOA requests near the thread, as leads",
     "check thread-closed (email-conversation.15): the status is awaiting them or internal, or a person's note",
     "check draft-source (gmail-draft.1): the system, hearing, or agenda file the draft is about exists and is current",
     "check draft-preview (gmail-draft.6): the dry run of `jason draft` shows a subject and suggested addresses",
-    "check responses-channels (response-inbox.2): the `ended` result of each channel, with its age",
     "check responses-recognized (response-inbox.3): recognized, candidate, or not ours, by rung",
-    "check responses-outstanding (response-inbox.10): owners sent a copy less answers",
-    "check instance-which (integration-connect.1, service-run.1): the community in use and where the choice came from",
     "check integration-state (integration-connect.2): not set up, needs sign-in, connected, failing, or paused",
     "check vault-answers (integration-connect.3): the backend answers (names only), or says it is not signed in",
-    "check service-heartbeat (service-run.2): none, running, draining, stale, or stopped, with the beat's age",
     "check service-limits (service-run.5): each limit's value, source, range, and last change",
-    "check service-queue (service-run.10): queued, running, failed, and done jobs",
     "check service-verify (service-run.12): standing per source, a fresh heartbeat, free space on the drive jason writes to",
     # jobs (readers.JOBS)
     "job mail-sync (mail-triage.2): `jason mail`",
@@ -129,11 +126,11 @@ def mail_triage() -> Workflow:
     insurance, tax, or escrow letter is a question for the board and counsel, recorded beside the choice."""
     s = _maker(MT)
     steps = (
-        s("1", "Is the mailbox read recently?", P, M, command="jason mail --offline",
-          record="the date the mail store was last read, and whether it is stale",
+        s("1", "Is the mailbox read recently?", C, JASON, command="jason mail --offline", check=named_check("mail-fresh"),
           clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="stale after 3 days (" + STALE_PROPOSED + ")"),
-          why="Read the store's own age first; this becomes a check (mail-fresh) when that read is registered. Never skipped: "
-              "a lane without the age of the read is not shown."),
+          why="Read the store's own age first (the check mail-fresh: the mail store's last read against the source's stale-after). "
+              "Stale or never read fails it and names the command, which a person runs at a terminal before the run goes on. "
+              "Never skipped: a lane without the age of the read is not shown."),
         s("2", "Read the mailbox", P, M, ("1",), command="jason mail", skip=MANAGER_ONLY,
           record="the date the mailbox was read again",
           clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="daily 08:00, floor 1 hour (" + STALE_PROPOSED + ")"),
@@ -145,10 +142,11 @@ def mail_triage() -> Workflow:
                          "delivery; jason counts from the day the mail service received it, which is a reading"),
           why="Findings are leads for a person: addresses, escrow clocks, tax bills, bank balances, checks, preliminary notices. "
               "Becomes a check (mail-findings). The start day is jason's reading, not a ruling."),
-        s("4", "Read the lanes", P, M, ("1", "2"), command="jason mail --days 30", evidence=("file:mail/items.json",),
-          record="the lanes read: act, review, not scanned, file (counts)",
+        s("4", "Read the lanes", C, JASON, ("1", "2"), command="jason mail --days 30", evidence=("file:mail/items.json",),
+          check=named_check("mail-lanes"),
           clock=ClockDef(ClockBasis.PERSON, label="a date a letter states is a reading until a person confirms it"),
-          why="A sort, not a reading of any letter; the letters of the period are this run's items. Becomes a check (mail-lanes)."),
+          why="The lanes as counts (the check mail-lanes): act, review, not scanned, and the rest. A sort, not a reading of any "
+              "letter; the letters of the period are this run's items."),
         s("5", "Read each letter", P, M, ("4",), command="jason mail --item ID", repeat=ITEM,
           record="read, or read at a terminal for a held letter",
           why="Held: a letter that carries a credential opens in no screen (P4); read the PDF at a terminal and attest only "
@@ -169,7 +167,9 @@ def mail_triage() -> Workflow:
           why="At the service's own site; jason scans, forwards, shreds, and discards nothing, and the service may bill. "
               "Skipped, with the reason, for a letter kept. Nothing in jason can tell it is undone: no step turns done on a guess."),
         s("9", "Wait for the scan", W, M, ("8",), repeat=ITEM, skip=MANAGER_ONLY, command="jason mail",
-          why="Ends when the next read shows the letter scanned, or a person notes the arrival. The age is jason's own measure "
+          check=named_check("mail-scanned"),
+          why="Ends when the next read shows the letter scanned (the check mail-scanned), or a person notes the arrival. The age "
+              "is jason's own measure "
               "(the median delivery-to-scan time), never a deadline: 'not scanned yet, N days', not failed. Skipped for a "
               "letter whose choice is not a scan."),
         s("10", "Act on a stated date", P, M, ("5",), repeat=ITEM, skip=MANAGER_ONLY,
@@ -181,9 +181,9 @@ def mail_triage() -> Workflow:
           record="the board's decision as taken, with its meeting",
           why="Skipped, with the reason, unless the sort sent the letter to the board. The meeting is the meetings family's; the "
               "board item is made at Board action items (the command is not verified). jason decides nothing."),
-        s("12", "Close the period", P, M, ("7",), record="the number of letters chosen or marked no action",
-          why="Done when every letter has a choice or a note. Becomes a check (mail-period-chosen): 'chosen' equals 'items' "
-              "in the mail-triage loader."),
+        s("12", "Close the period", C, JASON, ("7",), check=named_check("mail-period-chosen"),
+          why="Done when every letter of the period has a recorded choice (the check mail-period-chosen: 'chosen' equals 'items' "
+              "in the mail-triage loader)."),
     )
     phases = _phases(MT, ("read", "Read the mail", ("1", "2", "3", "4")), ("triage", "Read and choose", ("5", "6", "7")),
                      ("carry", "Carry out and act", ("8", "9", "10", "11")), ("close", "Close", ("12",)))
@@ -204,18 +204,20 @@ def email_conversation() -> Workflow:
     s = _maker(EC)
     answers = _ids(EC, *_THREAD_STEPS)
     steps = (
-        s("1", "Is Gmail read recently?", P, M, command="jason gmail", record="the store's last read, and whether it is stale",
+        s("1", "Is Gmail read recently?", C, JASON, command="jason gmail", check=named_check("gmail-fresh"),
           clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="stale after 1 hour (" + STALE_PROPOSED + ")"),
-          why="Becomes a check (gmail-fresh). Checked at each open: what is awaiting us is only as new as the last read."),
+          why="The check gmail-fresh: the Gmail store's last read against its stale-after. Checked at each open: what is "
+              "awaiting us is only as new as the last read. Stale fails it and names the command a person runs at a terminal."),
         s("2", "Read Gmail headers", P, M, ("1",), command="jason gmail --sync", skip=MANAGER_ONLY,
           record="the date of the read",
           clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="every 10 minutes 07-22, hourly outside, floor 2 minutes (the floor is "
                          "the provider's published quota; adoption is proposed)"),
           why="Headers only, no bodies. Skipped, with the reason, when fresh. Becomes a job (gmail-sync)."),
-        s("3", "Whose move is it?", P, M, ("1", "2"), command='jason threads --status "awaiting us"',
-          record="the status read: awaiting us, awaiting them, notice, or internal",
-          why="Always with the caveat that someone may have answered by phone, in person, or from another mailbox, which jason "
-              "cannot see. Becomes a check (thread-status). A later inbound message reopens it."),
+        s("3", "Whose move is it?", C, JASON, ("1", "2"), command='jason threads --status "awaiting us"',
+          check=named_check("thread-status"),
+          why="The status from the thread's last message (the check thread-status): awaiting us, awaiting them, notice, or "
+              "internal. Always with the caveat that someone may have answered by phone, in person, or from another mailbox, "
+              "which jason cannot see. A later inbound message reopens it."),
         s("4", "Read what it asks", P, M, ("3",), command="jason inbox; jason replies",
           record="the intent and topics read (a reading, labeled), and where an answer is likely written",
           clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="response-standards is a proposed policy, not adopted: no usual reply "
@@ -334,9 +336,10 @@ def response_inbox() -> Workflow:
                          "2 hours are proposed cadences"),
           why="PayHOA, email, a mailed scan, a Google Form, keyed by hand; a channel no request uses is skipped. Becomes a job "
               "(responses-check)."),
-        s("2", "Did each channel answer?", P, M, ("1",), command="jason responses --list",
-          record="each channel's end: ok, sign-in, failed, skipped, or never checked",
-          why="A sign-in end pauses that integration's sources; no retry on a timer. Becomes a check (responses-channels)."),
+        s("2", "Did each channel answer?", C, JASON, ("1",), command="jason responses --list",
+          check=named_check("responses-channels"),
+          why="Each channel's end (the check responses-channels): ok, sign-in, failed, skipped, or never checked, with the last "
+              "success. A sign-in end pauses that integration's sources; no retry on a timer."),
         s("3", "Whose copy is it?", P, M, ("1",), repeat=ITEM, command="jason responses --check",
           record="recognized (a sent copy), candidate (a form, no copy), or not ours",
           why="Recognition runs inside --check and --read, by rung, with how sure. A reference jason did not send is a finding, "
@@ -361,10 +364,10 @@ def response_inbox() -> Workflow:
         s("9", "Key a paper return", P, M, (), skip=MANAGER_ONLY, command="jason responses --add-manual",
           record="a manual arrival, naming how it came",
           why="Optional; for a return that came on paper or by phone and is in no channel."),
-        s("10", "Who has not answered", P, M, ("1",), command="jason responses --outstanding", sop="owner-info-cycle#15",
-          record="the count read: owners sent a copy less answers",
-          why="Never-asked and unreachable owners are listed apart. The cycle dates are the members family's. Becomes a check "
-              "(responses-outstanding)."),
+        s("10", "Who has not answered", C, JASON, ("1",), command="jason responses --outstanding", sop="owner-info-cycle#15",
+          check=named_check("responses-outstanding"),
+          why="Owners sent a copy less answers, as counts (the check responses-outstanding; no unit, name, or address). "
+              "Never-asked and unreachable owners are listed apart. The cycle dates are the members family's."),
         s("11", "Apply the confirmed answers", P, M, ("7",), command="jason owner-info --apply --payhoa", sop="owner-info-cycle#17",
           record="the run or approval that applies them (an id)",
           why="Hand over to the members family: the owner-info-tags plan is in the owner-information run, which adopts it. This "
@@ -387,10 +390,10 @@ def integration_connect() -> Workflow:
     registered (see the module note): only an administrator signed in as themselves may see it."""
     s = _maker(IC)
     steps = (
-        s("1", "Which community and data folder?", P, A, command="jason which; jason use --list", sop="onboard#1",
-          record="the community in use and where the choice came from",
+        s("1", "Which community and data folder?", C, JASON, command="jason which; jason use --list", sop="onboard#1",
+          check=named_check("instance-which"),
           why="Never skipped: a default community must be visible before any --yes command (lesson a-default-community-must-be-visible). "
-              "Becomes a check (instance-which)."),
+              "The check instance-which records the community in use and where the choice came from, and says when it is a default."),
         s("2", "Read the integration's state", P, A, ("1",), command="jason integrations list",
           record="one of: not set up, needs sign-in, connected, failing, paused, with its reason",
           clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="stale after the integration's own stale-after (the defaults are proposed)"),
@@ -478,13 +481,13 @@ def service_run() -> Workflow:
     jason's own, not a policy. Whether a scheduled write is allowed is the board's decision, left standing open."""
     s = _maker(SR)
     steps = (
-        s("1", "Which community?", P, A, command="jason which", sop="onboard#1", record="the community in use",
-          why="Never skipped (lesson a-default-community-must-be-visible). Becomes a check (instance-which)."),
-        s("2", "Is the service alive?", P, A, ("1",), command="jason daemon status",
-          record="none, running, draining, stale, or stopped, with the beat's age",
-          why="Stale is 90 seconds with no beat, beating every 30 (jason's own constants). A stale beat may be a hung process; "
-              "Task Scheduler restarts a failure, not a hang (lesson task-restart-on-failure-limits, open). Becomes a check "
-              "(service-heartbeat)."),
+        s("1", "Which community?", C, JASON, command="jason which", sop="onboard#1", check=named_check("instance-which"),
+          why="Never skipped (lesson a-default-community-must-be-visible). The check instance-which records the community in use."),
+        s("2", "Is the service alive?", C, JASON, ("1",), command="jason daemon status", check=named_check("service-heartbeat"),
+          why="The heartbeat file, judged as jason serve judges it (the check service-heartbeat): none, running, draining, "
+              "stale, or stopped. Stale is 90 seconds with no beat, beating every 30 (jason's own constants). A stale beat may "
+              "be a hung process; Task Scheduler restarts a failure, not a hang (lesson task-restart-on-failure-limits, open). "
+              "Reads the file only; it contacts no process."),
         s("3", "Start it", P, A, ("2",), skip=ADMIN_ONLY, sop="onboard#14",
           command="jason serve; jason serve --install-task (then --yes)", record="running, by date",
           why="At a terminal, the install as an administrator of the machine; skipped, with the reason, when it is running. "
@@ -511,8 +514,9 @@ def service_run() -> Workflow:
           command="jason cadence --resume SOURCE --by NAME", choices=(Choice("sign-in"), Choice("person")),
           why="A pause by sign-in clears only on a good live check (jason integrations check KEY --live) or --resume; a person's "
               "pause clears only by --resume. Skipped when nothing is paused."),
-        s("10", "Read the queue", P, A, ("2",), command="jason jobs", record="the queue read: queued, running, failed, done (counts)",
-          why="A failed read retries 3 times, 5 minutes apart; a failed write waits for a person. Becomes a check (service-queue)."),
+        s("10", "Read the queue", C, JASON, ("2",), command="jason jobs", check=named_check("service-queue"),
+          why="The queue as counts: queued, running, failed, done (the check service-queue). A failed read retries 3 times, "
+              "5 minutes apart; a failed write waits for a person."),
         s("11", "Ask it to stop", P, A, ("2",), skip=ADMIN_ONLY, command="jason daemon stop", record="the drain requested, by date",
           why="Writes only the drain request: each lane finishes its running job, a write is never cut, nothing is killed."),
         s("12", "Everything current?", P, A, ("7",), command="jason storage --check",

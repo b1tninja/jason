@@ -3,8 +3,8 @@
 Enums, not strings: JSON stores the word and the loader turns it into the symbol before a task sees it. Nothing here
 names an association: a definition names its subject, roles, and statutes as data (docs/workflows-engine.md, section 2).
 
-``ClockBasis`` is defined here with all five bases. ``jason.tasks.followups.Basis`` has four (no ``counterparty`` yet);
-``followup_basis`` maps one to the other and answers ``None`` for the one it lacks.
+``ClockBasis`` is defined here with all six bases. ``jason.tasks.followups.Basis`` has four (no ``counterparty`` or
+``provider`` yet); ``followup_basis`` maps one to the other and answers ``None`` for one it lacks.
 """
 
 from __future__ import annotations
@@ -70,12 +70,15 @@ class EventKind(Enum):
     NOTE = "note"
     CANCELLED = "cancelled"
     SPAWNED = "spawned"        # a step started a child run (the engine doc's "child run"; the design page's list lacks it)
+    NOT_APPLICABLE = "not-applicable"   # a person recorded a step as not applicable, with a reason and a record (not a skip)
+    DATE_SET = "date-set"      # a person set (or corrected) a date slot after the run started, with a record
 
 
 class ClockBasis(Enum):
     LAW = "law"
     DOCUMENTS = "documents"
     COUNTERPARTY = "counterparty"
+    PROVIDER = "provider"                  # a date a service provider stated
     PROPOSED_POLICY = "proposed policy"
     PERSON = "person"
 
@@ -93,7 +96,9 @@ def followup_basis(basis: ClockBasis):
 
 class Role(Enum):
     """Who may act on a step. The offices are the holders in ``jason.web.access.SEE_RULES`` (a test keeps the two in
-    step); ``jason`` and ``scheduler`` are the engine's own names; ``anyone`` is any signed-in person."""
+    step); ``jason`` and ``scheduler`` are the engine's own names; ``anyone`` is any signed-in person. ``administrator``,
+    ``developer`` and ``reviewer`` are not offices: a roster names who holds them (the board's roster names none of the
+    last two)."""
 
     MANAGER = "manager"
     PRESIDENT = "president"
@@ -102,6 +107,8 @@ class Role(Enum):
     TREASURER = "treasurer"
     DIRECTOR = "director"
     ADMINISTRATOR = "administrator"
+    DEVELOPER = "developer"                # the subdivider's side of a turnover or a delivery
+    REVIEWER = "reviewer"                  # a person who checks another's work (a second reader, counsel's review)
     JASON = "jason"
     SCHEDULER = "scheduler"
     ANYONE = "anyone"
@@ -116,7 +123,8 @@ class Role(Enum):
             return None
 
 
-OFFICES = frozenset(r for r in Role if r not in (Role.JASON, Role.SCHEDULER, Role.ANYONE, Role.ADMINISTRATOR))
+OFFICES = frozenset(r for r in Role if r not in (Role.JASON, Role.SCHEDULER, Role.ANYONE, Role.ADMINISTRATOR, Role.DEVELOPER,
+                                                 Role.REVIEWER))
 SYSTEM_NAMES = frozenset({"jason", "scheduler"})
 
 
@@ -182,13 +190,43 @@ class SkipRule:
 
 
 @dataclass(frozen=True)
+class NotApplicable:
+    """The outcome a step may declare when it does not apply, recorded by a person with a reason and a record. It is not a
+    skip: a legal step may carry it (it has no skip rule), and a clock on the step reads "not applicable, recorded" rather
+    than being dropped. ``roles`` empty: the step's own roles."""
+
+    roles: tuple[Role, ...] = ()
+    reason_required: bool = True
+    record_required: bool = True
+
+
+class DateTiming(Enum):
+    """A rule on a date set after the start, declared by its slot: ``ANY`` (no rule), ``PAST`` (a day that has come: today
+    or earlier, such as a postmark or a recording day), or ``FUTURE`` (today or later, such as a scheduled day)."""
+
+    ANY = "any"
+    PAST = "past"
+    FUTURE = "future"
+
+
+@dataclass(frozen=True)
 class DateSlot:
-    """A date a run is started with, and the checks on it."""
+    """A date a run is started with, and the checks on it. A slot that is ``late`` is known only after the start (a
+    recording day, a postmark): it is not asked at the start and a person sets it with ``date-set``. A slot that is not
+    ``required`` may also be set later."""
 
     name: str
     label: str = ""
     required: bool = True
     after: str = ""                        # another slot's name: this date may not come before it
+    late: bool = False
+    timing: DateTiming = DateTiming.ANY    # a past or future rule for a date set after the start
+    roles: tuple[Role, ...] = ()           # who may set it after the start; empty: any named person
+
+    @property
+    def settable(self) -> bool:
+        """Whether a date-set act may give this slot a date after the start."""
+        return self.late or not self.required
 
 
 @dataclass(frozen=True)
@@ -241,10 +279,18 @@ class StepDef:
     elapsed: Elapsed = Elapsed.OVERDUE
     on_withdrawn: OnWithdrawn = OnWithdrawn.FAIL
     choices: tuple[Choice, ...] = ()
+    roles: tuple[Role, ...] = ()           # further roles that may act on the step; ``role`` stays the primary, the one listed
+    na: NotApplicable | None = None        # the not-applicable outcome; a legal step may carry it though it cannot be skipped
+    waits_on_child: bool = False           # not done until every child run spawned from this step is done or cancelled
 
     @property
     def is_legal(self) -> bool:
         return self.legal or (self.clock is not None and self.clock.basis is ClockBasis.LAW)
+
+    @property
+    def acting_roles(self) -> tuple[Role, ...]:
+        """Every role that may act on the step: the primary first, then the others, each once."""
+        return tuple(dict.fromkeys((self.role, *self.roles)))
 
 
 @dataclass(frozen=True)
@@ -271,7 +317,7 @@ class Workflow:
         for slot in self.dates:
             raw = str(dates.get(slot.name, "") or "")
             if not raw:
-                if slot.required:
+                if slot.required and not slot.late:
                     out.append(f"date {slot.name} is required")
                 continue
             try:
@@ -282,6 +328,43 @@ class Workflow:
             if slot.after and slot.name in parsed and slot.after in parsed and parsed[slot.name] < parsed[slot.after]:
                 out.append(f"date {slot.name} ({parsed[slot.name]}) comes before {slot.after} ({parsed[slot.after]})")
         out += [f"no date slot {k}" for k in dates if k not in names]
+        return out
+
+    def slot(self, name: str) -> DateSlot | None:
+        return next((d for d in self.dates if d.name == name), None)
+
+    def check_date_set(self, name: str, day: str, dates: Mapping[str, str], today: date) -> list[str]:
+        """The problems with setting slot ``name`` to ``day`` after the start, given the dates the run now has: a slot the
+        definition does not declare, one that is fixed at the start, a day that is not YYYY-MM-DD, one that breaks the
+        slot's own past or future rule, and one out of order with the slot it comes after (or a slot that comes after it)."""
+        slot = self.slot(name)
+        if slot is None:
+            return [f"no date slot {name}"]
+        if not slot.settable:
+            return [f"date {name} is fixed when the run starts; it is not set later"]
+        try:
+            value = date.fromisoformat(str(day))
+        except ValueError:
+            return [f"date {name} is not YYYY-MM-DD: {day}"]
+        out: list[str] = []
+        if slot.timing is DateTiming.PAST and value > today:
+            out.append(f"date {name} ({value}) is in the future; this slot takes a day that has come")
+        if slot.timing is DateTiming.FUTURE and value < today:
+            out.append(f"date {name} ({value}) is in the past; this slot takes a day that has not come")
+        known = {k: v for k, v in dates.items() if k != name}
+        if slot.after and known.get(slot.after):
+            try:
+                if value < date.fromisoformat(known[slot.after]):
+                    out.append(f"date {name} ({value}) comes before {slot.after} ({known[slot.after]})")
+            except ValueError:
+                pass
+        for other in self.dates:
+            if other.after == name and known.get(other.name):
+                try:
+                    if date.fromisoformat(known[other.name]) < value:
+                        out.append(f"date {other.name} ({known[other.name]}) would come before {name} ({value})")
+                except ValueError:
+                    pass
         return out
 
     def has_legal_clock(self) -> bool:
@@ -366,6 +449,28 @@ class StepView:
     detail: Mapping[str, Any] = field(default_factory=dict)
     evidence: tuple[str, ...] = ()         # address@hash, the baseline a resume compares with
     choice: str = ""
+    roles: tuple[Role, ...] = ()           # every role that may act on the step, the primary first
+    na: bool = False                       # done as not applicable (a person's recorded outcome, not a skip)
+    children: tuple[str, ...] = ()         # child runs spawned from this step, in order
+
+
+@dataclass(frozen=True)
+class DateView:
+    """One date slot of a run as it stands: its value, who set it after the start, and whether a person may set it now.
+    ``correction`` is true when a value is already there, so a later date-set needs a reason."""
+
+    name: str
+    label: str = ""
+    value: str = ""
+    required: bool = True
+    late: bool = False
+    settable: bool = False
+    correction: bool = False
+    timing: str = "any"
+    set_by: str = ""
+    set_at: str = ""
+    record: str = ""
+    sets: int = 0                          # how many date-set events this slot has
 
 
 @dataclass(frozen=True)
@@ -391,6 +496,7 @@ class RunView:
     children: tuple[str, ...] = ()         # child run ids, in the order spawned
     past_law: tuple[str, ...] = ()         # keys of law clocks that are past; each opens a follow-up (a person's act)
     items: tuple[str, ...] = ()
+    date_slots: tuple[DateView, ...] = ()  # each slot the definition declares, with whether a person may set it now
 
     def step(self, step_id: str) -> StepView | None:
         return next((s for s in self.steps if s.id == step_id), None)
@@ -414,12 +520,13 @@ class StepAsk:
     family: str
     step: str
     role: str
-    act: str                                # "attest" or "skip"
+    act: str                                # "attest", "skip", or "na" (not applicable)
     by: str
     roles: tuple[str, ...] = ()
     first_by: str = ""
     texts: tuple[str, ...] = ()
     today: date | None = None
+    step_roles: tuple[str, ...] = ()        # every role that may act on the step (``role`` is the primary)
 
 
 @dataclass(frozen=True)

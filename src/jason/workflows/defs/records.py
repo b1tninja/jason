@@ -1,5 +1,5 @@
 """The general workflow definitions of the records family (docs/workflows/documents-records.md): taking a document, a folder,
-a checklist, or an association in, and reading what is held. Pure data: it imports the types and nothing else of jason.
+a checklist, or an association in, and reading what is held. Pure data: it imports the engine's types and ``named_check`` and nothing else of jason.
 
 The definitions, by key (ids are ``<key>.<n>``; the table's id is the ``n``, ``ST-1`` and ``ES-3b`` among them for the gates of
 ``onboard``, whose group prefix is also the step's ``group``):
@@ -9,15 +9,19 @@ The definitions, by key (ids are ``<key>.<n>``; the table's id is the ``n``, ``S
 - ``founding-documents`` (F1 to F6), ``key-document`` (K1 to K7), ``parcel-title`` (P-1 to P-5),
 - ``careful-reading`` (C1 to C10), and ``records-production`` (M1 to M10), which is built and left out of ``BUILDERS``.
 
-**Which steps are a person's.** The page's ``check`` and ``job`` steps are jason's reads and queued commands. The engine knows
-only the reads in ``readers.CHECKS`` and the jobs in ``readers.JOBS`` (all of them the owner-information cycle's and the
-control's), so each of the page's reads and jobs here is a ``person`` step: a person runs the command shown and attests it,
-with the record the step asks for. The step's ``why`` says which read or job it becomes, and ``WANTED`` lists every such name
+**Which steps are a person's.** The page's ``check`` and ``job`` steps are jason's reads and queued commands. The reads in
+``jason.workflows.checks.records`` are registered, so the steps they answer are ``check`` steps (role jason): ``active-community``
+(onboard ST-1), the five gate reads and ``onboard-checklist`` (onboard ST-7, IN-7, ES-7, OP-4, AD-4, AD-3), ``onboard-gates-read`` and
+``record-slots-read`` (record-slot 12 and 1), ``ingest-gate`` (ingest 9), ``split-review`` (split-document 4), and
+``key-document-status`` (key-document 1). The engine knows no job of this family (``readers.JOBS`` holds the owner-information
+cycle's and the control's), so each remaining read or job here is a ``person`` step: a person runs the command shown and attests
+it, with the record the step asks for. The step's ``why`` says which read or job it becomes, and ``WANTED`` lists every such name
 (``check:NAME``, ``job:NAME``, ``plan:KIND``). No plan step: no approvals kind of this family is registered (the proposed
 ``local.*`` kinds are in ``WANTED``). A person's step cannot be jason's, so the role is the one who runs the command.
 
-**Gates.** A gate is jason's reading of the checklist; the board decides what is done. Until a read for it is registered, the
-gate step is a person's attestation that the gate was read open, with the reading as its record, and nothing here passes a gate.
+**Gates.** A gate is jason's reading of the checklist; the board decides what is done. Each gate step is a read: it passes when
+the checklist's reading says the gate is open, and when it is closed it fails and lists the item keys it waits on, never a value.
+The read does not pass the gate for the board, and nothing here records a board's decision.
 
 **Roles.** A step the page gives to more than one office (``S or M``, ``M, S, any``) is ``anyone``. A second person (R) is
 ``anyone`` too: the engine has no ``second`` role on a step yet, and the server refuses the same name for the first and the
@@ -29,7 +33,7 @@ and production (CIV 5210, 5215). The membership list's timeframe (CIV 5210(b)(6)
 until counsel reads it. A handover has no stored deadline: its dates are the transition agreement's or a person's.
 
 **Child runs.** ``spawns`` names a definition built here. The engine finishes a parent step when its child run is done, while
-the page keeps a gate apart from its children: so every gate is its own step, attested by a person after reading, and no child
+the page keeps a gate apart from its children: so every gate is its own step, read by jason, and no child
 completes one.
 
 **Privacy.** A subject is an opaque handle (a request, a document, a parcel, a collection), never a name, a unit, a path, or a
@@ -42,6 +46,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Callable
 
+from jason.workflows.readers import named_check
 from jason.workflows.types import (
     Choice, ClockBasis, ClockDef, DateSlot, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
 )
@@ -49,12 +54,10 @@ from jason.workflows.types import (
 FAMILY = "records"
 
 WANTED: tuple[str, ...] = (
-    # reads (a ``check`` step once a read of this name is registered in ``readers.CHECKS``)
-    "check:active-community", "check:designation-on-file", "check:document-kind-read", "check:ingest-gate",
-    "check:key-document-status", "check:key-document-verified", "check:onboard-gate-adopt", "check:onboard-gate-establish",
-    "check:onboard-gate-ingest", "check:onboard-gate-operate", "check:onboard-checklist", "check:onboard-gate-start", "check:onboard-gates-read",
-    "check:parcel-strand-gaps", "check:profile-own-facts", "check:quotes-verified", "check:record-compare",
-    "check:record-slots-read", "check:request-kinds-mapped", "check:scratch-room", "check:split-review",
+    # reads (a ``check`` step once a read of this name is registered in ``readers.CHECKS``; the reads of
+    # ``jason.workflows.checks.records`` are registered and are no longer listed)
+    "check:designation-on-file", "check:document-kind-read", "check:key-document-verified", "check:parcel-strand-gaps",
+    "check:profile-own-facts", "check:quotes-verified", "check:record-compare", "check:request-kinds-mapped", "check:scratch-room",
     # queued commands (a ``job`` step once a job of this name is registered in ``readers.JOBS``)
     "job:chronology", "job:citations-scan", "job:conflict-leads", "job:county-lookup", "job:documents-locate",
     "job:index-build", "job:ingest-dry-run", "job:ingest-model", "job:ingest-park", "job:intake-scan", "job:inspections-read", "job:library-drive-sync",
@@ -69,8 +72,8 @@ WANTED: tuple[str, ...] = (
 ``person`` step's ``why`` gives; a test keeps the two lists equal and keeps each name out of the registries."""
 
 M, S, A = Role.MANAGER, Role.SECRETARY, Role.ADMINISTRATOR
-ANY = Role.ANYONE
-P, W, D, B = StepKind.PERSON, StepKind.WAIT, StepKind.DECISION, StepKind.BRANCH
+ANY, JASON = Role.ANYONE, Role.JASON
+P, W, D, B, C = StepKind.PERSON, StepKind.WAIT, StepKind.DECISION, StepKind.BRANCH, StepKind.CHECK
 
 SKIP_M = SkipRule((Role.MANAGER,))
 SKIP_ANY = SkipRule((Role.ANYONE,))
@@ -220,8 +223,8 @@ def ingest() -> Workflow:
         st("8", "Read a new version of a known document", P, M, ("1",), why="A history is read and reported, never applied; a new version opens a document-intake run. Skipped, with a reason, unless the report finds a version.",
            command="jason revisions KEY", sop=f"{IG}#7", record="the versions found and the intake runs opened", skip=SKIP_M,
            spawns=DI, becomes_=("job", "revisions-history")),
-        st("9", "The ingest gate", P, M, ("7",), why="The last report's files filed and held, versions, open questions, and the items moved; read again on every open.",
-           command="jason ingest --gate", sop=f"{IG}#6", record="the gate's reading", evidence=gate, becomes_=("check", "ingest-gate")),
+        st("9", "The ingest gate", C, JASON, ("7",), why="The last report's files filed and held, versions, open questions, and the items moved; read again on every open.",
+           command="jason ingest --gate", sop=f"{IG}#6", evidence=gate, check=named_check("ingest-gate")),
     )
     phases = _phases(sid, (("arrive", "Arrive", ("0",)), ("read", "Read", _upto(1, 4)), ("ask", "Ask", ("5", "6")),
                            ("file", "File", ("7", "8", "9"))))
@@ -240,8 +243,8 @@ def record_slot() -> Workflow:
     steps are done item by item and a step a slot does not use is skipped with a reason (the engine derives no per-item path)."""
     sid, st = _maker(RS)
     steps = (
-        st("1", "Read the checklist and its biggest unknowns", P, M, why="Counts by state, group, and law, and the slots a gate waits on; read on open.",
-           command="jason records --list [--group G] [--state S]", sop="onboard#4", record="the counts read", becomes_=("check", "record-slots-read")),
+        st("1", "Read the checklist and its biggest unknowns", C, JASON, why="Counts by state, group, and law, and the slots a gate waits on; read on open.",
+           command="jason records --list [--group G] [--state S]", sop="onboard#4", check=named_check("record-slots-read")),
         st("2", "How is this slot answered", P, ANY, ("1",), why="A branch by person for each slot: a file (pick, bind, or upload) or an answer (none, not applicable, waiting). The engine derives no per-item path, so the person records the way and skips the other way's steps with a reason.",
            command="jason records --slot KEY", record="the way chosen", repeat=ITEM),
         st("3", "Pick, bind, or upload", P, ANY, ("2",), why="A pin; a recorded instrument's pin is a key-documents link, a bound folder's files are candidates and never pins, and the file is never touched. Election materials are kept one year (CIV 5200(c)).",
@@ -268,8 +271,8 @@ def record_slot() -> Workflow:
            repeat=ITEM, skip=SKIP_ANY, clock=ClockDef(ClockBasis.PERSON, label="a date a person recorded, if any")),
         st("11", "Is there another? / this is all", P, ANY, ("3",), why="A slot that holds several, or a series, is answered only when a person says so.",
            command="jason records --more KEY --value yes|no", record="more or no more", repeat=ITEM, skip=SKIP_ANY),
-        st("12", "Read the gates the slots feed", P, M, ("1",), why="The checklist items and the gates (start, ingest, establish) are computed from the slots; no control passes a gate.",
-           command="jason onboard", record="the gates read", becomes_=("check", "onboard-gates-read")),
+        st("12", "Read the gates the slots feed", C, JASON, ("1",), why="The checklist items and the gates (start, ingest, establish) are computed from the slots; no control passes a gate.",
+           command="jason onboard", check=named_check("onboard-gates-read")),
     )
     phases = _phases(sid, (("read", "Read the checklist", ("1",)), ("fill", "Fill each slot", _upto(2, 11)), ("gates", "The gates", ("12",))))
     return Workflow(key=RS, title="Fill the record checklist", family=FAMILY, subject="association", steps=steps, phases=phases)
@@ -290,8 +293,8 @@ def split_document() -> Workflow:
            command="jason split ID --suggest [--model]", sop="onboard#5", record="the suggestions read", skip=SKIP_ANY, becomes_=("job", "split-suggest")),
         st("3", "Mark first pages; accept or reject suggestions", P, ANY, ("2",), why="Boundaries are saved in order with a version; a stale save shows both copies. " + out,
            command="jason split ID --boundaries ...; --accept ...; --mark/--unmark", sop="onboard#5", record="the boundaries saved, with the version", skip=SKIP_ANY),
-        st("4", "Review: counts, collisions, flags, pages to turn and leave out", P, ANY, ("3",), why="Flags (blank only, repeats, sideways, may be over the size limit, slot already filled, may hold more than one document) are readings, not decisions. " + out,
-           command="jason split ID --review --flags", sop="onboard#5", record="the review read", skip=SKIP_ANY, becomes_=("check", "split-review")),
+        st("4", "Review: counts, collisions, flags, pages to turn and leave out", C, JASON, ("3",), why="Flags (blank only, repeats, sideways, may be over the size limit, slot already filled, may hold more than one document) are readings, not decisions. " + out,
+           command="jason split ID --review --flags", sop="onboard#5", skip=SKIP_ANY, check=named_check("split-review")),
         st("5", "Where do the new files go", B, ANY, ("4",), why="By person: held, the library, the slots, or as each part is labelled; a part may differ. " + out,
            command="jason split ID --filing ...", sop="onboard#5", skip=SKIP_ANY,
            choices=(Choice("held"), Choice("library"), Choice("slots"), Choice("each-part"))),
@@ -329,9 +332,8 @@ def onboard() -> Workflow:
         g("ST", "0", "Say whether this is a new association or a change of manager", B, M,
           why="The first fork, by person: a change of manager adds the CM block; a new association skips it.",
           choices=(Choice("new-association"), Choice("change-of-manager", tuple(sid(c) for c in cm)))),
-        g("ST", "1", "Choose the community", P, M, why="The active profile must equal the run's subject before any job; a mismatch blocks.",
-          command="jason which; jason use KEY", sop=f"{OB}#1", record="the active profile, named, and that it equals the subject",
-          becomes_=("check", "active-community")),
+        g("ST", "1", "Choose the community", C, JASON, why="The active profile must equal the run's subject before any job; a mismatch blocks.",
+          command="jason which; jason use KEY", sop=f"{OB}#1", check=named_check("active-community")),
         g("ST", "2", "Start the profile package", P, A, ("ST-1",), why="Terminal only. A package from jason's templates and empty private facts; it overwrites nothing, and a person reviews and commits the source files.",
           command="jason onboard --new KEY --name NAME --county COUNTY", sop=f"{OB}#2", record="the package started"),
         g("ST", "3", "Look up the county's finds", P, M, ("ST-2",), why="Leads under the private facts, each becoming a question; an empty or unreachable recorder is a note, not a row. Skipped, with a reason, when no county reader exists.",
@@ -343,8 +345,8 @@ def onboard() -> Workflow:
           record="the sign-ins made, by token name"),
         g("ST", "6", "Connect the integrations", P, A, ("ST-1",), why="Each credential under its vault path; connected only after a read succeeds, checked by a person at a console.",
           command="jason vault status; jason vault migrate; jason integrations check KEY --live --by NAME", sop=f"{OB}#13", record="each integration read, by name"),
-        g("ST", "7", "Gate: start", P, M, ("ST-4", "ST-5", "ST-6"), why=f"Open when units, management software, Drive, and the vault are present. {GATE_NOTE}",
-          command="jason onboard", record="the gate's reading", becomes_=("check", "onboard-gate-start")),
+        g("ST", "7", "Gate: start", C, JASON, ("ST-4", "ST-5", "ST-6"), why=f"Open when units, management software, Drive, and the vault are present. {GATE_NOTE}",
+          command="jason onboard", check=named_check("onboard-gate-start")),
         # --- IN: ingest
         g("IN", "1", "Read the record checklist", P, M, ("ST-7",), why="A record-slot run is linked and shows the counts by state; the parent step is a link and not the gate.",
           command="jason records --list", sop=f"{OB}#4", record="the child run and the counts read", spawns=RS),
@@ -359,8 +361,8 @@ def onboard() -> Workflow:
           command="jason ingest SOURCE", record="the ingest run opened", spawns=IG),
         g("IN", "6", "Fetch what jason can read itself", P, M, ("ST-7",), why="The catalog, the library, and the outlines are refreshed; repeat as needed.",
           command="jason sync-catalog; jason library; jason outlines --fetch", sop=f"{OB}#16", record="the fetch run", becomes_=("job", "sync-catalog")),
-        g("IN", "7", "Gate: ingest", P, M, ("IN-1", "IN-5", "IN-6"), why=f"Open when the records map, minutes, budget reports, financial statements, contracts, and insurance policies are present and no library file waits for a kind. {GATE_NOTE}",
-          command="jason onboard; jason ingest --gate", record="the gate's reading", becomes_=("check", "onboard-gate-ingest")),
+        g("IN", "7", "Gate: ingest", C, JASON, ("IN-1", "IN-5", "IN-6"), why=f"Open when the records map, minutes, budget reports, financial statements, contracts, and insurance policies are present and no library file waits for a kind. {GATE_NOTE}",
+          command="jason onboard; jason ingest --gate", check=named_check("onboard-gate-ingest")),
         # --- ES: establish
         g("ES", "1", "Find and pin the founding instruments", P, M, ("IN-7",), why="The declaration, amendments, annexations, bylaws, and articles are located, asked about, confirmed, and pinned in a founding-documents run.",
           command="jason onboard --locate", record="the founding-documents run opened", spawns="founding-documents"),
@@ -376,8 +378,8 @@ def onboard() -> Workflow:
           command="jason onboard --apply", sop=f"{OB}#8", record="the diff applied, and the proposals written (a count)"),
         g("ES", "6", "Read and apply each profile proposal", P, M, ("ES-5",), why="A patch is read, applied, and committed by a person; jason never edits the profile.",
           command="git apply", record="each proposal read and applied"),
-        g("ES", "7", "Gate: establish", P, M, ("ES-2", "ES-6"), why=f"Open when the declaration, amendments, annexations, bylaws, and articles are present, each recorded copy is matched in the county index and read with a stamp, and no question is open about which text is in force. {GATE_NOTE}",
-          command="jason onboard", record="the gate's reading", becomes_=("check", "onboard-gate-establish")),
+        g("ES", "7", "Gate: establish", C, JASON, ("ES-2", "ES-6"), why=f"Open when the declaration, amendments, annexations, bylaws, and articles are present, each recorded copy is matched in the county index and read with a stamp, and no question is open about which text is in force. {GATE_NOTE}",
+          command="jason onboard", check=named_check("onboard-gate-establish")),
         # --- OP: operate
         g("OP", "1", "Put people, accounts, and figures in the private facts", P, M, ("ST-7",), why="In the private facts or the profile's notes; codes and passwords in the vault only. Continuous.",
           sop=f"{OB}#12", record="that the facts were put in the private facts (never the values)"),
@@ -385,19 +387,18 @@ def onboard() -> Workflow:
           command="jason onboard --questions --group board", sop=f"{OB}#10", record="the minutes that record the change"),
         g("OP", "3", "Adopt the schedules", P, A, ("ST-6",), why="No source runs until adopted, none faster than its floor, no write is scheduled, and the heartbeat is fresh.",
           command="jason cadence; jason serve --install-task; jason daemon status", sop=f"{OB}#14", record="the schedules adopted, by source"),
-        g("OP", "4", "Gate: operate", P, M, ("OP-1", "OP-2", "OP-3"), why=f"Open when the board rule, roster, signers, accounts, assessments, fiscal year, meeting schedule, notice rules, assignments, and utilities are present. {GATE_NOTE}",
-          command="jason onboard", record="the gate's reading", becomes_=("check", "onboard-gate-operate")),
+        g("OP", "4", "Gate: operate", C, JASON, ("OP-1", "OP-2", "OP-3"), why=f"Open when the board rule, roster, signers, accounts, assessments, fiscal year, meeting schedule, notice rules, assignments, and utilities are present. {GATE_NOTE}",
+          command="jason onboard", check=named_check("onboard-gate-operate")),
         # --- AD: adopt
         g("AD", "1", "Write the profile's rows", P, M, ("ES-6",), why="A Community subclass, pinned library folders and Drive roots, and the books. The procedure does not flag this step as a person's, and no command does it; it is a person's work, committed by a person.",
           sop=f"{OB}#15", record="the rows written and committed"),
         g("AD", "2", "Take in the rules and policies", P, ANY, ("AD-1",), why="One document-intake run for each operating rule set, election rule, policy, and resolution.",
           command="jason intake --scan", record="the intake runs opened", spawns=DI),
-        g("AD", "3", "Run the checklist until only what a person supplies is missing; give each an owner", P, M, ("ST-7", "IN-7", "ES-7", "OP-4"),
-          why="The checklist report; each missing item has an owner in the schedule.", command="jason onboard --checklist --write; jason schedule",
-          sop=f"{OB}#17", record="the checklist report and the owners given",
-          becomes_=("check", "onboard-checklist")),
-        g("AD", "4", "Gate: adopt", P, M, ("AD-2", "AD-3"), why=f"Open when the operating rules, election rules, policies, collection and enforcement policies, architectural procedure, governing set, and conflicts are present. {GATE_NOTE}",
-          command="jason onboard", record="the gate's reading", becomes_=("check", "onboard-gate-adopt")),
+        g("AD", "3", "Run the checklist until only what a person supplies is missing; give each an owner", C, JASON, ("ST-7", "IN-7", "ES-7", "OP-4"),
+          why="The checklist report; each missing item has an owner in the schedule. The read says whether only what a person supplies is missing; who owns each is a person's to give in the schedule.",
+          command="jason onboard --checklist --write; jason schedule", sop=f"{OB}#17", check=named_check("onboard-checklist")),
+        g("AD", "4", "Gate: adopt", C, JASON, ("AD-2", "AD-3"), why=f"Open when the operating rules, election rules, policies, collection and enforcement policies, architectural procedure, governing set, and conflicts are present. {GATE_NOTE}",
+          command="jason onboard", check=named_check("onboard-gate-adopt")),
         g("AD", "5", "Close the onboarding", P, M, tuple(gate_ids.values()), why="A note that the board saw the gates open; it closes the run. A design choice: closing is a person's word, and no step marks a gate passed.",
           record="the note that the board saw the gates open"),
         # --- CM: change of manager (the branch ST-0)
@@ -459,8 +460,8 @@ def key_document() -> Workflow:
     number); a reading is a lead, not a pin."""
     sid, st = _maker(KD)
     steps = (
-        st("1", "Status from the stores: expected, located, held, linked", P, M, why="'Missing' is only ever a person's word and needs a note.",
-           command="jason key-documents", record="the entry's status read", becomes_=("check", "key-document-status")),
+        st("1", "Status from the stores: expected, located, held, linked", C, JASON, why="'Missing' is only ever a person's word and needs a note.",
+           command="jason key-documents", check=named_check("key-document-status")),
         st("2", "Order the recorded copy", P, M, ("1",), why="The copy-order list holds the instruments the records lack, with the price in cents; jason never sends it. Skipped, with a reason, when the copy is held.",
            command="jason records-request", record="the copy-order entry", skip=SKIP_M),
         st("3", "Wait for the copy", W, M, ("2",), why="Ends when a scan arrives; the date is a person's. Skipped, with a reason, when no copy was ordered.",

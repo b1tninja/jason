@@ -9,6 +9,11 @@ The step states follow docs/workflows-engine.md, section 4: a step is ``ready`` 
 it is not superseded; ``waiting`` when a ``wait`` (or a child run) holds it; ``needs a person`` when it is ready and its kind
 is ``person`` or ``decision``; ``blocked`` when a ``needs`` has failed; a run is ``waiting`` when every open step is
 waiting. A ``changed`` event never un-does a step: only a ``reopened`` event does.
+
+Three later events fold in without touching an older log. ``not-applicable`` makes a step done (``StepView.na``; it satisfies
+a ``needs``, and a clock on it reads "not applicable, recorded", neither satisfied nor dropped). ``date-set`` gives a date slot
+a value after the start (the latest wins, and every clock is read from the dates as they stand). A step with
+``waits_on_child`` is done only when its own act is on record and every child run spawned from it is done or cancelled.
 """
 
 from __future__ import annotations
@@ -18,10 +23,12 @@ from datetime import date, timedelta
 from typing import Any, Iterable, Mapping, Sequence
 
 from jason.workflows.types import (
-    ClockBasis, ClockDef, ClockView, Elapsed, Event, EventKind, FINAL_OUTCOMES, Link, OnWithdrawn, Repeat, RunState,
-    RunView, StepDef, StepKind, StepState, StepView, Workflow,
+    ClockBasis, ClockDef, ClockView, DateView, Elapsed, Event, EventKind, FINAL_OUTCOMES, Link, OnWithdrawn, Repeat,
+    RunState, RunView, StepDef, StepKind, StepState, StepView, Workflow,
 )
 
+NA_STATUS = "not applicable, recorded"
+"""What a clock on a step recorded as not applicable reads: neither satisfied nor dropped."""
 TERMINAL = frozenset({StepState.DONE, StepState.SKIPPED, StepState.SUPERSEDED})
 OPEN = frozenset({StepState.READY, StepState.RUNNING, StepState.WAITING, StepState.NEEDS_PERSON, StepState.FAILED})
 _CURRENT = (StepState.FAILED, StepState.NEEDS_PERSON, StepState.READY, StepState.RUNNING, StepState.WAITING)
@@ -61,6 +68,8 @@ class _Acc:
     arrived: Event | None = None
     skipped: Event | None = None
     spawned: Event | None = None
+    na: Event | None = None
+    children: list[str] = field(default_factory=list)      # every child run spawned from this step, in order
     superseded: bool = False
     choice: str = ""
     evidence: dict[str, str] = field(default_factory=dict)
@@ -110,6 +119,8 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
     links: dict[tuple[str, str], Link] = {}
     orphans: list[str] = []
     spawned: list[str] = []
+    date_sets: dict[str, list[Event]] = {}
+    slot_names = {d.name for d in workflow.dates}
     paused = ""
     is_paused = False
     activated = False
@@ -144,6 +155,12 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
         if k is EventKind.CANCELLED:
             is_cancelled, cancelled = True, str(e.detail.get("reason", ""))
             continue
+        if k is EventKind.DATE_SET:
+            slot, day = str(e.detail.get("slot", "")), str(e.detail.get("day", ""))
+            if slot in slot_names and _day(day) is not None:      # the latest wins; a slot the definition lacks is ignored
+                dates[slot] = day
+                date_sets.setdefault(slot, []).append(e)
+            continue
         if k is EventKind.NOTE and not e.step:
             continue
         if not e.step:
@@ -158,7 +175,7 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
         if k is EventKind.REOPENED:
             targets = [key for key in accs if key[0] == sd.id and (not repeats or not e.detail.get("item") or key[1] == item)]
             for key in targets:
-                accs[key] = _Acc(reopened=accs[key].reopened + 1)
+                accs[key] = _Acc(reopened=accs[key].reopened + 1, children=accs[key].children)
             if not targets:
                 acc_for(sd.id, item).reopened += 1
             continue
@@ -198,10 +215,15 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
             a.arrived = e
         elif k is EventKind.SKIPPED:
             a.skipped = e
+        elif k is EventKind.NOT_APPLICABLE:
+            a.na = e
         elif k is EventKind.SPAWNED:
             a.spawned = e
-            if e.detail.get("child") and str(e.detail["child"]) not in spawned:
-                spawned.append(str(e.detail["child"]))
+            if e.detail.get("child"):
+                if str(e.detail["child"]) not in spawned:
+                    spawned.append(str(e.detail["child"]))
+                if str(e.detail["child"]) not in a.children:
+                    a.children.append(str(e.detail["child"]))
         elif k is EventKind.CHANGED:
             a.changed = [dict(d) for d in (e.detail.get("differences") or ()) if isinstance(d, Mapping)]
             if e.detail.get("evidence") is not None:
@@ -230,6 +252,9 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
             return StepState.SKIPPED, str(a.skipped.detail.get("reason", "")), a.skipped
         if a.superseded:
             return StepState.SUPERSEDED, "replaced by a re-plan", None
+        if a.na:
+            why = str(a.na.detail.get("reason", ""))
+            return StepState.DONE, f"recorded as not applicable by {a.na.by or '?'}" + (f": {why}" if why else ""), a.na
         done: Event | None = None
         if sd.kind is StepKind.CHECK and a.check and a.check.detail.get("ok"):
             done = a.check
@@ -245,7 +270,19 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
             done = a.arrived
         elif sd.kind is StepKind.BRANCH and a.choice:
             done = a.check if a.check and a.check.detail.get("ok") else a.attested
-        if sd.spawns and a.spawned:
+        if sd.spawns and sd.waits_on_child:
+            # the step's own act and every child spawned from it: not done until each child is done or cancelled
+            unfinished = [c for c in a.children if children.get(c) not in ("done", "cancelled")]
+            if unfinished:
+                total = len(a.children)
+                if total == 1:
+                    return StepState.WAITING, f"child run {unfinished[0]} is {children.get(unfinished[0]) or 'not finished'}", None
+                return StepState.WAITING, (f"{total - len(unfinished)} of {total} child runs finished; waiting on "
+                                           + ", ".join(unfinished)), None
+            if done is not None and a.children:
+                return StepState.DONE, (f"child run {a.children[0]} is {children[a.children[0]]}" if len(a.children) == 1
+                                        else f"all {len(a.children)} child runs finished"), done
+        elif sd.spawns and a.spawned:
             child = str(a.spawned.detail.get("child", ""))
             if children.get(child) in ("done", "cancelled"):
                 return StepState.DONE, f"child run {child} is {children[child]}", a.spawned
@@ -300,7 +337,7 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
             return states[step_id]
         sd = steps_by_id[step_id]
         if step_id in visiting:       # a cycle (validate refuses one); treat it as not started
-            return StepView(sd.id, sd.title, sd.kind, sd.role, StepState.NOT_STARTED)
+            return StepView(sd.id, sd.title, sd.kind, sd.role, StepState.NOT_STARTED, roles=sd.acting_roles)
         visiting.add(step_id)
         needs = [n for n in sd.needs if n in steps_by_id]
         need_views = [view_of(n) for n in needs]
@@ -312,7 +349,7 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
         units = list(items) if repeats else [""]
         if branch:
             sv = StepView(sd.id, sd.title, sd.kind, sd.role, StepState.SKIPPED, f"not on the path {branch[1]} chosen at {branch[0]}",
-                          by="jason")
+                          by="jason", roles=sd.acting_roles)
             states[step_id] = sv
             return sv
         results = []
@@ -322,17 +359,21 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
         if len(results) == 1:
             _, a, st, reason, ev = results[0]
             item_states: tuple[tuple[str, StepState], ...] = ()
+            by_na = st is StepState.DONE and ev is not None and ev.kind is EventKind.NOT_APPLICABLE
         else:
             item_states = tuple((u, st) for u, _, st, _, _ in results)
             sts = [st for _, _, st, _, _ in results]
             if all(s is StepState.DONE or s is StepState.SKIPPED for s in sts):
                 st = StepState.DONE if any(s is StepState.DONE for s in sts) else StepState.SKIPPED
                 a, reason, ev = results[-1][1], "", results[-1][4]
+                done_evs = [e_ for _, _, s_, _, e_ in results if s_ is StepState.DONE]
+                by_na = st is StepState.DONE and all(e_ is not None and e_.kind is EventKind.NOT_APPLICABLE for e_ in done_evs)
             else:
                 pick = next(((u, a_, s_, r_, e_) for u, a_, s_, r_, e_ in results if s_ not in TERMINAL), results[0])
                 _, a, st, reason, ev = pick
                 done_n = sum(1 for s in sts if s in TERMINAL)
                 reason = (f"{done_n} of {len(sts)} items done" + (f"; {reason}" if reason else ""))
+                by_na = False
         chosen = a.choice if a else ""
         sv = StepView(
             id=sd.id, title=sd.title, kind=sd.kind, role=sd.role, state=st, reason=reason,
@@ -341,7 +382,7 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
             blocked_by=failed if st is StepState.BLOCKED else (),
             changed=tuple(a.changed) if a else (), items=item_states,
             detail=dict(ev.detail) if ev else {}, evidence=tuple(evidence_entries(a.evidence)) if a else (),
-            choice=chosen,
+            choice=chosen, roles=sd.acting_roles, na=by_na, children=tuple(a.children) if a else (),
         )
         states[step_id] = sv
         return sv
@@ -376,10 +417,12 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
     clocks: list[ClockView] = []
     running = run_state not in (RunState.DRAFT,)
 
-    def clock_view(key: str, clock: ClockDef, satisfied: bool, step: str, title: str = "") -> ClockView:
+    def clock_view(key: str, clock: ClockDef, satisfied: bool, step: str, title: str = "", na: bool = False) -> ClockView:
         due = clock_due(clock, dates)
         if due is None:
             status, days = "undated", None
+        elif na:                      # recorded as not applicable: the clock is kept and says so, never dropped as a skip
+            status, days = NA_STATUS, (due - today).days
         elif satisfied:
             status, days = "satisfied", (due - today).days
         elif not running:
@@ -394,8 +437,19 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
         clocks.append(clock_view(f"run.{i}", c, run_state is RunState.DONE, ""))
     for sd, sv in zip(workflow.steps, step_views):
         if sd.clock:
-            clocks.append(clock_view(sd.id, sd.clock, sv.state in TERMINAL, sd.id, sd.title))
+            clocks.append(clock_view(sd.id, sd.clock, sv.state in TERMINAL, sd.id, sd.title, na=sv.na))
     past_law = tuple(c.key for c in clocks if c.basis is ClockBasis.LAW and c.status == "overdue")
+
+    slot_views = []
+    for slot in workflow.dates:
+        sets = date_sets.get(slot.name, [])
+        last = sets[-1] if sets else None
+        value = dates.get(slot.name, "")
+        slot_views.append(DateView(
+            name=slot.name, label=slot.label, value=value, required=slot.required, late=slot.late,
+            settable=slot.settable and run_state not in (RunState.DONE, RunState.CANCELLED), correction=bool(value),
+            timing=slot.timing.value, set_by=last.by if last else "", set_at=last.at if last else "",
+            record=str(last.detail.get("record", "")) if last else "", sets=len(sets)))
 
     return RunView(
         id=run_id, definition=workflow.key, subject=str(opened.detail.get("subject", "")),
@@ -403,6 +457,7 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
         current=current, clocks=tuple(clocks), links=tuple(links.values()), dates=dates, n=events[-1].n, updated=events[-1].at,
         parent=str(opened.detail.get("parent", "")), paused_reason=paused if is_paused else "",
         cancelled_reason=cancelled, orphans=tuple(orphans), children=tuple(spawned), past_law=past_law, items=items,
+        date_slots=tuple(slot_views),
     )
 
 

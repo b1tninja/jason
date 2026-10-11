@@ -15,11 +15,17 @@ The rules (docs/workflows-engine.md, section 5):
 - ``check`` and ``job``: done by their results. ``wait``: ended by an arrival. ``branch``: by a fact, or by a person's
   answer when the step has no fact to read.
 - A step with no skip rule (a legal step among them) cannot be skipped.
+- A step may name several roles (``StepDef.roles`` beside the primary ``role``): a person holding any of them may act.
+- A step that declares ``na`` is recorded as not applicable by a person holding one of its roles, with a reason and a record.
+  That is not a skip: a legal step may carry it, and its clock reads "not applicable, recorded".
+- A date slot that is ``late`` (or optional) is set after the start by a person, with a record; a later act corrects it, with a
+  reason (append-only: the latest wins in the fold).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Callable, Iterable, Mapping
 
 from jason.workflows.types import (
@@ -68,6 +74,25 @@ def may(role: Role, by: str, roles_of: RolesOf | None) -> bool:
     if role is Role.ANYONE:
         return True
     return role in roles_held(by, roles_of)
+
+
+def may_act(sd: StepDef, by: str, roles_of: RolesOf | None) -> bool:
+    """Whether ``by`` may act on a step: one of its roles (the primary or any other) is held."""
+    return any(may(r, by, roles_of) for r in sd.acting_roles)
+
+
+def role_phrase(sd: StepDef) -> str:
+    """The step's roles in words for a refusal: "the manager role" for one, "one of the roles manager or treasurer" for more."""
+    roles = sd.acting_roles
+    if len(roles) == 1:
+        return f"the {roles[0].value} role"
+    return "one of the roles " + " or ".join(r.value for r in roles)
+
+
+def _no_standing(by: str, sd: StepDef, extra: str = "") -> StepRefused:
+    if len(sd.acting_roles) == 1:
+        return StepRefused(f"{by} does not hold the {sd.role.value} role that {sd.id} needs{extra}")
+    return StepRefused(f"{by} does not hold a role that {sd.id} needs ({' or '.join(r.value for r in sd.acting_roles)}){extra}")
 
 
 def _person(by: str) -> str:
@@ -128,11 +153,11 @@ def attest_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, role
         raise StepRefused(f"{sd.id} is a wait step: an arrival ends it (arrived), not an attestation")
     if sd.kind is StepKind.BRANCH and sd.check is not None:
         raise StepRefused(f"{sd.id} is a branch decided by a fact jason reads, not by a person's answer")
-    if not may(sd.role, by, roles_of):
+    if not may_act(sd, by, roles_of):
         extra = ""
         if sd.kind is StepKind.DECISION and by == view.owner:
             extra = f"; opening the run gives no standing to record it, the {sd.role.value} records the board's decision"
-        raise StepRefused(f"{by} does not hold the {sd.role.value} role that {sd.id} needs{extra}")
+        raise _no_standing(by, sd, extra)
     _expect(_unit_state(view, sd, item), StepState.NEEDS_PERSON, sd, "it is not waiting on a person now")
     record = (record or "").strip()
     detail: dict[str, Any] = {}
@@ -174,8 +199,8 @@ def arrived_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, rol
     by = _person(by)
     if sd.kind is not StepKind.WAIT:
         raise StepRefused(f"{sd.id} is not a wait step")
-    if not may(sd.role, by, roles_of):
-        raise StepRefused(f"{by} does not hold the {sd.role.value} role that {sd.id} needs")
+    if not may_act(sd, by, roles_of):
+        raise _no_standing(by, sd)
     _expect(_unit_state(view, sd, item), StepState.WAITING, sd)
     detail: dict[str, Any] = {"what": what or sd.title}
     if item:
@@ -190,7 +215,7 @@ def skip_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, roles_
     by = _person(by)
     if sd.skip is None or sd.is_legal:
         raise StepRefused(f"{sd.id} cannot be skipped: " + ("it is a legal step" if sd.is_legal else "its definition gives no skip rule"))
-    allowed = sd.skip.roles or (sd.role,)
+    allowed = sd.skip.roles or sd.acting_roles
     if not any(may(r, by, roles_of) for r in allowed):
         raise StepRefused(f"{by} may not skip {sd.id}: only {', '.join(r.value for r in allowed)}")
     if sd.skip.reason_required and not (reason or "").strip():
@@ -204,6 +229,68 @@ def skip_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, roles_
     return Act(EventKind.SKIPPED, sd.id, detail)
 
 
+def na_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, roles_of: RolesOf | None, reason: str = "",
+           record: str = "", item: str = "") -> Act:
+    """A person records that a step does not apply: the step is done as not applicable, which satisfies what needs it. Only a
+    step whose definition declares ``na``; by a person holding one of its roles (``na.roles``, or the step's own); with the
+    reason and the record the declaration asks for. A legal step may be recorded this way. It is not a skip."""
+    _acting(view)
+    sd, sv = _step(workflow, view, step_id)
+    by = _person(by)
+    if sd.na is None:
+        raise StepRefused(f"{sd.id} cannot be recorded as not applicable: its definition gives no not-applicable outcome")
+    allowed = sd.na.roles or sd.acting_roles
+    if not any(may(r, by, roles_of) for r in allowed):
+        raise StepRefused(f"{by} may not record {sd.id} as not applicable: only {', '.join(r.value for r in allowed)}")
+    reason, record = (reason or "").strip(), (record or "").strip()
+    if sd.na.reason_required and not reason:
+        raise StepRefused(f"{sd.id}: recording a step as not applicable needs a reason")
+    if sd.na.record_required and not record:
+        raise StepRefused(f"{sd.id}: recording a step as not applicable needs the record that shows it")
+    state = _unit_state(view, sd, item)
+    if state in (StepState.DONE, StepState.SKIPPED, StepState.SUPERSEDED):
+        raise StepRefused(f"{sd.id} is already {state.value}")
+    detail: dict[str, Any] = {}
+    if reason:
+        detail["reason"] = reason
+    if record:
+        detail["record"] = record
+    if item:
+        detail["item"] = item
+    return Act(EventKind.NOT_APPLICABLE, sd.id, detail)
+
+
+def date_set_act(workflow: Workflow, view: RunView, *, slot: str, day: str, by: str, roles_of: RolesOf | None, record: str = "",
+                 reason: str = "", today: date | None = None) -> Act:
+    """A person gives a date slot a day after the start. Only a slot the definition declares and lets be set later (``late``,
+    or not required), by a person holding one of the slot's roles (none named: any named person), with the record that shows the
+    day. A slot that already has a day is corrected, which needs a reason; the earlier day stays in the events (append-only,
+    the latest wins). The day is checked against the slot's own past or future rule and its order with the slots around it."""
+    by = _person(by)
+    if view.state in (RunState.DONE, RunState.CANCELLED):
+        raise StepRefused(f"the run is {view.state.value}; a date is not set on it")
+    slot_def = workflow.slot(slot)
+    if slot_def is None:
+        raise StepRefused(f"no date slot {slot} in {workflow.key}")
+    if slot_def.roles and not any(may(r, by, roles_of) for r in slot_def.roles):
+        raise StepRefused(f"{by} may not set date {slot}: only {', '.join(r.value for r in slot_def.roles)}")
+    record, reason, day = (record or "").strip(), (reason or "").strip(), (day or "").strip()
+    problems = workflow.check_date_set(slot, day, view.dates, today or date.today())
+    if problems:
+        raise StepRefused("; ".join(problems))
+    if not record:
+        raise StepRefused(f"date {slot}: setting a date needs the record that shows it")
+    detail: dict[str, Any] = {"slot": slot, "day": day, "record": record}
+    previous = view.dates.get(slot, "")
+    if previous:
+        if not reason:
+            raise StepRefused(f"date {slot} is already {previous}: correcting it needs a reason")
+        detail.update({"reason": reason, "was": previous})
+    elif reason:
+        detail["reason"] = reason
+    return Act(EventKind.DATE_SET, "", detail)
+
+
 def reopen_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, roles_of: RolesOf | None, reason: str = "",
                item: str = "") -> Act:
     """A person opens a done, skipped, or failed step again. The engine never does: a ``changed`` event does not."""
@@ -211,8 +298,8 @@ def reopen_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, role
         raise StepRefused(f"the run is {view.state.value}")
     sd, sv = _step(workflow, view, step_id)
     by = _person(by)
-    if not may(sd.role, by, roles_of):
-        raise StepRefused(f"{by} does not hold the {sd.role.value} role that {sd.id} needs")
+    if not may_act(sd, by, roles_of):
+        raise _no_standing(by, sd)
     if not (reason or "").strip():
         raise StepRefused(f"{sd.id}: reopening needs a reason")
     state = _unit_state(view, sd, item)
@@ -275,5 +362,5 @@ def cancel_act(workflow: Workflow, view: RunView, *, by: str, roles_of: RolesOf 
     return Act(EventKind.CANCELLED, "", {"reason": reason.strip(), "legal_clock": legal})
 
 
-__all__ = ["ACTING", "Act", "CANCEL_ROLES", "RolesOf", "activate_act", "arrived_act", "attest_act", "cancel_act", "may",
-           "note_act", "pause_act", "reopen_act", "resume_act", "roles_held", "skip_act"]
+__all__ = ["ACTING", "Act", "CANCEL_ROLES", "RolesOf", "activate_act", "arrived_act", "attest_act", "cancel_act", "date_set_act",
+           "may", "may_act", "na_act", "note_act", "pause_act", "reopen_act", "resume_act", "role_phrase", "roles_held", "skip_act"]

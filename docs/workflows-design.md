@@ -34,7 +34,7 @@ WorkflowDefinition
   refs           the docs and procedures to read; the lessons that shaped it
 ```
 
-A **step** has: `id`, `title`, `kind`, `who` (a role), `needs` (the step ids that must be done or skipped, and any facts that must hold), `produces` (what it makes: a link kind), `evidence` (what shows it is done), `command` (the terminal command, where one exists), `clock` (its own, optional), `skippable` (and who may skip, with a reason), and `repeat` (once, per unit, per owner, per period).
+A **step** has: `id`, `title`, `kind`, `who` (a role, or several any of which may act), `needs` (the step ids that must be done or skipped, and any facts that must hold), `produces` (what it makes: a link kind), `evidence` (what shows it is done), `command` (the terminal command, where one exists), `clock` (its own, optional), `skippable` (and who may skip, with a reason), `not applicable` (a step, a legal one too, may declare an outcome a person records with a reason and a record; it is not a skip, and its clock reads "not applicable, recorded"), and `repeat` (once, per unit, per owner, per period). A run's date slots may be set after the start (a recording day, a postmark): a person, with the record, append-only.
 
 The seven **step kinds**:
 
@@ -54,7 +54,7 @@ A **run**: `id`, `definition`, `subject` (with its label), `opened` (by whom, wh
 
 - **Run state:** `draft` (being set up; no clock runs), `active`, `paused` (a person's pause, with a reason), `waiting` (every open step is a wait), `done`, `cancelled` (with a reason), `failed` (a step failed and nobody has resolved it).
 - **Step state:** `not started`, `ready` (its `needs` hold), `running` (a job), `waiting` (why, until when), `needs a person` (who), `done`, `skipped` (by whom, why), `blocked` (by which step or fact), `failed` (the message), `superseded` (a re-plan replaced it).
-- **Events** (append only; the run's state is a fold of them): `opened`, `step-ready`, `check-ran` (result, evidence), `job-queued`, `job-finished`, `plan-made`, `approval-decided`, `applied`, `attested` (who, what, the record), `decided` (the board's), `waited`, `arrived`, `skipped`, `paused`, `resumed`, `reopened` (a done step opened again by a later fact), `changed` (a store moved under a done step), `note`, `cancelled`. Each carries `by` (a signed-in name or `jason`/`scheduler`), `at`, and `detail`. A correction is a later event, never an edit.
+- **Events** (append only; the run's state is a fold of them): `opened`, `step-ready`, `check-ran` (result, evidence), `job-queued`, `job-finished`, `plan-made`, `approval-decided`, `applied`, `attested` (who, what, the record), `decided` (the board's), `waited`, `arrived`, `skipped`, `not-applicable`, `date-set`, `spawned`, `paused`, `resumed`, `reopened` (a done step opened again by a later fact), `changed` (a store moved under a done step), `note`, `cancelled`. Each carries `by` (a signed-in name or `jason`/`scheduler`), `at`, and `detail`. A correction is a later event, never an edit.
 
 ### 3.3 Rules that make it durable
 
@@ -62,7 +62,7 @@ A **run**: `id`, `definition`, `subject` (with its label), `opened` (by whom, wh
 2. **Resume.** Opening a run re-evaluates its `check` steps and compares every done step's evidence with the store it came from; a difference is a `changed` event and the step reads "changed since" with the difference. Nothing is repeated that is done; nothing done is trusted blindly.
 3. **Idempotence.** A `job` or `plan` step finds its earlier job or plan by a key (the run, the step, the subject) before it makes another.
 4. **Who can act.** A step names a role; the server enforces it (the signed-in office, as the console already does). The run page shows a person *their* steps first, and others' steps as "waiting on the treasurer".
-5. **Clocks have a basis.** Every deadline on a run is `law` (cited and recited from the stored text), `documents`, `counterparty` (a date another party stated, such as a vendor's quote or a notice from a fire authority; labeled, and not the law's), `proposed policy` (labeled, never a stamp), or `person`; a proposed number is the board's to adopt. A run past a legal clock says so in the law's words and opens a follow-up; it does not hide.
+5. **Clocks have a basis.** Every deadline on a run is `law` (cited and recited from the stored text), `documents`, `counterparty` (a date another party stated, such as a vendor's quote or a notice from a fire authority; labeled, and not the law's), `proposed policy` (labeled, never a stamp), `provider` (a date a service provider stated; labeled, like `counterparty`), or `person`; a proposed number is the board's to adopt. A run past a legal clock says so in the law's words and opens a follow-up; it does not hide.
 6. **Privacy follows the data.** A step reads and shows at the level of what it touches (P0 to P3, `jason.web.access`); directors and officers have the same access to information, so a director reads what an officer reads at the same level; a run's list never carries an owner's contact details or an answer.
 7. **Links, not copies.** A step links to its approval, job, follow-up, board item, dock task, document (`Doc`), or campaign by id; the run page shows their current state, read from them.
 

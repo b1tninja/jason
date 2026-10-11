@@ -360,7 +360,7 @@ def step_controls(data_dir: Path, workflow_key: str, family: str, steps: Iterabl
                   today: date | None = None, pending: Mapping[str, str] | None = None,
                   community: Any = None) -> dict[str, list[dict[str, Any]]]:
     """The controls that bite on a run's steps, for the run page: ``{step id: [{key, title, why, gate, state, effective}]}``,
-    one row for each gate a control adds. ``steps`` are (step id, the role its definition names). ``why`` is the sentence the
+    one row for each gate a control adds. ``steps`` are (step id, the role its definition names) or (step id, role, every role that may act). ``why`` is the sentence the
     engine refuses with. ``state``: ``in force``, ``waiting`` (adopted, the date not reached: binds nothing yet), or
     ``refused`` (in force, and the roster cannot satisfy it). A second-person row carries ``firstBy`` when a first of two is
     waiting (``pending``: step id to the person). Empty, reading no store but the controls', when none is configured or none
@@ -369,14 +369,17 @@ def step_controls(data_dir: Path, workflow_key: str, family: str, steps: Iterabl
     if not store.configured(root):
         return {}
     controls = [c for c in store.load(root, "", community) if c.state is ControlState.ADOPTED]
-    wanted = [(sid, role) for sid, role in steps if any(effective.step_applies(c, workflow_key, sid, family) for c in controls)]
+    wanted = [tuple(row) for row in steps
+              if any(effective.step_applies(c, workflow_key, row[0], family) for c in controls)]
     if not wanted:
         return {}
     roster = roster_of(community) if community is not None else effective._community_roster()
     today = today or date.today()
     out: dict[str, list[dict[str, Any]]] = {}
-    for sid, role in wanted:
-        got = effective.step_gates(workflow_key, sid, role, controls=controls, roster=roster, today=today, family=family)
+    for row in wanted:
+        sid, role = row[0], row[1]
+        got = effective.step_gates(workflow_key, sid, role, controls=controls, roster=roster, today=today, family=family,
+                                   step_roles=row[2] if len(row) > 2 else ())
         rows = []
         for g in got.gates:
             state = "waiting" if g.future else ("refused" if g.lacks else "in force")
