@@ -419,7 +419,8 @@ def test_the_general_definitions_are_registered_when_a_command_asks_and_not_befo
     code, out, err = run("--definitions")
     assert code == 0 and "owner-info-cycle" in out and "example-cycle" in out and "opens_on" in out and "(has a legal clock)" in out
     code, out, err = run("--definitions", "--family", "members", "--json")
-    assert [r["key"] for r in json.loads(out)] == ["owner-info-cycle"]
+    rows = json.loads(out)
+    assert "owner-info-cycle" in [r["key"] for r in rows] and {r["family"] for r in rows} == {"members"}
     definitions.unregister("owner-info-cycle")
     code, out, err = run("--list")
     assert code == 0 and definitions.find("owner-info-cycle") is not None   # listing registers them too

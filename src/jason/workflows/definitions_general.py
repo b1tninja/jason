@@ -237,9 +237,11 @@ def register_general(data_dir: Path | str | None = None, *, plan_kinds: Any = No
     when it lists or starts a run, never at import. Each is checked: its plan kinds against the approvals registry (or
     ``plan_kinds``), its jobs against ``JOBS`` (or ``jobs``), its statutes against the shelf in ``data_dir`` (or
     ``resolve_law``). A row that fails raises ``InvalidWorkflow`` naming the step."""
+    from jason.workflows.defs import all_builders
+
     resolver = resolve_law if resolve_law is not None else shelf_resolver(data_dir)
     return tuple(definitions.register(build(), plan_kinds=plan_kinds, jobs=jobs if jobs is not None else set(JOBS),
-                                      resolve_law=resolver) for build in GENERAL)
+                                      resolve_law=resolver) for build in (*GENERAL, *all_builders()))
 
 
 __all__ = ["CA", "GENERAL", "OI", "cid", "control_adoption", "owner_info_cycle", "register_general", "shelf_resolver"]

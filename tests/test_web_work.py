@@ -456,12 +456,14 @@ def test_the_catalog_lists_every_definition_once_with_drift_and_reads_one_whole(
 def test_the_catalog_filters_by_family_role_and_my_office(app, world):
     c = as_(app, TREASURER)
     members = c.get("/api/work-definitions?family=members").json
-    assert [d["key"] for d in members["definitions"]] == ["owner-info-cycle"]
+    assert "owner-info-cycle" in [d["key"] for d in members["definitions"]]
+    assert {d["family"] for d in members["definitions"]} == {"members"}
     mine = c.get("/api/work-definitions?mine=1").json                    # the treasurer holds only an `anyone` step: putting a control before the board
-    assert [d["key"] for d in mine["definitions"]] == ["control-adoption"]
+    assert "control-adoption" in [d["key"] for d in mine["definitions"]]
     sec = as_(app, SECRETARY).get("/api/work-definitions?mine=1").json
     assert {"example-cycle", "owner-info-cycle"} <= {d["key"] for d in sec["definitions"]}
-    assert as_(app, SECRETARY).get("/api/work-definitions?role=administrator&family=members").json["definitions"][0]["key"] == "owner-info-cycle"
+    admin_defs = as_(app, SECRETARY).get("/api/work-definitions?role=administrator&family=members").json["definitions"]
+    assert "owner-info-cycle" in [d["key"] for d in admin_defs]
     assert c.get("/api/work-definitions?role=chairman").status_code == 400
 
 
