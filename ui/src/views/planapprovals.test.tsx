@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import plannedJson from "../../../tests/fixtures/approvals/example-village-planned.json";
 import auditRaw from "../../../tests/fixtures/approvals/example-village-audit.jsonl?raw";
 import { ApprovalsView } from "./ApprovalsView";
-import { approvalOf, auditOf, engineApprovals } from "./PlanApprovals";
+import { PlanPanel, approvalOf, auditOf, engineApprovals } from "./PlanApprovals";
+import { KIND_NOTICES } from "../lib/controls.fixtures";
 import { postJson, resetServerSession } from "../lib/api";
+import type { Approval } from "../lib/approvals";
 
 const ID = "apr-20261003T183801-4f5b";
 const people = [{ name: "A Manager", role: "manager", approves: ["the manager"], canApproveBoard: false }];
@@ -104,5 +106,68 @@ describe("the Approvals screen's plans", () => {
     document.head.appendChild(meta);
     await postJson(`/api/approvals/${ID}/submit`, { by: "A Manager" });
     expect(posted[0].headers["X-Jason-Token"]).toBe("from-meta");
+  });
+});
+
+describe("a control's notice on an open plan", () => {
+  const kind = (plannedJson as { kind: string }).kind;
+  const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
+  /** The plan stubbed as stub() has it, with the notices route answered by `notices` (a status and body). */
+  function withNotices(notices: { status: number; body: unknown }, plan: object = plannedJson) {
+    stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    const asked: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).startsWith("/api/control-notices")) { asked.push(String(url)); return json(notices.body, notices.status); }
+      if (url === `/api/approvals/${ID}` && !init?.method) return json(plan);
+      return base(url, init);
+    });
+    return asked;
+  }
+
+  it("asks the loader for the plan's kind and shows the line at the top of the plan", async () => {
+    const asked = withNotices({ status: 200, body: KIND_NOTICES });
+    render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
+    expect(await screen.findByText(/Required by a control the board adopted on 2099-09-05:/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Payment signers" })).toHaveAttribute("href", "#/controls?key=payment-signers");
+    expect(screen.getByText(/Takes effect 2099-11-14; not yet required/)).toBeInTheDocument();
+    expect(asked[0]).toBe(`/api/control-notices?subject=${encodeURIComponent(kind)}`);
+  });
+
+  it("shows no line, and no error, when the loader refuses the viewer or fails", async () => {
+    for (const status of [401, 403, 404, 500]) {
+      const asked = withNotices({ status, body: { error: "Controls are for the board." } });
+      const { container, unmount } = render(<PlanPanel id={ID} me="A Manager" onOpen={() => {}} />);
+      expect(await screen.findByRole("heading", { name: "To decide (12)" })).toBeInTheDocument();
+      await waitFor(() => expect(asked).toHaveLength(1));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(container.querySelector(".control-notice")).toBeNull();
+      expect(screen.queryByText(/Controls are for the board/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("shows the control's reason when a second signature is refused, and names who may sign", async () => {
+    const why = "a control the board adopted on 2099-09-05 allows only the treasurer or the director to sign; B Director does not hold one of those offices";
+    const plan = structuredClone(plannedJson) as unknown as Approval;
+    for (const i of plan.items) if (i.class === "approvable") Object.assign(i, { decision: "approved", decidedBy: "A Manager" });
+    plan.items.find((i) => i.class === "approvable")!.highStakes = true;
+    const signed = { ...plan, status: "approved", first: { name: "A Manager", at: "2026-10-03T19:00:00+00:00", fingerprint: plan.fingerprint, role: "manager", via: "console" } };
+    const posted = stub({ token: "tok-1", header: "X-Jason-Token", applyEnabled: false, liveChecks: true });
+    const base = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (String(url).startsWith("/api/control-notices")) return json({ ...KIND_NOTICES, refusals: [] });
+      if (url === `/api/approvals/${ID}` && !init?.method) return json(signed);
+      if (url === `/api/approvals/${ID}/confirm`) { posted.push({ url: String(url), body: JSON.parse(String(init?.body)), headers: {} }); return json({ error: why }, 400); }
+      return base(url, init);
+    });
+    const user = userEvent.setup();
+    render(<PlanPanel id={ID} me="" onOpen={() => {}} />);
+    expect(await screen.findByLabelText("Who may sign, by a control")).toHaveTextContent("Only the treasurer or the director may sign.");
+    await user.type(screen.getByLabelText(/Your full name/), "B Director");
+    await user.click(screen.getByRole("button", { name: "Confirm as B Director" }));
+    await user.click(screen.getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(screen.getAllByRole("alert").some((e) => e.textContent === why)).toBe(true));
+    expect(posted.at(-1)?.body).toMatchObject({ by: "B Director" });
   });
 });

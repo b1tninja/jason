@@ -231,6 +231,41 @@ export function useControlsApi<T>(path: string): ControlsRemote<T> & { reload: (
   return { ...state, reload };
 }
 
+/** The notice for one approval kind, for a screen that shares it among several parts (a plan's line and its second-signer
+ * control). Silent by design: while it loads, when `kind` is empty, and on any failure (a viewer the loader refuses with
+ * 401 or 403, a 404, a network error) it is `null`, so the line is an aid and never the gate. `stamp` reads it again when
+ * the plan changed (a signature, a re-plan). */
+export function useControlNotice(kind: string, amountCents?: number, stamp = ""): ControlNotices | null {
+  const [data, setData] = useState<ControlNotices | null>(null);
+  const url = kind ? noticesUrl(kind, amountCents) : "";
+  useEffect(() => {
+    if (!url) { setData(null); return; }
+    const ctl = new AbortController();
+    getJson<ControlNotices>(url, ctl.signal).then(
+      (d) => setData(d && typeof d === "object" && Array.isArray(d.controls) ? d : null),
+      () => setData(null),
+    );
+    return () => ctl.abort();
+  }, [url, stamp]);
+  return data;
+}
+
+/** The offices a control in force lets sign, and the offices that must be among the signers, as a sentence of offices only
+ * ("Only the treasurer or the director may sign. The treasurer must be among the signers."), "" when no control narrows
+ * it. The loader's `roles` and `mustInclude` are office words; a person's name is never in them. */
+export function signerWords(n: ControlNotices | null | undefined): string {
+  if (!n || n.found === false || !n.controls?.length) return "";
+  const offices = (rs: readonly string[]) => rs.map((r) => `the ${r}`);
+  const join = (xs: string[], word: string) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} ${word} ${xs[xs.length - 1]}` : xs[0] ?? "");
+  const parts: string[] = [];
+  if (n.roles?.length) parts.push(`Only ${join(offices(n.roles), "or")} may sign.`);
+  if (n.mustInclude?.length) {
+    const who = join(offices(n.mustInclude), "and");
+    parts.push(`${who[0].toUpperCase()}${who.slice(1)} must be among the signers.`);
+  }
+  return parts.join(" ");
+}
+
 /** Who is reading, from the server's session (asked once): the name a write goes under, the viewer's office words, and, for
  * an administrator viewing as someone else, whom (the write is refused then: the page says so in place of the control). */
 export interface ControlsViewer { known: boolean; name: string; role: string; actingAs: string }

@@ -18,6 +18,8 @@ import { Recitation } from "./Recitation";
 import { SecondConfirm } from "./SecondConfirm";
 import { StageSteps } from "./StageSteps";
 import { WriteRow } from "./WriteRow";
+import { KIND_NOTICES } from "../lib/controls.fixtures";
+import { signerWords } from "../lib/controls";
 import {
   decisionProblem, isJason, sameName, signerProblem, staleness, tally, type Approval, type AuditEntry, type PlanItem, type Recheck,
 } from "../lib/approvals";
@@ -446,5 +448,61 @@ describe("PlanReview", () => {
     Object.assign(a.items[0], { decision: "approved", decidedBy: "jason" } satisfies Partial<PlanItem>);
     render(<PlanReview approval={{ ...a, status: "in_review" }} me="A Manager" now={NOW} />);
     expect(screen.getByText(/by \(no person named\)/)).toBeInTheDocument();
+  });
+});
+
+describe("a control's notice on a plan and at the second signature", () => {
+  it("shows the effective rule at the top of the plan, the waiting control muted, and the refusal beside the signature controls", () => {
+    const { container } = render(<PlanReview approval={planned()} me="A Manager" now={NOW} notice={KIND_NOTICES} />);
+    const head = container.querySelector(".plan-head")!;
+    const line = within(head as HTMLElement).getByText(/Required by a control the board adopted on 2099-09-05:/).closest("p")!;
+    expect(line).toHaveTextContent("Two signers are required above $2,500.00.");
+    expect(within(line).getByRole("link", { name: "Payment signers" })).toHaveAttribute("href", "#/controls?key=payment-signers");
+    const waiting = head.querySelector(".control-notice-waiting")!;
+    expect(waiting.className).toContain("muted");
+    expect(waiting).toHaveTextContent("Takes effect 2099-11-14; not yet required");
+    // The refusal is said again where the person signs, so no one is blocked without a reason; the rule itself is not repeated.
+    const refused = container.querySelectorAll(".control-notice-refused");
+    expect(refused).toHaveLength(2);
+    expect(refused[1]).toHaveTextContent("Monthly review requires a treasurer and a vice president; the roster has no vice president");
+    expect(refused[1].closest(".plan-head")).toBeNull();
+  });
+
+  it("draws no line when the notice could not be read or no control touches the kind, and never blocks the plan", () => {
+    const none = { ...KIND_NOTICES, controls: [], waiting: [], refusals: [] };
+    for (const notice of [undefined, null, none, { ...KIND_NOTICES, found: false }]) {
+      const { container, unmount } = render(<PlanReview approval={planned()} me="A Manager" now={NOW} notice={notice} />);
+      expect(container.querySelector(".control-notice")).toBeNull();
+      expect(screen.getByRole("heading", { name: /To decide/ })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("shows the server's refusal, naming the control, in the plan's own error line", () => {
+    const why = "a control the board adopted on 2099-09-05 allows only the treasurer or the director to sign; B Director does not hold one of those offices";
+    render(<PlanReview approval={signed()} me="A Manager" now={NOW} notice={KIND_NOTICES} error={why} />);
+    expect(screen.getAllByRole("alert").some((e) => e.textContent === why)).toBe(true);
+  });
+
+  it("says at the second signature who may sign, in offices only", () => {
+    const narrowed = { ...KIND_NOTICES, roles: ["treasurer", "director"], mustInclude: ["treasurer"] };
+    expect(signerWords(narrowed)).toBe("Only the treasurer or the director may sign. The treasurer must be among the signers.");
+    render(<SecondConfirm approval={signed()} twoPerson notice={narrowed} />);
+    const line = screen.getByLabelText("Who may sign, by a control");
+    expect(line).toHaveTextContent("Required by a control the board adopted on 2099-09-05: Payment signers. Only the treasurer or the director may sign. The treasurer must be among the signers.");
+    expect(within(line).getByRole("link", { name: "Payment signers" })).toHaveAttribute("href", "#/controls?key=payment-signers");
+  });
+
+  it("says nothing of signers when no control narrows them, or the notice is missing", () => {
+    const open = { ...KIND_NOTICES, roles: [], mustInclude: [] };
+    expect(signerWords(open)).toBe("");
+    expect(signerWords({ ...KIND_NOTICES, controls: [] })).toBe("");
+    expect(signerWords(null)).toBe("");
+    for (const notice of [open, null, undefined]) {
+      const { unmount } = render(<SecondConfirm approval={signed()} twoPerson notice={notice} />);
+      expect(screen.queryByLabelText("Who may sign, by a control")).toBeNull();
+      expect(screen.getByRole("heading", { name: "A second person confirms" })).toBeInTheDocument();
+      unmount();
+    }
   });
 });

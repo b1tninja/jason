@@ -6,6 +6,7 @@ import { AuditLog } from "./AuditLog";
 import { Caveats } from "./Caveats";
 import { ChangedBanner } from "./ChangedBanner";
 import { Command } from "./Command";
+import { ControlNotice } from "./ControlNotice";
 import { CostLine } from "./CostLine";
 import { DueDate } from "./DueDate";
 import { Evidence, EvidenceVersion, RefreshAllEvidence } from "./Evidence";
@@ -19,6 +20,7 @@ import {
   STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type DecideBody, type KindFacts, type PlanItem, type Recheck,
   type SignBody,
 } from "../lib/approvals";
+import type { ControlNotices } from "../lib/controls";
 
 type Act<B> = (body: B) => void | Promise<void>;
 
@@ -59,7 +61,7 @@ export const PLAN_CAVEATS = [
  * apply command, or the result; and the audit history. Every write goes through `Confirm` as a named person (`me`) and
  * carries the plan's fingerprint. */
 export function PlanReview({
-  approval, me = "", audit, chain, recheck, now, maxAgeHours = 24, twoPerson = false, recitations, boardHref, kind,
+  approval, me = "", audit, chain, recheck, now, maxAgeHours = 24, twoPerson = false, recitations, boardHref, kind, notice,
   onDecide, onSubmit, onConfirmSecond, onDecline, onReplan, onOpen, busy, error, caveats = PLAN_CAVEATS,
   onCheck, onApply, applyBlocked, onWithdraw,
 }: {
@@ -68,6 +70,8 @@ export function PlanReview({
   boardHref?: (id: string) => string;
   /** The kind's declared facts as the server sends them (`kindFacts`): shown in the header, never worked out here. */
   kind?: KindFacts;
+  /** What a control the board adopted requires of this kind (`GET /api/control-notices`); absent when it could not be read. */
+  notice?: ControlNotices | null;
   onDecide?: Act<DecideBody>; onSubmit?: Act<SignBody>; onConfirmSecond?: Act<SignBody>; onDecline?: Act<SignBody & { reason: string }>;
   onReplan?: Act<{ by: string }>; onOpen?: (id: string) => void; busy?: boolean; error?: string; caveats?: readonly string[];
   /** Re-plan live and compare, writing nothing (the result comes back as `recheck`). */
@@ -144,6 +148,7 @@ export function PlanReview({
             {kind.cost ? <> · cost: {kind.cost}</> : null}
           </p>
         )}
+        <ControlNotice data={notice} />
         {a.clock?.due && <p>Clock: {a.clock.what} <DueDate iso={a.clock.due} today={today} /></p>}
         <Evidence items={a.evidence} label="Read from" approval={a.id} level={3} />
         <RefreshAllEvidence approval={a.id} refs={refs} by={me.trim() ? me : undefined} onDone={() => setEvidenceVersion((v) => v + 1)} />
@@ -214,13 +219,14 @@ export function PlanReview({
 
       <CostLine costCents={a.costCents} summary={a.summary} items={a.items} />
 
+      {(decidable(a) || signed) && notice?.refusals?.length ? <ControlNotice data={{ ...notice, controls: [], waiting: [], stricter: false, clash: "" }} /> : null}
       {decidable(a) && (
         <ApproveBar approval={a} selected={selected} me={me} blocked={stale.blocked} busy={busy}
           onDecide={onDecide ? (b) => run(onDecide, b, `Recorded: ${b.decision.replace("held", "held for the board")} ${plural(b.items.length, "change", "changes")} as ${b.by}.`) : undefined}
           onSubmit={onSubmit ? (b) => run(onSubmit, b, `Signed as ${b.by}.`) : undefined} />
       )}
       {signed && second && (
-        <SecondConfirm approval={a} twoPerson={twoPerson} me={me} busy={busy}
+        <SecondConfirm approval={a} twoPerson={twoPerson} me={me} busy={busy} notice={notice}
           onConfirm={onConfirmSecond ? (b) => run(onConfirmSecond, b, `Confirmed as ${b.by}.`) : undefined}
           onDecline={onDecline ? (b) => run(onDecline, b, `Declined as ${b.by}; back to review.`) : undefined} />
       )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DataTable, Pill, PlanReview, RemoteView, type Column } from "../components";
 import { postJson, serverSession, type ApiError, type ServerSession } from "../lib/api";
+import { useControlNotice } from "../lib/controls";
 import { useApi } from "../lib/useApi";
 import { STATUS_MEANING, when, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck } from "../lib/approvals";
 import type { Citation } from "../components/Recitation";
@@ -80,6 +81,8 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
   const [error, setError] = useState("");
   const [recheck, setRecheck] = useState<Recheck | null>(null);
   const loaded = r.status === "ready" ? approvalOf(r.data) : null;
+  // What a control the board adopted requires of this kind; silent when it cannot be read (a viewer the loader refuses, an error).
+  const notice = useControlNotice(loaded?.kind ?? "", typeof loaded?.costCents === "number" ? loaded.costCents : undefined, `${loaded?.fingerprint ?? ""}${loaded?.status ?? ""}`);
   useEffect(() => { if (loaded) onLoaded?.(loaded); }, [loaded, onLoaded]);
   useEffect(() => { let on = true; serverSession().then((s) => on && setServer(s)); return () => { on = false; }; }, []);
   const step = (name: string, pick: (b: Record<string, unknown>) => Record<string, unknown>) => async (body?: object) => {
@@ -110,7 +113,7 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
         if (!a) throw new Error("not an approval");
         return (
           <PlanReview approval={a} me={me} audit={entries.length ? entries : d.audit} chain={chain ?? d.chain} recheck={recheck ?? d.recheck ?? d.check}
-            kind={d.kindFacts ?? undefined} twoPerson={!!d.kindFacts?.twoPerson}
+            kind={d.kindFacts ?? undefined} notice={notice} twoPerson={!!d.kindFacts?.twoPerson}
             maxAgeHours={d.kindFacts?.maxAgeHours} recitations={d.recitations} boardHref={boardItemHref}
             busy={busy} error={error} onOpen={onOpen}
             onDecide={step("decide", ({ items, decision, by, reason }) => ({ items, decision, by, reason }))}

@@ -1,5 +1,5 @@
 import { Glyph } from "./Glyph";
-import { controlHref, dayOf, noticesUrl, useControlsApi, type ControlNotices, type NoticeControl } from "../lib/controls";
+import { controlHref, dayOf, noticesUrl, signerWords, useControlsApi, type ControlNotices, type NoticeControl } from "../lib/controls";
 
 const adopted = (n: NoticeControl) => (dayOf(n.adoptedOn) ? ` on ${dayOf(n.adoptedOn)}` : "");
 const sentence = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
@@ -49,4 +49,24 @@ export function ControlNotice({ data }: { data: ControlNotices | null | undefine
 export function ControlNoticeFor({ subject, amountCents }: { subject: string; amountCents?: number }) {
   const r = useControlsApi<ControlNotices>(noticesUrl(subject, amountCents));
   return <ControlNotice data={r.status === "ready" ? r.data : null} />;
+}
+
+/** At the second-signature control: who may sign when a control the board adopted narrows it, in offices only ("Only the
+ * treasurer or the director may sign."), with the control's title linking to its card. Nothing when no control in force
+ * narrows who signs, or when the notice could not be read. The server refuses a signer the control does not allow, in its own words. */
+export function ControlSigners({ data }: { data: ControlNotices | null | undefined }) {
+  const words = signerWords(data);
+  if (!data || !words) return null;
+  // The loader gives the effective `roles` and `mustInclude` for the kind as a whole, not which control set each, so every
+  // control in force at this kind is named; the date is said only when one control is.
+  const one = data.controls.length === 1 ? data.controls[0] : null;
+  return (
+    <aside className="control-notice" aria-label="Who may sign, by a control" data-subject={data.subject}>
+      <p className="control-notice-line">
+        <Glyph name="shield-check" size="1em" />{" "}
+        <strong>Required by a control the board adopted{one ? adopted(one) : ""}:</strong>{" "}
+        {data.controls.map((n, i) => <span key={n.key}>{i > 0 ? ", " : ""}<a href={href(n)}>{n.title}</a></span>)}. {words}
+      </p>
+    </aside>
+  );
 }

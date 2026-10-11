@@ -1,13 +1,16 @@
 import { useId, useRef, useState } from "react";
 import { Confirm } from "./Confirm";
+import { ControlSigners } from "./ControlNotice";
+import type { ControlNotices } from "../lib/controls";
 import { cleanName, needsSecond, personName, sameName, short, signerProblem, when, type Approval, type SignBody } from "../lib/approvals";
 
 /** The second, distinct person signs the same fingerprint, or declines and sends it back to review with a reason. The
  * first signer and the person who asked for the plan are refused, compared case-blind with spacing ignored (the server
  * refuses them too). The name field starts empty. Shown for a signed plan that needs a second person (`twoPerson`, the
- * kind's rule, or a high-stakes approved item); once confirmed it shows both people. */
-export function SecondConfirm({ approval, twoPerson = false, me = "", onConfirm, onDecline, busy }: {
-  approval: Approval; twoPerson?: boolean; me?: string;
+ * kind's rule, or a high-stakes approved item); once confirmed it shows both people. `notice` (the control notice for the
+ * plan's kind) adds who may sign when a control the board adopted narrows it: offices only, never names. */
+export function SecondConfirm({ approval, twoPerson = false, me = "", notice, onConfirm, onDecline, busy }: {
+  approval: Approval; twoPerson?: boolean; me?: string; notice?: ControlNotices | null;
   onConfirm?: (body: SignBody) => void; onDecline?: (body: SignBody & { reason: string }) => void; busy?: boolean;
 }) {
   const uid = useId();
@@ -50,6 +53,7 @@ export function SecondConfirm({ approval, twoPerson = false, me = "", onConfirm,
     <section className="second-confirm" aria-labelledby={`${uid}-title`}>
       <h3 id={`${uid}-title`}>A second person confirms</h3>
       <p><strong>The rule:</strong> this plan is applied only after two different people sign the same fingerprint. The person who signed first, and the person who asked for it, cannot be the second.</p>
+      <ControlSigners data={notice} />
       {Facts}
       {iSigned && <p className="notice">Waiting on a second person. You signed or asked for this plan, so you cannot confirm it.</p>}
       <div className="fields">

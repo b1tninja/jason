@@ -121,7 +121,7 @@ export { STANDINGS, STANDING_ORDER, perFile as citationsPerFile, type Standing, 
 // Controls (docs/console/screens/controls.md, docs/console/design-brief-controls.md): the safeguards jason suggests and the board adopts. Props only; lib/controls.ts has the loaders' shapes.
 export { ControlStateWord } from "./ControlStateWord";
 export { RosterCheck } from "./RosterCheck";
-export { ControlNotice, ControlNoticeFor } from "./ControlNotice";
+export { ControlNotice, ControlNoticeFor, ControlSigners } from "./ControlNotice";
 export { ControlProposeConfirm } from "./ControlProposeConfirm";
 export { ControlRow, ControlQuestionRow, RefusedRow, type ProposeAs } from "./ControlRow";
 export { ControlCard, ControlChangedBanner, controlDates } from "./ControlCard";
