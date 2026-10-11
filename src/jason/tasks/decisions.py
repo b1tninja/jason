@@ -18,8 +18,11 @@ its subject's general words; its motion, title, and votes are shown only in the 
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
+import secrets
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from enum import Enum
@@ -40,7 +43,7 @@ class Vote(Enum):
 
 @dataclass
 class Decision:
-    id: str                                   # "<meeting>--<item or slug of the motion>"
+    id: str                                   # open session: "<meeting>--<item or slug of the motion>"; executive: "<meeting>--executive-<n>"
     meeting: str                              # ISO date
     title: str                                # the agenda item's title, or the motion's subject
     motion: str                               # the motion as made, in the board's words
@@ -76,6 +79,45 @@ def _now() -> str:
 
 def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60] or "motion"
+
+
+# An executive decision's id says the meeting and a number, never the motion, the title, or the item (CIV 4935(e): the
+# open records name the matter generally). Rows recorded before this keep the id they have; ``handle`` serves them
+# outside the private view.
+EXECUTIVE_ID = re.compile(r"^\d{4}-\d{2}-\d{2}--executive-(\d+)$")
+HANDLE_KEY = Path("board") / "decisions.key"
+
+
+def _handle_key(data_dir: Path) -> bytes:
+    """The install's secret for ``handle``: random bytes made once and kept beside the store (``data/board/decisions.key``,
+    not checked in). No other opaque id in jason is keyed (run, approval, and hearing ids are random and stored in the
+    row, and an old decision's row is not rewritten), so this is the first. If the file cannot be made or read, a key
+    for this one call is used: the handle then changes on every read, and never names a row."""
+    path = Path(data_dir) / HANDLE_KEY
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with path.open("x", encoding="utf-8") as f:
+                f.write(secrets.token_hex(32))
+        except FileExistsError:
+            pass
+        key = path.read_text(encoding="utf-8").strip()
+        if len(key) >= 32:
+            return key.encode("ascii")
+    except (OSError, UnicodeError):
+        pass
+    return secrets.token_bytes(32)
+
+
+def handle(data_dir: Path, d: "Decision") -> str:
+    """The id an open view may show for an executive decision: its own when it is already ``<meeting>--executive-<n>``,
+    else ``<meeting>--held-<12 hex>``, a keyed hash (HMAC-SHA256 under the install's secret) of the stored id. The
+    stored id of an old row has a slug of its motion in it; the hash cannot be reversed, nor checked by trying slugs
+    without the key. Stable for a row, and it names only the meeting, which the open minutes already do."""
+    if EXECUTIVE_ID.match(d.id):
+        return d.id
+    digest = hmac.new(_handle_key(data_dir), d.id.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{d.meeting}--held-{digest[:12]}"
 
 
 def tally(votes: dict[str, str]) -> dict[str, int]:
@@ -166,6 +208,20 @@ def general_notes(rows: list[Decision]) -> list[str]:
             "The board met in executive session; the 4935 subject of what it decided there is not named (the secretary names it)."]
 
 
+def held_rows(data_dir: Path, rows: list[Decision]) -> list[dict[str, str]]:
+    """What an open view may say of each executive decision among ``rows``: its ``handle``, its meeting, and its 4935
+    subject (the word and the statute's general words), never the title, motion, item, votes, notes, or stored id."""
+    from jason.community.models.meetings import executive_general_note, executive_subject
+
+    out = []
+    for d in rows:
+        if is_executive(d):
+            s = executive_subject(d.subject)
+            out.append({"id": handle(data_dir, d), "meeting": d.meeting, "subject": s.value if s else "",
+                        "general": executive_general_note([s]) if s else ""})
+    return sorted(out, key=lambda r: (r["meeting"], r["id"]))
+
+
 def _store_lock(fn):
     import functools
 
@@ -176,6 +232,12 @@ def _store_lock(fn):
         with hold(Resource.STORE, "board-decisions", timeout=60, purpose=f"decisions: {fn.__name__}"):
             return fn(*args, **kwargs)
     return wrapper
+
+
+def _next_executive_id(items: list[Decision], meeting: str) -> str:
+    """``<meeting>--executive-<n>``, n one past the highest taken for that meeting. Called under the store lock."""
+    taken = [int(m.group(1)) for d in items if d.id.startswith(f"{meeting}--") and (m := EXECUTIVE_ID.match(d.id))]
+    return f"{meeting}--executive-{max(taken, default=0) + 1}"
 
 
 @_store_lock
@@ -196,6 +258,12 @@ def record(data_dir: Path, meeting: str, title: str, motion: str, **fields: Any)
     items = load(data_dir)
     now = _now()
     found = next((d for d in items if d.id == key), None)
+    if fields.get("session") == EXECUTIVE:
+        # Never the motion or the item in the id. The same item (or, with none, the same motion) recorded again in
+        # this session replaces its row, as an open decision does, whatever id the row has; an open row is never taken.
+        found = next((d for d in items if is_executive(d) and d.meeting == meeting and d.kind == kind
+                      and (d.id == key or (item and d.item == item and EXECUTIVE_ID.match(d.id)))), None)
+        key = found.id if found else _next_executive_id(items, meeting)
     if found is None:
         found = Decision(id=key, meeting=meeting, title=title, motion=motion, recorded=now, history=[f"{now[:10]}: recorded"])
         items.append(found)

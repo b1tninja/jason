@@ -113,7 +113,7 @@ def create_app(dist: Path | None = None, loaders: dict[str, Loader] | None = Non
         try:
             return jsonify(decision_writer(decision_id, body))
         except KeyError:
-            return jsonify(error=f"no decision {decision_id}"), 404
+            return jsonify(error="jason holds no decision under this id."), 404
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 

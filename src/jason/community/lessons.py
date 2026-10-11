@@ -3562,6 +3562,26 @@ LESSONS: tuple[Lesson, ...] = (
                    "tests/test_library.py::test_the_unredacted_report_of_the_same_kind_is_still_confidential",
                    "tests/test_library.py::test_a_name_that_says_redacted_never_clears_what_the_text_kind_or_folder_holds_back",
                    "tests/test_library.py::test_a_confidential_file_the_catalog_shows_to_members_is_a_finding_and_the_flag_stands")),
+    Lesson("record-id-from-the-matter", date(2026, 10, 11), (Area.GOVERNING,),
+           "A design review of the Decisions screen found that a decision recorded in executive session with no item id was "
+           "stored under `<meeting>--<slug of the motion>`, and the id goes in URLs (`#/decisions?id=`), banners, and the "
+           "loader's answer outside the private view, so it would have named the matter the open records may only note "
+           "generally (Civil Code 4935(e)).",
+           "An id was built from the content it names, and nothing asked who sees an id. A store that holds some rows "
+           "apart keeps its ids out of the content too.",
+           "A new executive decision gets `<meeting>--executive-<n>` (n per meeting, under the store lock), never derived "
+           "from the motion, title, or item; recording the same item again replaces its row. Old rows are the association's "
+           "records and keep their ids. Outside the private view the `decisions` loader lists each held decision by its "
+           "opaque id, or for an old row a keyed handle (HMAC-SHA256 under `data/board/decisions.key`) that trying slugs "
+           "cannot find; the real id opens only in the private view, logged. The 404 for an unknown id no longer echoes it. "
+           "A row switched to executive session by `update` keeps its stored id, so the handle covers it outside the "
+           "private view.",
+           Status.FIXED,
+           guards=("tests/test_decisions.py::test_a_new_executive_decision_gets_an_opaque_sequential_id_per_meeting",
+                   "tests/test_decisions.py::test_the_handle_is_the_id_when_opaque_else_a_keyed_hash_that_names_no_slug",
+                   "tests/test_decisions.py::test_rule_links_never_carry_an_executive_decisions_id",
+                   "tests/test_meeting_room_executive.py::test_an_old_slugged_executive_row_is_served_under_a_handle_and_its_real_id_only_in_the_private_view"),
+           docs=("docs/console/screens/decisions.md",)),
 )
 
 

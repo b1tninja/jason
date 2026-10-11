@@ -571,7 +571,9 @@ def decisions(args: Args) -> dict[str, Any]:
     votes say on their face; the outcome is the board's word. Reads disk only.
 
     A decision made in executive session is listed only in the private view (``meeting_room.private_view``, logged);
-    otherwise it is left out and counted in ``heldBack``, with its meetings' general notes (CIV 4935(e))."""
+    otherwise it is left out and counted in ``heldBack``, with its meetings' general notes (CIV 4935(e)) and, in ``held``,
+    each one's opaque id (``tasks.decisions.handle``: ``<meeting>--executive-<n>``, or a keyed ``<meeting>--held-<hash>``
+    for a row recorded before ids were opaque) with its 4935 subject's general words, never its stored id."""
     from jason.mcp.county import _data_dir
     from jason.tasks import decisions as store
     from jason.web.extra.meeting_room import private_view
@@ -588,7 +590,7 @@ def decisions(args: Args) -> dict[str, Any]:
            "decisions": [store.as_dict(d) for d in sorted(rows, key=lambda d: (d.meeting, d.recorded), reverse=True)]}
     if held:
         meetings = sorted({d.meeting for d in held}, reverse=True)
-        out.update(heldBack=len(held), executiveNotes=[{"meeting": m, "notes": store.general_notes([d for d in held if d.meeting == m])} for m in meetings],
+        out.update(heldBack=len(held), held=store.held_rows(root, held), executiveNotes=[{"meeting": m, "notes": store.general_notes([d for d in held if d.meeting == m])} for m in meetings],
                    note=f"{len(held)} executive-session decision(s) held back (Civil Code 4935(e)); open the private view to see them.")
     return out
 

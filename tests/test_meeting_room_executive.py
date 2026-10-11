@@ -241,6 +241,10 @@ def test_the_loader_shows_the_executive_log_only_in_the_private_view(web):
     plain = anyone.get(f"/api/decisions?meeting={DAY}").json
     assert plain["decisions"] == [] and plain["heldBack"] == 1 and MOTION not in json.dumps(plain)
     assert plain["executiveNotes"] == [{"meeting": DAY, "notes": ["The board met in executive session to discuss member discipline (Civil Code 4935(a), (b))."]}]
+    # the id an open view is given is opaque: the meeting and a number, never the item ("hearing-7") or the motion
+    assert plain["held"] == [{"id": f"{DAY}--executive-1", "meeting": DAY, "subject": "member_discipline", "general": "member discipline (Civil Code 4935(a), (b))"}]
+    assert "hearing-7" not in json.dumps(plain) and TITLE not in json.dumps(plain)
+    assert [d["id"] for d in director.get(f"/api/decisions?meeting={DAY}").json["decisions"]] == [f"{DAY}--executive-1"]
 
 
 def test_api_file_serves_an_executive_export_only_in_the_private_view(web):
@@ -492,3 +496,37 @@ def test_a_room_kept_apart_counts_nothing_inside_its_windows(tmp_path):
     found = store.check_executive(tmp_path, DAY)
     assert found["windows"] == 1 and found["total"] == 0
     assert [r["date"] for r in store.check_all(tmp_path)] == [DAY]          # the executive record is not checked as a room
+
+
+def test_an_old_slugged_executive_row_is_served_under_a_handle_and_its_real_id_only_in_the_private_view(web):
+    slugged = f"{DAY}--move-to-fine-the-owner-of-unit-7"
+    shut = decisions.Decision(id=slugged, meeting=DAY, title=TITLE, motion=MOTION, item="", session="executive session",
+                              subject="member_discipline", outcome="approved")
+    open_row = decisions.Decision(id=f"{DAY}--landscape", meeting=DAY, title="Renew the landscape contract", motion="Move to renew",
+                                  item="landscape", outcome="approved")
+    decisions.save(web.root, [shut, open_row])
+    anyone = webclient.client(web.app)
+    plain = anyone.get(f"/api/decisions?meeting={DAY}").json
+    [held] = plain["held"]
+    assert held["id"] == decisions.handle(web.root, shut) and held["id"].startswith(f"{DAY}--held-")
+    assert held["subject"] == "member_discipline" and plain["heldBack"] == 1
+    assert [d["id"] for d in plain["decisions"]] == [f"{DAY}--landscape"]               # an open decision keeps its id
+    text = json.dumps(plain)
+    for leak in (slugged, "move-to-fine", "unit-7", "unit 7", MOTION, TITLE):
+        assert leak not in text
+    assert anyone.get(f"/api/decisions?meeting={DAY}").json["held"] == [held]           # the handle is stable
+    director = webclient.sign_in(webclient.client(web.app), "Dana Director")
+    signed_in = director.get(f"/api/decisions?meeting={DAY}").json                      # signed in, no private view
+    assert signed_in["held"] == [held] and slugged not in json.dumps(signed_in) and _served(web.root) == []
+    assert director.post("/api/private", json={"reason": "executive session minutes"}).status_code == 200
+    shown = director.get(f"/api/decisions?meeting={DAY}").json
+    assert sorted(d["id"] for d in shown["decisions"]) == sorted([slugged, f"{DAY}--landscape"])
+    assert "held" not in shown and "heldBack" not in shown
+    line = _served(web.root)[-1]
+    assert line["path"] == "board/decisions.json" and line["level"] == "P3" and line["private"] is True
+
+
+def test_the_not_found_answer_does_not_echo_an_id(web, monkeypatch):
+    director = webclient.sign_in(webclient.client(web.app), "Dana Director")
+    r = director.post(f"/api/decisions/{DAY}--move-to-fine-the-owner-of-unit-7", json={"notes": "n"})
+    assert r.status_code == 404 and "unit-7" not in json.dumps(r.json) and DAY not in json.dumps(r.json)
