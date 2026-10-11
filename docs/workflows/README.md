@@ -24,6 +24,7 @@ The model is [../workflows-design.md](../workflows-design.md): a definition (ste
 
 - **Every confirmed life-safety deficiency becomes a board item** (2026-10-11), prioritized by a severity a person sets and by a deadline a person records; until a severity is set, jason proposes one and says so ([property-safety-vendors.md](property-safety-vendors.md)).
 - **The secretary is the board's official record keeper** (2026-10-11): a `decision` step is recorded by the secretary, and the pages say so. The president recording when the secretary is absent or is the matter's subject is a proposal for the board, not a decision.
+- **Directors and officers have the same access to information** (2026-10-11); they differ in duties, not in what they may read. Nothing in the workflows gives a director a narrower view, so a life-safety board item's impairment sentence is shown to every director. The one narrower view that exists is the requests area's counts-only rule below, which predates this and is open to review.
 - **A director sees counts only** on the requests area, enforced on the server (2026-10-10).
 - **The console may save Gmail drafts, never send**, through the `gmail-drafts` approvals kind (2026-10-10).
 - **The vault is the development environment's store** (2026-10-10).
@@ -36,7 +37,7 @@ The model is [../workflows-design.md](../workflows-design.md): a definition (ste
 4. **Mail and shredding:** may the manager alone discard a legal, insurance, tax, or escrow letter, or does the board adopt `records-retention` first (a question for the board and counsel)?
 5. **A response standard for general email:** the law is silent, so the board adopts one or none.
 6. **Hearings:** merge the two stores (`hearings.json`, `decisions.json`); use an opaque run id (the key now carries an address).
-7. **The money:** may a county receipt stand in for a bill at the treasurer's review; who records a lien; which Revenue and Taxation Code sections go on the shelf; whether directors see only counts across the money area.
+7. **The money:** may a county receipt stand in for a bill at the treasurer's review; who records a lien; which Revenue and Taxation Code sections go on the shelf. (Directors see the money area as the officers do: see "Decisions already taken".)
 8. **Records and onboarding:** keep signed local records as `person` steps (recommended) or make them `plan` steps under new `local.*` kinds; whether `onboard` closes on an attestation or only when all five gates read open; one child run per instrument or per document.
 9. **Where the manager's repair-authority limit lives** (the documents state it, or the board adopts it).
 10. **The console never starts `check-in` runs** (recommended), and the administrator's runs are hidden from the board's Work list (recommended).
