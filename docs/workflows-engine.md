@@ -103,6 +103,8 @@ jason workflow --cancel RUN --reason TEXT --by NAME --yes
 jason workflow --verify RUN | --reindex | --from-sop KEY
 ```
 
+**Added when it was built (2026-10-11):** `--attest` also takes `--outcome`, `--motion` (a decision step), and `--choice` (a branch step), and `--what`; `--arrived RUN STEP` ends a `wait` step; `--item` (repeatable) sets a run's items at `--start` or names the item on a per-item step; `--expect N` refuses if the run's last `n` has moved; `--as-of DATE` fixes the clocks for a repeatable view; `--step` goes with `--note`. `--resume RUN --by` lifts a person's pause; `--open` is the resume check. `--cancel` always needs `--yes`. `--verify` exits 1 when the chain is broken. Roles come from the community's officers and the administrators; with no officers named, a role-gated act is refused with the reason. The default readers do not yet reach the approvals engine or the job queue, so `--open` runs the check steps and leaves a `plan` or `job` step waiting.
+
 Every write needs `--by`; `--cancel` and `--start`/`--open` of a run with a legal clock need `--yes`. Non-interactive: it never opens a browser. A command that would change a run reads it first and refuses on a changed `n` (two persons at once). The same functions are `jason.api.workflow_*` and the MCP tools `workflows` and `workflow_run` (read only, on the board profile), each with its caveats.
 
 ## 8. Loaders and writers (the web layer)
