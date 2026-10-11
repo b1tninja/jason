@@ -105,6 +105,9 @@ PayHOA's Mailroom (USPS letters through Lob): mailings and their cost; preview a
 | `--months` | YEAR | Pieces mailed each month of a year |
 | `--notice` | KEY | With --pdf --send: the notice's ledger key (it starts with the requirement's key); the letter as mailed and its recipients' ids are kept in data/notices/KEY/ |
 | `--by` | NAME | With --notice: who mailed it |
+| `--preview` | ID | A saved preview (its id, or the start of its fingerprint): show it and whether it is stale; with --send --yes, send exactly that preview |
+| `--expect` | FINGERPRINT | With --pdf: refuse (exit 2, nothing mailed) unless the letter as it would go has this fingerprint (the preview prints it; 8 or more hex characters) |
+| `--approval` | ID | A payhoa-mailroom-send approval: check it; with --send --yes, mail it (only a plan signed by two distinct people whose fingerprint still matches) |
 | `--yes` |  | Confirm --send or --cancel |
 | `--json` |  | Print JSON |
 
