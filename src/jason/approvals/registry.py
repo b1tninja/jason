@@ -82,6 +82,22 @@ KINDS: tuple[ActionKind, ...] = (
              "(Community.owner_information: OWNER_INFO_COMPLETED_COMMENT)",
         aliases=("payhoa.owner-info.tags",),
     ),
+    ActionKind(
+        key="payhoa-attach-bills",
+        title="Bills: attach matched PDFs to PayHOA transactions",
+        cli="jason sync-bills --yes",
+        # R1, not R2: a PDF on an unapproved transaction is seen only by the association's own people in PayHOA's
+        # books. It changes no record about a member, approves nothing, and emails nothing.
+        system="payhoa", resource=Resource.PAYHOA, risk=Risk.R1, approver=Approver.ONE_PERSON,
+        reversible="yes: a person deletes the attachment in PayHOA; nothing is approved or emailed",
+        planner="jason.approvals.kinds.attach_bills:plan",
+        applier="jason.approvals.kinds.attach_bills:apply",
+        clock="",
+        rule="CIV 5500(a)",
+        max_age_hours=6,                       # the plan rests on PayHOA's live transaction list
+        default_scope={"date_window_days": 7},
+        aliases=("payhoa.attach-bills",),
+    ),
 )
 
 _registered: dict[str, ActionKind] = {}

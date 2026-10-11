@@ -582,9 +582,9 @@ def test_each_reader_keeps_its_error_when_neither_holds_it(monkeypatch, memory_v
 def test_a_portal_with_only_a_vault_entry_is_a_bill_source(monkeypatch, memory_vault):
     agent = _switched(monkeypatch, memory_vault, {})
     agent._bills, agent._idoxs_bills = object(), object()          # the bill stores are not opened
-    assert [s.name for s in agent.bill_source_registry().sources] == ["smud", "idoxs"]
+    assert [s.name for s in agent.bill_source_registry().sources] == ["smud", "idoxs", "county-tax"]
     memory_vault.put(f"jason/community/oakview/vendor-portal/{PORTAL}", LOGIN)
-    assert [s.name for s in agent.bill_source_registry().sources] == ["smud", "idoxs", PORTAL]
+    assert [s.name for s in agent.bill_source_registry().sources] == ["smud", "idoxs", PORTAL, "county-tax"]
 
     class Refuses:                                                  # a .env record UID answers without the vault
         def describe(self, path):
