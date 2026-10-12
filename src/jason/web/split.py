@@ -6,10 +6,13 @@ signed-in person whose offices open the file's level (P2; a confidential file is
 judged again at every request. Each serve is logged in ``access/served.jsonl`` under the session id and page, never a name.
 
 Answers: 200 with the picture (``ETag`` of the hash, page, size, and render version; ``304`` on a matching ``If-None-Match``;
-``Cache-Control: private, max-age=31536000, immutable``, or ``private, no-store`` for a confidential file); 400 for a bad page or size;
+``Cache-Control: private, no-store`` for a confidential file; ``private, no-cache`` for a library or Drive file, which the browser
+keeps but asks about each time, the ETag carrying the file's confidential state so a flag set later takes effect on the next look;
+``private, max-age=31536000, immutable`` only for a file opened from an upload or a path, whose flag is fixed when it is opened); 400 for a bad page or size;
 401 signed out; 403 for a level the person's offices do not open; 404 for an unknown session; 422 for a page that could not be drawn
 (``{"error": "This page could not be drawn"}``); 503 when no renderer is installed. A picture the drive had no room to keep is served
-once with ``X-Split-Cache: full``.
+once with ``X-Split-Cache: full``; 503 with ``Retry-After`` when the library could not be asked whether the file is confidential and
+the viewer could not open a confidential file (the flag fails closed: an unreadable flag is read as confidential).
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from flask import Blueprint, jsonify, make_response, request
 
 IMMUTABLE = "private, max-age=31536000, immutable"
 NO_STORE = "private, no-store"
+REVALIDATE = "private, no-cache"
+FIXED_KINDS = ("upload", "path")           # a session on these keeps the flag it was opened with: its pictures can never change standing
 
 
 def _error(status: int, message: str):
@@ -54,13 +59,21 @@ def blueprint() -> Blueprint:
             session = ss.load(root, sid)
         except KeyError:
             return _error(404, "No such split.")
-        confidential = ss.is_confidential(root, session)
+        held = ss.standing(root, session)                 # asked again on each request; an unreadable library reads as confidential
+        confidential = held.confidential
         level = access.Level.P3 if confidential else access.Level.P2
+        if not held.known:
+            allowed, _why = access.may_see(viewer, level, private=access.private_window() is not None)
+            if not allowed:
+                resp = _error(503, held.words)
+                resp.headers["Retry-After"] = str(ss.LibraryBusy.retry_after)
+                return resp
         access.allow(viewer, level)
         if page < 1 or page > session.pages:
             return _error(400, f"This file has {session.pages} pages.")
-        tag = split_thumbs.etag(session.source.sha256, page, size)
-        cache = NO_STORE if confidential else IMMUTABLE
+        fixed = session.source.kind in FIXED_KINDS
+        tag = split_thumbs.etag(session.source.sha256, page, size, None if (fixed and not confidential) else confidential)
+        cache = NO_STORE if confidential else IMMUTABLE if fixed else REVALIDATE
         if tag in [t.strip() for t in request.headers.get("If-None-Match", "").split(",")]:
             access.log_or_refuse(viewer, level, path=f"split/{sid}", page=page, size=size, cached=True)
             resp = make_response("", 304)
@@ -81,7 +94,7 @@ def blueprint() -> Blueprint:
         access.log_or_refuse(viewer, level, path=f"split/{sid}", page=page, size=size)
         resp = make_response(got["data"])
         resp.headers["Content-Type"] = got["mime"]
-        resp.headers["ETag"] = got["etag"]
+        resp.headers["ETag"] = tag
         resp.headers["Cache-Control"] = cache
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["Content-Security-Policy"] = "sandbox"
@@ -93,4 +106,4 @@ def blueprint() -> Blueprint:
     return bp
 
 
-__all__ = ["IMMUTABLE", "NO_STORE", "blueprint"]
+__all__ = ["FIXED_KINDS", "IMMUTABLE", "NO_STORE", "REVALIDATE", "blueprint"]

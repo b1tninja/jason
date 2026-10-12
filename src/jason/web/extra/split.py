@@ -99,6 +99,7 @@ def _limits() -> dict[str, Any]:
 
 
 def split_session(args: Args) -> dict[str, Any]:
+    from jason.tasks import split_mask
     from jason.tasks import split_session as ss
     from jason.tasks import split_thumbs
 
@@ -117,13 +118,18 @@ def split_session(args: Args) -> dict[str, Any]:
         raise KeyError(sid) from None
     out: dict[str, Any] = {**ss.view_of(root, session), "renderer": split_thumbs.renderer_name() or "", "sizes": list(split_thumbs.SIZES),
                            "limits": _limits(), "caveats": list(CAVEATS)}
-    out["confidential"] = ss.is_confidential(root, session)
+    held = ss.standing(root, session)
+    out["confidential"] = held.confidential
+    hide = split_mask.hide_text(held)
+    if hide:
+        out["confidentialWhy"] = held.words
+        out["retry"] = not held.known
     span = (args.get("facts") or "").strip()
     if span:
         a, _, b = span.partition("-")
         out["facts"] = ss.facts_view(root, sid, int(a or 1), int(b or a or 0), lqip=not out["confidential"])["facts"]
     if (args.get("review") or "").strip() in ("1", "true", "yes") and session.status in ("draft", "confirmed"):
-        out["review"] = ss.review(sid, community=_community(), root=root)
+        out["review"] = split_mask.review(ss.review(sid, community=_community(), root=root), hide)
     if (args.get("flags") or "").strip() in ("1", "true", "yes"):
         from jason.tasks import split_flags
 
@@ -135,6 +141,7 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     from flask import abort, jsonify, make_response
 
     from jason.community.split_session import SplitConflict
+    from jason.tasks import split_mask
     from jason.tasks import split_session as ss
     from jason.web.extra.record_slots import _actor
 
@@ -174,12 +181,13 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             drop = [int(p) for p in body.get("drop") or ()]
             kw = {"parts": parts, "drop": drop, "keep_copies": bool(body.get("keepCopies")), "community": community, "root": root,
                   "filing": str(body.get("filing") or ""), "rotate": body.get("rotate")}
+            hide = ss.hides_text(root, ss.load(root, sid))
             if act == "review":
-                return {"ok": True, "act": act, "review": ss.review(sid, **kw)}
+                return {"ok": True, "act": act, "review": split_mask.review(ss.review(sid, **kw), hide)}
             dry = body.get("dryRun", True) is not False
             out = ss.apply(sid, by=by, confirm=bool(body.get("confirm")) and not dry, dry_run=dry,
                           ocr=body.get("ocr") is not False, **kw)
-            return {"ok": True, "act": act, **out}
+            return {"ok": True, "act": act, **split_mask.apply_result(out, hide)}
         if act == "suggest":
             return {"act": act, **ss.suggest(sid, by=by, community=community, root=root)}
         if act == "decline":
@@ -189,3 +197,7 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
                                      dry_run=bool(body.get("dryRun")), community=community, root=root)}
     except SplitConflict as exc:
         abort(make_response(jsonify(error=str(exc), conflict=True, current=exc.current), 409))
+    except ss.LibraryBusy as exc:                    # the library could not be read: not "no such file"; a person tries again
+        resp = make_response(jsonify(error=str(exc), busy=True, retryAfter=exc.retry_after), 503)
+        resp.headers["Retry-After"] = str(exc.retry_after)
+        abort(resp)

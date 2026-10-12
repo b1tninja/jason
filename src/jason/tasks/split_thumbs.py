@@ -163,9 +163,12 @@ def render_page(path: Path | str, page: int, size: int, *, rotate: int = 0, engi
 
 # --- the cache -------------------------------------------------------------------------------------------------------------
 
-def etag(sha256: str, page: int, size: int) -> str:
-    """The ETag of one picture: the hash, the page, the size, and the render version (quoted, as HTTP wants)."""
-    return f'"{sha256[:16]}-{int(page)}-{int(size)}-{RENDER_VERSION}"'
+def etag(sha256: str, page: int, size: int, confidential: bool | None = None) -> str:
+    """The ETag of one picture: the hash, the page, the size, and the render version (quoted, as HTTP wants). With ``confidential`` given
+    the file's standing is part of the tag (``-c`` or ``-p``), so a picture a browser holds under one standing is asked about again, and
+    not trusted, when the file's flag has changed. None is for a file whose standing can never change."""
+    mark = "" if confidential is None else ("-c" if confidential else "-p")
+    return f'"{sha256[:16]}-{int(page)}-{int(size)}-{RENDER_VERSION}{mark}"'
 
 
 def cache_root(root: Path) -> Path:

@@ -599,12 +599,12 @@ Value is the harm avoided (severity times likelihood, counting the failures it a
 
 | # | Item | Fixes | Value | Effort | Notes |
 |---|---|---|---|---|---|
-| 1 | Mask page-derived text for a confidential file below the private view; the canary test | N-1, N-3 | very high | S | The server is what must refuse. One mask function at the payload builders |
-| 2 | Confidential flag fails closed; short cache for library and Drive sources | N-2 | very high | S | Decision 3 on the cache lifetime |
+| 1 | Mask page-derived text for a confidential file below the private view; the canary test | N-1, N-3 | very high | S | **Built 2026-10-11** (`split_mask`, `tests/test_split_confidential.py`). The server is what must refuse. One mask function at the payload builders |
+| 2 | Confidential flag fails closed; short cache for library and Drive sources | N-2 | very high | S | **Built 2026-10-11**: `private, no-cache` with the standing in the ETag (revalidation, not a `max-age`). Decision 3 on the cache lifetime stands for a later `max-age` |
 | 3 | `durable_write` (flush, fsync, replace, retry) and session `.bak` | G-4, E-8, B-5 | high | S | One helper, used everywhere the splitter writes |
 | 4 | Apply: plan inside the lock; fingerprint and `version` required; compare-and-append in the slot store | G-1, G-2, F-1 | high | M | The smallest change that makes apply honest, before the journal |
 | 5 | The apply journal, staging, resume or roll back | G-3, H-2, I-2, K-3, G-9 | high | L | Builds on 3 and 4; the largest item |
-| 6 | Typed `LibraryBusy`; the duplicate check visible; open not misreported | H-6 | high | S | |
+| 6 | Typed `LibraryBusy`; the duplicate check visible; open not misreported | H-6 | high | S | **Built 2026-10-11**: refusal for apply and open, a visible `duplicateCheck` note on the review; the "skip the check" choice is not built |
 | 7 | The doctor, read-only first | section 6 | high | M | Class A and B fixes after; class C after the journal exists |
 | 8 | The render worker: time, memory, queue, per-person bucket, negative cache | M-1 to M-3, L-2, N-5 | high | L | Probe on open first (smallest slice); then render; then cut |
 | 9 | Undo apply | J-1 | high | M | Needs 5 and the trash; the library retire dependency |

@@ -28,6 +28,7 @@ def split_suggestions(session: str = "", library_id: str = "", include_confident
     ``include_confidential`` is true. A suggestion is evidence for a person to accept or reject; it is not a pin."""
     from pathlib import Path
 
+    from jason.tasks import split_mask
     from jason.tasks import split_session as ss
 
     try:
@@ -40,12 +41,14 @@ def split_suggestions(session: str = "", library_id: str = "", include_confident
             return {"found": False, "session": sid, "libraryId": lib, "caveats": list(CAVEATS)}
         rows = []
         for s in found:
-            held = ss.is_confidential(root, s) and not include_confidential
+            st = ss.standing(root, s)                      # asked again now; an unreadable library reads as confidential
+            held = split_mask.hide_text(st, bool(include_confidential))
             row: dict[str, Any] = {"id": s.id, "status": s.status, "pages": s.pages, "updated": s.updated, "version": s.version,
-                                   "counts": s.counts(), "confidential": ss.is_confidential(root, s)}
+                                   "counts": s.counts(), "confidential": st.confidential}
             if held:
-                row["heldBack"] = ("This file is confidential. Its boundaries and suggestions are held back; ask for them with "
-                                   "include_confidential when the question needs them.")
+                row["heldBack"] = (st.why + " " if st.why else "") + ("This file is confidential. Its boundaries and suggestions are "
+                                                                       "held back; ask for them with include_confidential when the "
+                                                                       "question needs them.")
             else:
                 row["boundaries"] = [b.page for b in s.ordered()]
                 row["segments"] = [{"key": g.key, "start": g.start, "end": g.end, "level": g.level} for g in s.segments()]

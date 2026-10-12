@@ -101,6 +101,7 @@ def _target(raw: str, root: Path) -> tuple[str, dict[str, Any] | str]:
 def cmd_split(args: argparse.Namespace) -> int:
     from jason import limits
     from jason.community.split_session import SplitConflict
+    from jason.tasks import split_mask
     from jason.tasks import split_session as ss
 
     def out(data: Any) -> None:
@@ -218,7 +219,7 @@ def cmd_split(args: argparse.Namespace) -> int:
         if args.review or (args.apply and not yes):
             rev = ss.review(sid, parts=parts, drop=drop, keep_copies=args.keep_copies, community=community, root=root,
                             filing=args.filing or '', rotate=args.rotate or None)
-            final["review"] = rev
+            final["review"] = split_mask.review(rev, ss.hides_text(root, ss.load(root, sid)))
         if args.flags:
             from jason.tasks import split_flags
 
@@ -226,7 +227,7 @@ def cmd_split(args: argparse.Namespace) -> int:
         if args.apply:
             res = ss.apply(sid, by=who, parts=parts, drop=drop, keep_copies=args.keep_copies, confirm=yes, community=community, root=root,
                            filing=args.filing or '', rotate=args.rotate or None, ocr=not getattr(args, "no_ocr", False))
-            final["apply"] = res
+            final["apply"] = split_mask.apply_result(res, ss.hides_text(root, ss.load(root, sid)))
         if args.json:
             from jason.tasks import split_session as _s
 

@@ -34,6 +34,7 @@ from jason import limits, storage
 from jason.community import split_suggest
 from jason.community.split_session import PageFact, Source, SplitConflict, SplitSession, new_id, now
 from jason.tasks import record_slots as rs
+from jason.tasks import split_mask
 
 log = logging.getLogger(__name__)
 
@@ -115,19 +116,54 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def _library_row(root: Path, doc_id: str) -> dict[str, Any] | None:
+class LibraryBusy(ValueError):
+    """The library database could not be read just now (busy, locked, or unreadable). It is not "the library has no such file": the
+    caller refuses with these words, or, where it only reads a flag, treats the file as confidential until the library answers."""
+
+    retry_after = 5
+
+    def __init__(self, message: str = ""):
+        super().__init__(message or "The library could not be read just now (it may be busy). Nothing was changed. Try again in a moment.")
+
+
+def _library_connect(root: Path) -> sqlite3.Connection | None:
+    """A read-only connection to the library, or None when this machine has no library. ``LibraryBusy`` when it cannot be read."""
     db = Path(root) / "library" / "library.db"
     if not db.is_file():
         return None
     try:
-        conn = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
-        try:
-            row = conn.execute("SELECT path, sha256, confidential FROM documents WHERE id = ? LIMIT 1", (str(doc_id),)).fetchone()
-        finally:
-            conn.close()
+        return sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True, timeout=3.0)
     except sqlite3.Error:
+        raise LibraryBusy() from None
+
+
+def _library_row(root: Path, doc_id: str) -> dict[str, Any] | None:
+    """The library's row for a document id, None when the library holds none (or this machine has no library). ``LibraryBusy`` when the
+    library could not be read: that is never reported as "no such file"."""
+    conn = _library_connect(root)
+    if conn is None:
         return None
+    try:
+        row = conn.execute("SELECT path, sha256, confidential FROM documents WHERE id = ? LIMIT 1", (str(doc_id),)).fetchone()
+    except sqlite3.Error:
+        raise LibraryBusy() from None
+    finally:
+        conn.close()
     return None if row is None else {"path": row[0], "sha256": row[1] or "", "confidential": bool(row[2])}
+
+
+def _library_flags(root: Path, ids: set[str]) -> dict[str, bool]:
+    """The confidential flag of each library id that has a row, in one read. ``LibraryBusy`` when the library could not be read."""
+    conn = _library_connect(root)
+    if conn is None or not ids:
+        return {}
+    try:
+        marks = ",".join("?" for _ in ids)
+        return {str(i): bool(c) for i, c in conn.execute(f"SELECT id, confidential FROM documents WHERE id IN ({marks})", tuple(sorted(ids)))}
+    except sqlite3.Error:
+        raise LibraryBusy() from None
+    finally:
+        conn.close()
 
 
 def _resolve(ref: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -253,19 +289,58 @@ def _read_pdf(path: Path) -> int:
         raise ValueError(f"This file could not be read ({type(exc).__name__}): it may be damaged. Nothing was opened.") from exc
 
 
+def _request_memo() -> dict[Any, Any] | None:
+    """One dict per web request (Flask's ``g``), so the flag is read again on each request and only once within it; None outside one."""
+    try:
+        from flask import g, has_request_context
+
+        if not has_request_context():
+            return None
+        if not hasattr(g, "_split_standing"):
+            g._split_standing = {}
+        return g._split_standing
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def standing(root: Path, session: SplitSession) -> split_mask.Standing:
+    """Whether the file is confidential now, and whether the library could be asked. A library file is asked again on each request (the
+    flag may have been set since); any other keeps what it was opened with. **Fails closed:** when the library could not be read, the
+    file is confidential, ``known`` is False, and the words say so. It is never read as the flag from the time the file was opened."""
+    src = session.source
+    if not (src.kind == "library" and src.ref):
+        return split_mask.Standing(bool(src.confidential))
+    memo = _request_memo()
+    key = (str(Path(root)), src.ref)
+    if memo is not None and key in memo:
+        return memo[key]
+    try:
+        row = _library_row(root, src.ref)
+    except LibraryBusy:
+        found = split_mask.Standing(True, False, split_mask.BUSY_WORDS)
+    else:
+        found = split_mask.Standing(bool(row["confidential"]) if row is not None else bool(src.confidential))
+    if memo is not None:
+        memo[key] = found
+    return found
+
+
 def is_confidential(root: Path, session: SplitSession) -> bool:
-    """Whether the file is confidential now: a library file is asked again each time (the flag may have been set since), any other
-    keeps what it was opened with."""
-    if session.source.kind == "library" and session.source.ref:
-        row = _library_row(root, session.source.ref)
-        if row is not None:
-            return bool(row["confidential"])
-    return bool(session.source.confidential)
+    """Whether the file is confidential now (see ``standing``): True when the library could not be asked."""
+    return standing(root, session).confidential
 
 
-def view_of(root: Path, session: SplitSession) -> dict[str, Any]:
-    """The session as a screen reads it, with a confidential file's reference withheld (the flag is read again here)."""
-    return session.view(mask=is_confidential(root, session))
+def hides_text(root: Path, session: SplitSession, private: bool | None = None) -> bool:
+    """Whether this reader gets no page text: the file is confidential and the private view is not open (``private`` says so for a
+    caller outside a request; None asks the request)."""
+    return split_mask.hide_text(standing(root, session), private)
+
+
+def view_of(root: Path, session: SplitSession, *, private: bool | None = None) -> dict[str, Any]:
+    """The session as a screen reads it. A confidential file's reference is withheld, and unless the private view is open so are the
+    reasons behind its suggestions and its segments' titles and kinds (``jason.tasks.split_mask``)."""
+    st = standing(root, session)
+    return split_mask.session_view(session.view(mask=st.confidential), split_mask.hide_text(st, private), st)
 
 
 def find(root: Path, *, session: str = "", library: str = "") -> list[SplitSession]:
@@ -395,9 +470,12 @@ def read_facts(root: Path, sha256: str) -> list[PageFact]:
         return []
 
 
-def facts_view(root: Path, sid: str, first: int = 1, last: int = 0, *, lqip: bool = True) -> dict[str, Any]:
-    """The facts of pages ``first`` to ``last`` as a screen draws its placeholders. A page not measured yet is ``pending``."""
+def facts_view(root: Path, sid: str, first: int = 1, last: int = 0, *, lqip: bool = True, private: bool | None = None) -> dict[str, Any]:
+    """The facts of pages ``first`` to ``last`` as a screen draws its placeholders. A page not measured yet is ``pending``. For a
+    confidential file the fields the page's text or picture gave (header, footer, title, date, word hash, placeholder picture) are
+    withheld unless the private view is open (``jason.tasks.split_mask``)."""
     session = load(root, sid)
+    hide = hides_text(root, session, private)
     facts = read_facts(root, session.source.sha256)
     last = last or session.pages
     first = max(1, first)
@@ -407,7 +485,10 @@ def facts_view(root: Path, sid: str, first: int = 1, last: int = 0, *, lqip: boo
         if not lqip:
             f.pop("lqip", None)
         rows.append(f)
-    return {"id": sid, "pages": session.pages, "ready": len(facts), "facts": rows}
+    out = {"id": sid, "pages": session.pages, "ready": len(facts), "facts": split_mask.facts(rows, hide)}
+    if hide:
+        out["masked"] = split_mask.withheld_note(standing(root, session))
+    return out
 
 
 # --- opening ---------------------------------------------------------------------------------------------------------------
@@ -703,12 +784,18 @@ def decline(sid: str, *, by: str, note: str = "", dry_run: bool = True, root: Pa
     return {"dryRun": False, "ok": True, "declined": True, "id": sid}
 
 
-def _check_not_stale(root: Path, session: SplitSession) -> None:
-    """A library file whose size or time changed since the session opened is stale: the draft is for the old bytes."""
+def _check_not_stale(root: Path, session: SplitSession, *, strict: bool = False) -> None:
+    """A library file whose size or time changed since the session opened is stale: the draft is for the old bytes. When the library
+    cannot be read the check cannot be made: a mark goes on (the write checks again), but ``strict`` (an apply) raises ``LibraryBusy``."""
     src = session.source
     if src.kind != "library" or not src.stamp or session.status != "draft":
         return
-    row = _library_row(root, src.ref)
+    try:
+        row = _library_row(root, src.ref)
+    except LibraryBusy:
+        if strict:
+            raise
+        return
     if row is None:
         return
     path = Path(root) / "library" / "files" / row["path"]
@@ -835,22 +922,21 @@ def rotations(session: SplitSession, facts: list[PageFact], rotate: Any, dropped
 
 
 def _known_hashes(root: Path, profile: str) -> dict[str, str]:
-    """Hashes of files jason already holds: slot pins and the library. Value: where, in words (no file name)."""
+    """Hashes of files jason already holds: slot pins and the library. Value: where, in words (no file name). ``LibraryBusy`` when the
+    library is there but could not be read: the duplicate check is then not made, and the caller says so (never silently)."""
     held: dict[str, str] = {}
     for p in rs.load_store(profile).get("pins") or ():
         if p.get("sha256") and not p.get("unpinned"):
             held.setdefault(str(p["sha256"]), f"a file pinned to {p.get('slot', 'a slot')}")
-    db = Path(root) / "library" / "library.db"
-    if db.is_file():
+    conn = _library_connect(root)
+    if conn is not None:
         try:
-            conn = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
-            try:
-                for (sha, doc_id) in conn.execute("SELECT sha256, id FROM documents WHERE sha256 IS NOT NULL AND sha256 != ''"):
-                    held.setdefault(str(sha), f"library file {doc_id}")
-            finally:
-                conn.close()
+            for (sha, doc_id) in conn.execute("SELECT sha256, id FROM documents WHERE sha256 IS NOT NULL AND sha256 != ''"):
+                held.setdefault(str(sha), f"library file {doc_id}")
         except sqlite3.Error:
-            pass
+            raise LibraryBusy() from None
+        finally:
+            conn.close()
     return held
 
 
@@ -864,7 +950,7 @@ def _held_in_store(root: Path, profile: str, sha256: str) -> bool:
 
 def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop: list[int] | None = None, keep_copies: bool = False,
            community: Any = None, root: Path | None = None, profile: str | None = None, hashes: bool = True, filing: str = "",
-           rotate: Any = None) -> dict[str, Any]:
+           rotate: Any = None, strict_duplicates: bool = False) -> dict[str, Any]:
     """What applying the draft would do, written nowhere: each file with its pages, how it would be filed, and its slot, the pages left
     out, the totals, the collisions with slots that hold a file, and the duplicates of files jason already holds. ``hashes`` cuts each
     part in memory to hash it (a large file takes a while); without it duplicates are not checked.
@@ -889,7 +975,17 @@ def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop
     if not top:
         raise ValueError("there are no segments to write")
     source = source_file(root, session.source.sha256)
-    known = _known_hashes(root, profile) if hashes else {}
+    known: dict[str, str] = {}
+    duplicate_check = {"checked": bool(hashes), "skipped": "" if hashes else "not asked for"}
+    if hashes:
+        try:
+            known = _known_hashes(root, profile)
+        except LibraryBusy:
+            if strict_duplicates:
+                raise LibraryBusy("The library could not be read just now (it may be busy), so jason cannot check these parts against "
+                                  "the files it already holds. Nothing was written. Try again in a moment.") from None
+            duplicate_check = {"checked": False, "skipped": "The library could not be read just now (it may be busy), so these parts "
+                               "were not checked against the files it already holds. Try again in a moment before applying."}
     rows, problems = [], []
     for it in items:
         pages = [p for p in range(it["start"], it["end"] + 1) if p not in dropped]
@@ -932,6 +1028,7 @@ def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop
                        (("held", "held"), ("library", "library"), ("slots", "fill"), ("collisions", "collision"), ("duplicates", "duplicate"))}},
             "rotated": [{"page": p, "degrees": d} for p, d in sorted(turns.items()) if p not in dropped],
             "sidewaysLeft": sum(len(r["sideways"]) for r in rows if r["level"] == 0),
+            "duplicateCheck": duplicate_check,
             "result": f"{len(rows)} new files; the original is kept untouched", "caveats": list(CAVEATS)}
 
 
@@ -956,7 +1053,7 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
     elif dry_run is None:
         dry_run = False
     plan = review(sid, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root, profile=profile, filing=filing,
-                  rotate=rotate)
+                  rotate=rotate, strict_duplicates=not dry_run)
     if dry_run:
         would: dict[str, Any] = {"act": "apply", "id": sid, "by": person, "files": plan["files"]}
         if ocr:
@@ -979,7 +1076,7 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
             session.status = "stale"
             save(root, session)
             raise ValueError("the splitter's copy of the file changed since it was opened; open the file again")
-        _check_not_stale(root, session)
+        _check_not_stale(root, session, strict=True)
         if session.status != "confirmed":
             session.status = "confirmed"
             session.confirmed = {"by": person, "at": now(), "boundaries": ",".join(str(b.page) for b in session.ordered())}
@@ -1120,14 +1217,23 @@ def _file_to_library(root: Path, community: Any, files: list[tuple[str, bytes]],
 # --- listing, retention, purge ---------------------------------------------------------------------------------------------
 
 def listing(root: Path | None = None, *, mask_confidential: bool = True) -> list[dict[str, Any]]:
-    """The sessions, newest first: id, status, pages, counts, updated. No file name, ever."""
+    """The sessions, newest first: id, status, pages, counts, updated. No file name, ever. A library file's flag is read again here
+    (one read for all of them) and fails closed: when the library cannot be read, a library file is listed as confidential."""
     root = _root(root)
+    rows = sessions(root)
+    refs = {s.source.ref for s in rows if s.source.kind == "library" and s.source.ref}
+    try:
+        flags, busy = _library_flags(root, refs), False
+    except LibraryBusy:
+        flags, busy = {}, True
     out = []
-    for s in sessions(root):
+    for s in rows:
         c = s.counts()
+        library = s.source.kind == "library" and bool(s.source.ref)
+        conf = True if (library and busy) else bool(flags[s.source.ref]) if (library and s.source.ref in flags) else bool(s.source.confidential)
         out.append({"id": s.id, "status": s.status, "pages": s.pages, "segments": c["segments"], "suggestionsOpen": c["suggestionsOpen"],
-                    "updated": s.updated, "by": s.by, "confidential": s.source.confidential, "kind": s.source.kind,
-                    "label": "a confidential file" if (mask_confidential and s.source.confidential) else f"{s.pages} pages, {s.source.sha256[:8]}"})
+                    "updated": s.updated, "by": s.by, "confidential": conf, "kind": s.source.kind,
+                    "label": "a confidential file" if (mask_confidential and conf) else f"{s.pages} pages, {s.source.sha256[:8]}"})
     return out
 
 

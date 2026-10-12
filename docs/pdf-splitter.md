@@ -657,6 +657,14 @@ Conventions follow the rest of the CLI: **dry run is the default**; `--yes` is r
 - **Limits are not bypassed.** `upload.max_bytes`, `fetch.max_bytes`, `split.max_pages`, and the cache bound apply; the splitter's overrides, if any are added later, follow the registry's per-act override and trail.
 - **Audit.** Open, apply, decline, and purge each leave a history line (who, when, counts, session id); a draft's edits are not audited line by line (they are a draft), but the **confirm** records the final boundary list.
 
+### 8.1 Confidential files: what is guaranteed (built 2026-10-11)
+
+- **No page text before the private view.** For a confidential file, every answer the splitter gives (the session view, the page facts, the review, the flags, the suggestions, the command's `--json`, the MCP tool) carries numbers, states, and codes. It withholds a page's `header`, `footer`, `title`, `date`, word hash, and placeholder picture; the `why` and `signals[].said` of each suggestion (a signal keeps its name and weight); and each segment's `title` and `kind`. One module decides, `jason.tasks.split_mask`; no reader has an `if confidential` of its own. The answer says `masked: {text: "withheld"}`. The text appears when the private view is open for the viewer; outside a request (the command line) it does not appear, and the MCP tool shows it only to `include_confidential`.
+- **The flag fails closed.** It is read again on every request (once within one). When the library cannot be read, the file is treated as confidential, `confidentialWhy` says so in words, and the picture route answers `503` with `Retry-After` to a viewer who could not open a confidential file. The flag from the day the file was opened is never used in its place.
+- **Pictures are asked about.** A confidential picture is `private, no-store`. A library or Drive file's picture is `private, no-cache`, and its ETag carries the file's standing (`-p` or `-c`), so a flag set later is seen on the next look. Only a file opened from an upload or a path, whose flag is fixed when it is opened, keeps `private, max-age=31536000, immutable`.
+- **A busy library is never read as an empty one.** `LibraryBusy` (a `ValueError`, `retry_after` 5 seconds) is raised when the library database cannot be read. An open says so in words and the console answers `503` with `Retry-After` (it is not "the library holds no file"). The review shows `duplicateCheck: {checked: false, skipped: "..."}` when it could not compare the parts with the files jason holds; a confirmed apply is refused until it can, and so is an apply whose library file cannot be checked for change.
+- **No names in the cache or the logs.** The picture cache, the splitter's folders, the logs, and `access/served.jsonl` are named by hash, page, size, and session id; `tests/test_split_confidential.py` greps them after a confidential session's operations.
+
 ## 9. Phases, tests, and open decisions
 
 ### 9.1 Build plan
