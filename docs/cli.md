@@ -1039,6 +1039,9 @@ Durable workflows: list and start runs, open one (the resume check), attest, ski
 | `--skip` | RUN STEP | skip a step its definition lets be skipped (with --reason, --by) |
 | `--na` | RUN STEP | record a step as not applicable, which is not a skip (with --reason, --record, --by); only a step whose definition declares the outcome |
 | `--set-date` | RUN SLOT=YYYY-MM-DD | give a late or optional date slot a day after the start (with --record, --by; a correction also --reason) |
+| `--supply` | RUN | give an item set more items while the run goes (with --set, --item, --by; --item-date and --record for an item's own dates). An item is an opaque id, never a name or an address. Without --yes it checks and prints what would be recorded and writes nothing |
+| `--set` | NAME | with --supply: the item set (omit for the run's own items) |
+| `--item-date` | ITEM SLOT=YYYY-MM-DD | with --supply: the day a date slot reads for this item's own clocks (needs --record; repeat) |
 | `--reopen` | RUN STEP | open a done, skipped, or failed step again (with --reason, --by) |
 | `--pause` | RUN | pause a run (with --reason, --by) |
 | `--resume` | RUN | lift a pause (with --by) |
@@ -1047,19 +1050,19 @@ Durable workflows: list and start runs, open one (the resume check), attest, ski
 | `--verify` | RUN | check a run's hash chain and name the first broken event |
 | `--reindex` |  | rebuild data/workflows/index.json from the events |
 | `--from-sop` | KEY | print a DRAFT definition from a procedure (jason sop lists them); it is never registered |
-| `--record` | REF | with --attest, --na, or --set-date: the record that shows it (minutes, a sent notice, a library id) |
+| `--record` | REF | with --attest, --na, --set-date, or --supply: the record that shows it (minutes, a sent notice, a library id) |
 | `--what` | TEXT | with --attest or --arrived: what was done, in a few words |
 | `--outcome` | WORD | with --attest on a decision step: adopted, approved, denied, rejected, withdrawn, tabled, or pending (only a final one finishes the step) |
 | `--motion` | TEXT | with --attest on a decision step: the motion (default: the step's title) |
 | `--choice` | KEY | with --attest on a branch step a person answers |
-| `--item` | ITEM | with --start: an item of the run (repeat); with an act on a per-item step: the item |
+| `--item` | ITEM | with --start: an item of the run (repeat); with --supply: an item id to add (repeat); with an act on a per-item step: the item |
 | `--step` | STEP | with --note: the step it is about |
 | `--reason` | TEXT | why: a skip, a not-applicable record, a pause, a reopen, a cancel, or a date correction |
 | `--text` | TEXT | with --note: the note |
 | `--expect` | N | the run's n you last saw; a run that moved on is refused |
 | `--as-of` | YYYY-MM-DD | read the clocks as of this day (default: today) |
 | `--by` | NAME | who is acting (required for every write; kept with when) |
-| `--yes` |  | confirm: --cancel always; --start and --open of a run with a legal clock |
+| `--yes` |  | confirm: --cancel and --supply always; --start and --open of a run with a legal clock |
 | `--json` |  | print JSON |
 
 ## Owners, requests, notices & forms
