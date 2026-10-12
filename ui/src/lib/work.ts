@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getJson, postJson, serverSession, signInRefusal } from "./api";
 import type { GlyphName } from "../components/Glyph";
 import type { StepControl } from "./controls";
+import { noRoleArticle, roleWords } from "./marks";
 
 // The Work screens' data (docs/console/screens/work.md, docs/console/design-brief-work.md). The shapes are the loaders':
 // `jason.web.extra.work` behind `GET /api/work`, `GET /api/work-run?definition=&id=`, `GET /api/work-definitions`, and
@@ -481,7 +482,7 @@ export function maskContact(text: string): string {
 /** Whose move a step is, as one phrase: "Waiting on the treasurer" for a step the viewer does not hold. */
 export function waitingWords(w: WaitingOn | null | undefined): string {
   if (!w) return "";
-  return `Waiting on ${w.word}${w.detail ? ` (${w.detail})` : ""}`;
+  return `Waiting on ${noRoleArticle(w.word)}${w.detail ? ` (${w.detail})` : ""}`;
 }
 
 /** The refusal sentences a step shows in place of a control it does not offer: only the acts that make sense for its kind
@@ -493,7 +494,15 @@ export function refusalsFor(step: RunStep): { act: string; why: string }[] {
   if (["done", "skipped", "failed"].includes(step.state)) relevant.add("reopen");
   return Object.entries(step.notOffered ?? {})
     .filter(([act]) => relevant.has(act) && !step.acts.includes(act))
-    .map(([act, why]) => ({ act, why }));
+    .map(([act, why]) => ({ act, why: act === "attest" ? attestRefusal(step, why) : why }));
+}
+
+/** The server's "This step is not started, not waiting on a person." is true and no help on a step that IS a person's: it says the
+ * step is not open yet, not that it needs nobody. On a person's or a branch step that has not started, say when it opens. */
+function attestRefusal(step: RunStep, why: string): string {
+  if ((step.kind === "person" || step.kind === "branch") && step.state === "not started" && /not waiting on a person/i.test(why))
+    return `This step has not started. It opens for ${roleWords(step.role)} when the steps it needs are done; there is nothing to do on it yet.`;
+  return why;
 }
 
 /** The phases of a run for the rail: the definition's own order, a step without a phase under "Other steps"; within a phase,

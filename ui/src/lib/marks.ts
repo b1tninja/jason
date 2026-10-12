@@ -100,13 +100,24 @@ export const ROLE_GLYPH: Readonly<Record<string, "for-board" | "for-president" |
 
 export const UNASSIGNED = "unassigned";
 
-const AS_THEMSELVES = new Set(["jason", "owners"]);
+const AS_THEMSELVES = new Set(["jason", "owners", "anyone"]);
 
-/** An office as a sentence names it: "the treasurer", "the board"; jason and owners as themselves (the server's
- * `role_words`). */
+/** An office as a sentence names it: "the treasurer", "the board"; jason, owners, and anyone as themselves, never given an
+ * article (the server's `role_words`). */
 export function roleWords(role: string): string {
   const r = norm(role);
   return AS_THEMSELVES.has(r) ? r : `the ${r}`;
+}
+
+/** A phrase the server wrote with an article before a role that never takes one ("the jason" becomes "jason"); any other phrase is as it was. */
+export function noRoleArticle(words: string): string {
+  return words.replace(/\bthe (jason|owners|anyone)\b/gi, "$1");
+}
+
+/** `roleWords` at the head of a sentence: "The treasurer", "Jason" stays "jason" (the product's own name is lower case). */
+export function roleWordsCap(role: string): string {
+  const w = roleWords(role);
+  return w === "jason" ? w : w.charAt(0).toUpperCase() + w.slice(1);
 }
 
 /** Whether the server resolved an owner: a role, and not an empty one. */

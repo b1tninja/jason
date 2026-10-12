@@ -89,7 +89,8 @@ export function PlanProgress({ approval: a, me = "", kind, needsSecond: second, 
   };
 
   const signedBy = a.first ? [first, a.second ? personName(a.second.name) : ""].filter(Boolean).join(" and ") : "";
-  const next = ready && applyReached ? `Signed by ${signedBy || "the signers"}, ready to apply.` : "";
+  // Not while the board's pause is running: the Apply step and the pause's own box say it is held, and "ready" would contradict them.
+  const next = ready && applyReached && !held ? `Signed by ${signedBy || "the signers"}, ready to apply.` : "";
 
   return (
     <section className="plan-progress" aria-label="Plan progress">

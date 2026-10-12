@@ -11,6 +11,7 @@ import {
   actWord, boardHref, dayOf, decisionHref, lastAct, paramWords, voteCounts, WORDS,
   type ControlChanged, type ControlRowData, type ControlTouch, type OneControl,
 } from "../lib/controls";
+import "../styles/controls.css";
 
 const sentence = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
 

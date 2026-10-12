@@ -1,6 +1,8 @@
 /** The office views' loader shape and the lens rules (`GET /api/office-view?office=ROLE`, docs/console/screens/office-views.md).
  * An office is an `OfficerRole` word; the lens lives in the URL's hash (`#/digest?as=treasurer`), never on the server. */
 
+import { roleWords } from "./marks";
+
 export const LENS_PARAM = "as";
 export const OFFICE_WORDS = ["president", "vice president", "secretary", "treasurer", "director", "manager"] as const;
 
@@ -88,7 +90,7 @@ export interface OfficeViewData {
 }
 
 /** "the treasurer": an office as a sentence reads it. */
-export const theOffice = (office: string): string => `the ${office}`;
+export const theOffice = (office: string): string => roleWords(office);
 
 /** A list of offices as words: "the secretary and the treasurer". */
 export function officesText(offices: readonly string[]): string {

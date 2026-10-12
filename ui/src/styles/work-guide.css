@@ -60,10 +60,14 @@
 .guide-done-when p { margin: .15rem 0; }
 .guide-lessons { list-style: none; margin: .25rem 0 0; padding: 0; }
 
-/* the act row is the last element, and on a phone it sticks to the bottom with targets of at least 44px */
+/* The act row is the last element of the step. On a phone its targets are at least 44px. It sticks to the bottom only where the screen is
+   big enough to spare the room: a Mark done row with its Skip and Reopen forms is about 250px, which on a 375x812 phone (or any screen
+   under 600px wide or tall) would cover a third of the page. Below that it stays where it is, at the end of the step, one scroll away. */
 .guide-act-row { margin-top: .75rem; }
+@media (min-width: 600px) and (max-width: 719px) and (min-height: 600px) {
+  .guide-act-row { position: sticky; bottom: 0; z-index: 2; background: var(--panel); border-top: 1px solid var(--line); padding: .5rem 0; margin-left: -.1rem; max-height: 40vh; overflow: auto; }
+}
 @media (max-width: 719px) {
-  .guide-act-row { position: sticky; bottom: 0; z-index: 2; background: var(--panel); border-top: 1px solid var(--line); padding: .5rem 0; margin-left: -.1rem; }
   .guide-act-row button, .guide-claim-act button, .guide-toggle { min-height: 44px; min-width: 44px; }
   .guide-act-row .confirm button, .guide-act-row .row { gap: 8px; }
   .guide-commands .command .row { flex-wrap: nowrap; }

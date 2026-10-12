@@ -7,11 +7,12 @@ import {
   KIND_WORDS, definitionHref, startHref, useWorkApi, workDefinitionsUrl,
   type DefinitionClock, type DefinitionRow, type DefinitionStep, type DefinitionsPage,
 } from "../lib/work";
+import { roleWords } from "../lib/marks";
 import "../styles/work.css";
 
 /** "Started by the manager or the secretary": the roles that may start a definition the viewer's office cannot. */
 export function startedByWords(roles: readonly string[]): string {
-  const words = roles.map((r) => `the ${r}`);
+  const words = roles.map(roleWords);
   return `Started by ${words.length > 1 ? `${words.slice(0, -1).join(", ")} or ${words[words.length - 1]}` : words[0] ?? "another office"}`;
 }
 

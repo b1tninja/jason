@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import "../styles/a11y.css";
 
 /** A two-step button: the first click shows what will happen, the second does it. For anything that writes. Armed, it
  * is a stamp: the `label` ("Confirm", "Record", "Send") hangs on its top edge, the summary comes first, the buttons last. */

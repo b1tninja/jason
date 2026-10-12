@@ -14,6 +14,7 @@ import {
   useChecklist, type Checklist,
 } from "./StepGuide";
 import { addressScheme, driveDocRef, fileDocRef, type DocRef } from "../lib/docref";
+import { roleWords, roleWordsCap } from "../lib/marks";
 import {
   KIND_WORDS, WORDS, dayOf, refusalsFor, safeAddress, shortHash, waitingWords,
   type Run, type RunClock, type RunLink, type RunStep, type StepEvidence, type WorkViewer,
@@ -237,13 +238,13 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
       <h2 id="work-step-h" ref={ref} tabIndex={-1}>{step.n}. {step.title}</h2>
       <p className="work-step-meta">
         <StepStateWord state={step.state} changed={step.changed.length > 0} />{" "}
-        <span className="muted">{KIND_WORDS[step.kind] ?? step.kind} for the {step.role}</span>
+        <span className="muted">{KIND_WORDS[step.kind] ?? step.kind} for {roleWords(step.role)}</span>
         {yours && <strong className="work-yours"> Your move</strong>}
         {waiting && <strong className="work-waiting"> {waitingWords(step.waitingOn)}</strong>}
       </p>
       {step.state === "failed" && (
         <p className="notice notice-error" role="note">
-          This step failed{step.reason ? `: ${step.reason}` : ""}. The {step.role} may resolve it. Nothing is retried by a click.
+          This step failed{step.reason ? `: ${step.reason}` : ""}. {roleWordsCap(step.role)} may resolve it. Nothing is retried by a click.
         </p>
       )}
       {step.state === "blocked" && (
@@ -327,9 +328,9 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
             </GuideSection>
           </div>
           <GuideSection title="Ask" startClosed={settled}><AskOffices ask={g.ask} /></GuideSection>
-          {(g.sop || g.lessons.length > 0) && (
+          {(!!g.sop?.command || g.lessons.length > 0) && (
             <GuideSection title="Learn more" startClosed>
-              {g.sop && <Command cmd={g.sop.command} note={`The procedure this step was built from, step ${g.sop.index}.`} />}
+              {g.sop?.command && <Command cmd={g.sop.command} note={`The procedure this step was built from, step ${g.sop.index}.`} />}
               {g.lessons.length > 0 && (
                 <ul className="guide-lessons">{g.lessons.map((l) => <li key={l.key}>Lesson: <code>{l.key}</code> <span className="muted">({l.status})</span></li>)}</ul>
               )}

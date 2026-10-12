@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { NOT_A_MARK, STAMP_WORDS, isSealWord, isStampWord, norm, type StampWord } from "../lib/marks";
+import "../styles/a11y.css";
 
 export interface StampProps {
   /** The decision in its own word (`STAMP_WORDS`). A word outside the set (a motion's own word the set lacks) renders

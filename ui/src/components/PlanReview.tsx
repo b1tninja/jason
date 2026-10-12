@@ -20,7 +20,7 @@ import { SecondConfirm } from "./SecondConfirm";
 import { WriteRow } from "./WriteRow";
 import {
   applyCountsWords, cleanName, commands, decidable, EXCEPTION_NUDGE, flaggedCounts, groupItems, isApprovable, isFlagged, needsSecond, personName,
-  planState, plural, SECTIONS, short, signerProblem, staleness, STATUS_MEANING, systemWord, takesEffect, when, type Approval, type AuditEntry, type ChainCheck,
+  stateSentence, plural, SECTIONS, short, signerProblem, staleness, STATUS_MEANING, systemWord, takesEffect, when, type Approval, type AuditEntry, type ChainCheck,
   type ApplyHold, type ApplyPrefs, type DecideBody, type KindFacts, type PlanItem, type Recheck, type ReferBody, type SignBody,
   type TypedCount,
 } from "../lib/approvals";
@@ -163,7 +163,7 @@ export function PlanReview({
           <h2 id={`${uid}-title`}>{a.title}</h2>
           <Pill word={a.status} meaning={STATUS_MEANING[a.status]} />
         </div>
-        <p className="plan-state"><strong>{planState(a, me, { needsSecond: second })}</strong></p>
+        <p className="plan-state"><strong>{stateSentence({ ...a, pausing: a.pausing || !!hold }, me, { needsSecond: second })}</strong></p>
         <p className="muted">
           Planned by jason, asked by {personName(a.requestedBy)}{a.requestedVia ? ` (${a.requestedVia})` : ""} · read live {when(a.readAt)} · fingerprint <code>{short(a.fingerprint)}</code>
           {a.first && <> · signed by {personName(a.first.name)}, {when(a.first.at)}</>}
@@ -185,7 +185,7 @@ export function PlanReview({
       </header>
 
       <p className={status ? "notice" : "visually-hidden"} role="status" aria-live="polite">
-        {status}{stale.blocked ? " Signing is blocked: the plan changed since review." : ""}
+        {status}{stale.blocked && !stale.superseded ? " Signing is blocked: the plan changed since review." : ""}
       </p>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
 

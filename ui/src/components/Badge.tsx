@@ -1,4 +1,5 @@
 import { Glyph, type GlyphName } from "./Glyph";
+import "../styles/a11y.css";
 
 export type Tone = "neutral" | "good" | "warn" | "bad";
 

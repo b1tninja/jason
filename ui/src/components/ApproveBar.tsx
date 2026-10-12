@@ -4,6 +4,7 @@ import {
   cleanName, decidable, decisionProblem, isApprovable, plural, short, signerProblem, tally,
   type Approval, type DecideBody, type DecisionWord, type SignBody,
 } from "../lib/approvals";
+import "../styles/approve-bar.css";
 
 /** The three marks, each as the word on its radio, the verb in an error, and the word in the button ("Mark 3 as approved"):
  * a mark is a decision on an item, recorded in jason's own plan record. It writes nothing outside jason. */
@@ -117,12 +118,20 @@ export function ApproveBar({ approval, selected, me = "", onDecide, onSubmit, bl
           )}
           <span id={`${uid}-sign-why`} className="muted" role="status">{signWhy || signError}</span>
         </div>
-        <p className="muted approve-sign-note">Signing does not make the changes. It says these decisions are yours. A second person may still need to sign, and someone must apply.</p>
       </div>
-      <p className="muted approve-note">
-        {flagged + person > 0 && <>{flagged ? `${flagged} flagged for review` : ""}{flagged && person ? " and " : ""}{person ? `${person} for a person` : ""} {flagged + person === 1 ? "is" : "are"} not part of this approval{flagged ? "; a flagged change is decided on its own, in its section" : ""}. </>}
-        Your name, the time, and the plan's fingerprint <code>{short(fingerprint)}</code> are recorded. jason plans; only a named person decides and signs.
-      </p>
+      {flagged + person > 0 && (
+        <p className="muted approve-note approve-note-held">
+          {flagged ? `${flagged} flagged for review` : ""}{flagged && person ? " and " : ""}{person ? `${person} for a person` : ""} {flagged + person === 1 ? "is" : "are"} not part of this approval{flagged ? "; a flagged change is decided on its own, in its section" : ""}.
+        </p>
+      )}
+      {/* The explanations sit behind a disclosure so the bar stays short where it sticks to the foot of the page. */}
+      <details className="approve-help">
+        <summary>How this works</summary>
+        <p className="muted approve-sign-note">Signing does not make the changes. It says these decisions are yours. A second person may still need to sign, and someone must apply.</p>
+        <p className="muted approve-note">
+          Your name, the time, and the plan's fingerprint <code>{short(fingerprint)}</code> are recorded. jason plans; only a named person decides and signs.
+        </p>
+      </details>
     </form>
   );
 }

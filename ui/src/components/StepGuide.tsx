@@ -8,6 +8,7 @@ import { Glyph, type GlyphName } from "./Glyph";
 import { ReadingLabel } from "./ReadingLabel";
 import { Recitation } from "./Recitation";
 import { PHONE_QUERY, useMediaQuery } from "../lib/useMediaQuery";
+import { roleWords } from "../lib/marks";
 import {
   safeAddress, type EnableState, type GuideAsk, type GuideCommand, type GuideLook, type GuideRule, type NudgeBand, type StepEnable,
   type StepNudge,
@@ -35,7 +36,7 @@ export const ENABLE_LOOK: Readonly<Record<EnableState, { glyph: GlyphName; tone:
   superseded: { glyph: "minus", tone: "neutral" },
 };
 
-const officeWords = (office: string) => (office === "anyone" ? "anyone" : `the ${office}`);
+export const officeWords = roleWords;
 
 /** Who holds the offices that may act on the step, on the roster: names only, and "no one holds" for a vacant office. */
 function Holders({ enable }: { enable: StepEnable }) {
@@ -57,6 +58,14 @@ function Holders({ enable }: { enable: StepEnable }) {
   );
 }
 
+/** Whether the strip's own words already say which step it waits on ("Waits on step 12"), so "Step 12 must be done first" would only
+ * say it again. */
+export function saysWaitsOn(enable: Pick<StepEnable, "word" | "detail" | "waitsOn">): boolean {
+  if (!enable.waitsOn) return false;
+  const said = new RegExp("\\bstep " + enable.waitsOn.n + "\\b", "i");
+  return said.test(enable.word ?? "") || said.test(enable.detail ?? "");
+}
+
 /** The enable strip: one line with the state word and glyph, the reason under it, and what is missing. Never collapsed. */
 export function StepEnableStrip({ enable }: { enable: StepEnable }) {
   const look = ENABLE_LOOK[enable.state] ?? { glyph: "info" as GlyphName, tone: "neutral" as Tone };
@@ -74,7 +83,7 @@ export function StepEnableStrip({ enable }: { enable: StepEnable }) {
           ))}
         </ul>
       )}
-      {enable.waitsOn && <p className="muted">Step {enable.waitsOn.n} must be done first.</p>}
+      {enable.waitsOn && !saysWaitsOn(enable) && <p className="muted">Step {enable.waitsOn.n} must be done first.</p>}
       {!settled && <Holders enable={enable} />}
       {!settled && enable.accessNote && <p className="muted">{enable.accessNote}</p>}
     </div>

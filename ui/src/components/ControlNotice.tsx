@@ -1,9 +1,17 @@
 import { Glyph } from "./Glyph";
 import { controlHref, dayOf, noticesUrl, signerWords, useControlsApi, type ControlNotices, type NoticeControl, type StepControl } from "../lib/controls";
+import "../styles/controls.css";
 
 const adopted = (n: NoticeControl) => (dayOf(n.adoptedOn) ? ` on ${dayOf(n.adoptedOn)}` : "");
 const sentence = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
 const href = (n: NoticeControl) => n.link || controlHref(n.key);
+/** A control's effect as the loader words it ("signers: 2") made a sentence ("Signers needed: 2."): a loose "key: value" fragment
+ * reads as a label with no sentence around it. */
+export function effectWords(effect: string): string {
+  const e = effect.trim();
+  const signers = /^signers:\s*(.+)$/i.exec(e);
+  return sentence(capital(signers ? `Signers needed: ${signers[1]}` : e));
+}
 
 /** The one line at the point of an act: what a control the board adopted requires here, with the control's title as a link
  * to its card. `data` is `GET /api/control-notices?subject=` (an approval kind, a workflow step, or a send). Read only; it
@@ -22,7 +30,7 @@ export function ControlNotice({ data }: { data: ControlNotices | null | undefine
           <Glyph name="shield-check" size="1em" />{" "}
           <strong>Required by a control the board adopted{adopted(n)}:</strong> <a href={href(n)}>{n.title}</a>.
           {i === 0 && data.why ? <> {data.why}</> : null}
-          {n.effect ? <span className="muted"> {n.effect}</span> : null}
+          {n.effect ? <span className="muted"> {effectWords(n.effect)}</span> : null}
         </p>
       ))}
       {data.stricter && data.builtin && <p className="muted control-notice-line">The kind's own rule is {data.builtin}.</p>}
@@ -31,7 +39,7 @@ export function ControlNotice({ data }: { data: ControlNotices | null | undefine
         <p key={n.key} className="muted control-notice-line control-notice-waiting">
           <Glyph name="calendar-clock" size="1em" />{" "}
           {n.effective ? `Takes effect ${n.effective}; not yet required` : "Not yet required"}:{" "}
-          <a href={href(n)}>{n.title}</a>, a control the board adopted{adopted(n)}.{n.reason ? <> {sentence(n.reason)}</> : null}
+          <a href={href(n)}>{n.title}</a>, a control the board adopted{adopted(n)}.{n.reason ? <> {sentence(capital(n.reason))}</> : null}
         </p>
       ))}
       {refusals.map((r) => (

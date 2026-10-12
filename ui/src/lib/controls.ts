@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, getJson, serverSession, signInRefusal } from "./api";
 import type { GlyphName } from "../components/Glyph";
 import { formatCents, isCentsKey, titleCase } from "./format";
+import { roleWords } from "./marks";
 
 // The Controls screen's data (docs/console/screens/controls.md). The shapes are the loaders': `jason.controls.view`
 // (`row`, `compose`, `one`, `notices`) behind `GET /api/controls`, `GET /api/control?key=`, `GET /api/control-notices?subject=`,
@@ -265,7 +266,7 @@ export function useControlNotice(kind: string, amountCents?: number, stamp = "")
  * it. The loader's `roles` and `mustInclude` are office words; a person's name is never in them. */
 export function signerWords(n: ControlNotices | null | undefined): string {
   if (!n || n.found === false || !n.controls?.length) return "";
-  const offices = (rs: readonly string[]) => rs.map((r) => `the ${r}`);
+  const offices = (rs: readonly string[]) => rs.map(roleWords);
   const join = (xs: string[], word: string) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} ${word} ${xs[xs.length - 1]}` : xs[0] ?? "");
   const parts: string[] = [];
   if (n.roles?.length) parts.push(`Only ${join(offices(n.roles), "or")} may sign.`);

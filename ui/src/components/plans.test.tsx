@@ -543,7 +543,7 @@ describe("flagged for review", () => {
     expect(screen.getByRole("heading", { name: "Flagged for review: 2 flagged, 1 decided by exception" })).toBeInTheDocument();
     const section = screen.getByRole("region", { name: "Flagged for review: 2 flagged, 1 decided by exception" });
     expect(within(section).getAllByText("approved").length).toBeGreaterThan(0);
-    expect(within(section).getByText(/approved as a one-off exception by Dana Director: the owner confirmed in writing/)).toBeInTheDocument();
+    expect(within(section).getByText(/^as a one-off exception by Dana Director: the owner confirmed in writing/)).toBeInTheDocument();   // the badge says "approved"; the line does not say it twice
     expect(within(section).getAllByText("second person").length).toBeGreaterThan(0);
   });
 

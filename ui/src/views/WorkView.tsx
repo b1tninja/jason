@@ -3,6 +3,7 @@ import { Caveats, Card, EmptyState, Loading, RunRow, ScreenHeader } from "../com
 import { LinkButton, WorkCrumbs, WorkNav, WorkNotes, WorkProblem } from "../components/WorkParts";
 import { StartRun } from "../components/StartRun";
 import { useHash } from "../lib/useHash";
+import { roleWords } from "../lib/marks";
 import {
   DUE_FILTERS, GROUP_FOLD, GROUP_KEYS, GROUP_TITLES, NO_FILTERS, START_HREF, WORDS, asOfDate, headingLine, parseRoute, runHref, workDefinitionsUrl, workUrl,
   useWorkApi, useWorkViewer,
@@ -61,7 +62,7 @@ function Filters({ f, page, onChange }: { f: WorkFilters; page: WorkPage | null;
       }}>
         <option value="">Anyone's</option>
         <option value="mine">Mine</option>
-        {(page?.roles ?? []).map((r) => <option key={r} value={r}>{WHOSE_WORDS[r] ?? `the ${r}`}</option>)}
+        {(page?.roles ?? []).map((r) => <option key={r} value={r}>{WHOSE_WORDS[r] ?? roleWords(r)}</option>)}
       </select>
       <label htmlFor={`${uid}-due`}>Due</label>
       <select id={`${uid}-due`} value={f.due} onChange={(e) => onChange({ ...f, due: e.target.value })}>

@@ -274,7 +274,7 @@ describe("planState: the six sentences", () => {
     Object.assign(failed.items.find((i) => i.result === "applied")!, { result: "failed" });
     expect(planState({ ...failed, status: "failed" })).toBe("Failed: 1 change was not made");
     Object.assign(failed.items.filter((i) => i.result === "applied")[0], { result: "uncertain" });
-    expect(planState({ ...failed, status: "failed" })).toBe("Failed: 2 changes were not made");
+    expect(planState({ ...failed, status: "failed" })).toBe("Failed: 2 changes were not made (1 failed, 1 uncertain)");
     expect(planState({ ...planned(), status: "withdrawn" })).toBe("Withdrawn");
     expect(planState({ ...planned(), status: "superseded" })).toBe("Replaced by a newer plan");
     expect(planState({ ...signed(), status: "applying" })).toMatch(/^Applying: 0 of 12 changes written\.$/);

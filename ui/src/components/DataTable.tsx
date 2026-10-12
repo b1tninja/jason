@@ -3,6 +3,7 @@ import { EmptyState } from "./States";
 import { SearchBox } from "./SearchBox";
 import { Glyph, type GlyphName } from "./Glyph";
 import { Money } from "./Money";
+import "../styles/a11y.css";
 
 export interface Column<T> {
   key: string;

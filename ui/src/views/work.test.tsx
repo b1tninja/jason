@@ -325,7 +325,8 @@ describe("Work, one run: the step", () => {
     const panel = screen.getByRole("heading", { level: 2, name: "6. Read the returned forms" }).closest("section")!;
     const first = within(panel).getByRole("button", { name: "Mark done" });
     expect(first).toBeDisabled();                                                                // the record is required
-    expect(within(panel).getByText("The record: the count of forms read is required.")).toBeInTheDocument();
+    expect(within(panel).getByText("The record: the count of forms read")).toBeInTheDocument();
+    expect(within(panel).getByLabelText("The record: the count of forms read")).toHaveAccessibleDescription("Required: the button stays off until this is filled in.");   // said once, not "The record: X ... The record: X is required"
     await userEvent.type(within(panel).getByLabelText("The record: the count of forms read"), "4 forms read");
     await userEvent.click(within(panel).getByRole("button", { name: "Mark done" }));
     expect(writes(calls)).toEqual([]);                                                           // one click writes nothing

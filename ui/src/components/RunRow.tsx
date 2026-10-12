@@ -3,6 +3,7 @@ import { BasisPill } from "./BasisPill";
 import { DueDate } from "./DueDate";
 import { Pill } from "./Pill";
 import { NudgeWord, daysWords } from "./StepGuide";
+import { noRoleArticle, roleWords } from "../lib/marks";
 import { HELD_WORDS, runHref, type WorkRow } from "../lib/work";
 
 /** Whose move it is, in words, for the group the run is in: "Your move: the manager", "Waiting on the member's reply". */
@@ -11,9 +12,15 @@ export function moveWords(r: WorkRow): string {
   const w = r.waitingOn;
   if (!w) return "";
   const detail = w.detail ? ` (${w.detail})` : "";
-  if (r.group === "yours") return `Your move: ${w.word}${detail}`;
-  if (r.group === "board") return `The board decides; ${w.role ? `the ${w.role}` : "a person"} records`;
-  return `Waiting on ${w.word}${detail}`;
+  if (r.group === "yours") return `Your move: ${noRoleArticle(w.word)}${detail}`;
+  if (r.group === "board") return `The board decides; ${w.role ? roleWords(w.role) : "a person"} records`;
+  return `Waiting on ${noRoleArticle(w.word)}${detail}`;
+}
+
+/** The run's own label; a held run with none shows the definition's general title, never its opaque id (an id is a handle, not a name). */
+export function rowLabel(r: Pick<WorkRow, "label" | "id" | "held" | "definitionTitle">): string {
+  if (r.label) return r.label;
+  return r.held ? r.definitionTitle || r.id : r.id;
 }
 
 /** Whether the run is past a date the law set: the loader's own flag, or a legal date whose days are behind us. */
@@ -50,7 +57,7 @@ export function RunRow({ row, today }: { row: WorkRow; today?: Date }) {
     <li className={`work-row${past ? " work-row-past" : ""}`} data-run={row.id} data-held={row.held ? "true" : undefined}>
       <a className="work-row-link" href={runHref(row.definition, row.id)}>
         <span className="work-row-main">
-          <span className="work-row-label">{row.label || row.id}</span>
+          <span className="work-row-label">{rowLabel(row)}</span>
           <span className="work-row-def muted">{row.held ? HELD_WORDS : row.definitionTitle}</span>
         </span>
         <span className="work-row-step">

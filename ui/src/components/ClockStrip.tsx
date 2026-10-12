@@ -46,7 +46,8 @@ function ClockCard({ clock, today }: { clock: RunClock; today?: Date }) {
       <div className="work-clock-head">
         <strong>{clock.label || clock.key}</strong>{" "}
         <DueDate iso={clock.due} today={today} settled={satisfied} /> <BasisPill basis={clock.basis} label={clock.basisLabel} />
-        {clock.status && clock.status !== "upcoming" && <> <Pill word={clock.status} /></>}
+        {/* a dated overdue clock is already "7d overdue" in the date: the status word would say it a second time */}
+        {clock.status && clock.status !== "upcoming" && !(clock.status === "overdue" && clock.due) && <> <Pill word={clock.status} /></>}
         {clock.cite && <span className="muted"> {clock.cite}</span>}
       </div>
       <p className="muted work-clock-scope">{clock.scope === "step" && clock.stepTitle ? `Step: ${clock.stepTitle}` : "The whole run"}</p>

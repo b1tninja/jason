@@ -1,0 +1,15 @@
+/* The plans-of-writes list (PlanApprovals): the open plan's heading, and the cue that the table scrolls sideways on a phone. */
+.approvals-open-id { margin: 0; font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.approvals-open-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.table-scroll-hint { display: none; margin: .25rem 0 0; font-size: .85rem; }
+@media (max-width: 640px) {
+  .table-scroll-hint { display: block; }
+  /* the classic scroll shadows: a soft edge on the side that has more, which goes when the table is scrolled to that end */
+  .table-scroll-cue .table-wrap {
+    background:
+      linear-gradient(to right, var(--panel) 30%, transparent) 0 0 / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, var(--panel) 30%, transparent) 100% 0 / 2.5rem 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--ink) 28%, transparent), transparent) 0 0 / .9rem 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--ink) 28%, transparent), transparent) 100% 0 / .9rem 100% no-repeat scroll;
+  }
+}

@@ -1,0 +1,66 @@
+/* Contrast and target-size overrides for the console's shared pieces (badges, chips, stamps, primary buttons, tables, the shell's small
+   buttons). styles.css is not edited for these: each rule here carries enough specificity to win over it wherever the two files meet,
+   whichever the bundle loads first. Tokens only, so the community theme's accent and the two schemes follow.
+   The numbers are measured in `views/overrides.test.ts`: text at least 4.5:1 (WCAG 1.4.3), controls' edges at least 3:1 (1.4.11), and
+   targets at least 24px (2.5.8). */
+
+/* -- the surfaces a pinned scheme leaves behind ---------------------------------------------------------------------------------
+   styles.css pins a scheme with `:root[data-scheme="light" | "dark"]`, which sets the page, panel, ink, muted, and line but not the paper
+   (the chip and table surface) or the rule, so a dark pin on a light OS kept the light paper (a chip's amber text was 1.4:1 on it) and a
+   light pin on a dark OS kept the dark one. The pins get the two tokens their scheme already has. */
+:root[data-scheme="light"] { --paper: #e8ecf2; --rule: #c3cad4; }
+:root[data-scheme="dark"] { --paper: #20262f; --rule: #3a4350; }
+
+/* -- the button fill ------------------------------------------------------------------------------------------------------------
+   A primary button is the community accent with the text the theme says belongs on it. Some accents sit near 4:1 with their text, so the
+   fill is the accent a step toward black (light) or white (dark) - the direction that always widens the gap to white or dark text -
+   and the text is the theme's own, with a fallback that is right for the scheme (white on light, near-black on dark). */
+:root {
+  --accent-fill: color-mix(in srgb, var(--accent) 86%, #000);
+  --on-fill: var(--on-accent, #fff);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-scheme="light"]) { --accent-fill: color-mix(in srgb, var(--accent) 86%, #fff); --on-fill: var(--on-accent, #10161f); }
+}
+:root[data-scheme="dark"] { --accent-fill: color-mix(in srgb, var(--accent) 86%, #fff); --on-fill: var(--on-accent, #10161f); }
+
+:root button.primary:not(:disabled):not([aria-disabled="true"]) { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-fill); }
+:root .hp-guard > button.primary:not(:disabled):not([aria-disabled="true"]) { background: var(--panel); border-color: var(--line); color: var(--ink); }
+/* Where the browser can pick the readable one of black and white itself, it does: that is at least 4.58:1 for any fill. */
+@supports (color: contrast-color(red)) {
+  :root button.primary:not(:disabled):not([aria-disabled="true"]) { color: contrast-color(var(--accent-fill)); }
+  :root .hp-guard > button.primary:not(:disabled):not([aria-disabled="true"]) { color: var(--ink); }
+}
+/* A primary button that cannot be pressed (or only explains why when pressed) is a dashed outline in the muted text colour, not the
+   accent at 60% opacity: that was white on washed lavender, and read as broken rather than as waiting. */
+:root button.primary:disabled, :root button.primary[aria-disabled="true"] {
+  background: var(--panel); color: var(--muted); border: 1px dashed var(--muted); opacity: 1; cursor: not-allowed; font-weight: 600;
+}
+
+/* -- badges ---------------------------------------------------------------------------------------------------------------------
+   The good and warning status colours reach about 4:1 as 12px text on the badge's own 11% tint over the page's grey. Mixed toward the ink
+   (the same mix the splitter uses) they clear 4.5:1 on every surface, in both schemes, and still read as green and amber. */
+:root .badge.badge-good { color: color-mix(in srgb, var(--good) 70%, var(--ink)); }
+:root .badge.badge-warn { color: color-mix(in srgb, var(--warn) 70%, var(--ink)); }
+:root .badge.badge-neutral { color: color-mix(in srgb, var(--muted) 75%, var(--ink)); }
+/* a status word never breaks between its glyph and its letters, and a narrow column gives it the room it needs */
+:root td .badge, :root th .badge { white-space: nowrap; }
+
+/* -- chips, stamps --------------------------------------------------------------------------------------------------------------
+   A code chip inside a coloured notice took that colour on the paper background (the warning amber on paper is 4.4:1). Its text is the
+   inherited colour mixed toward the ink. A stamp and its small line were faded with opacity, which is what put 9px text under 4:1. */
+:root .chip, :root code.chip { color: color-mix(in srgb, currentColor 70%, var(--ink)); }
+:root .stamp { opacity: 1; }
+/* the stamp's good and warning colours, mixed a little toward the ink: the amber alone is 4.4:1 on the paper surface */
+:root .stamp-good { color: color-mix(in srgb, var(--good) 85%, var(--ink)); }
+:root .stamp-warn { color: color-mix(in srgb, var(--warn) 85%, var(--ink)); }
+:root .stamp-sub { opacity: 1; font-size: max(10px, calc(var(--stamp-size) * .19)); }
+
+/* -- tables ---------------------------------------------------------------------------------------------------------------------- */
+:root .table-wrap caption { text-align: left; caption-side: top; padding-bottom: .25rem; }
+/* the sort button in a column head is a target of its own: at least 24px each way */
+:root table th > button { display: inline-flex; align-items: center; min-height: 24px; min-width: 24px; }
+
+/* -- the shell's small buttons (sign out, the private view switch) -------------------------------------------------------------
+   Their text is 13px with little padding, 17 to 22px tall. They keep their look and gain the 24px target. */
+:root .console-signin button, :root .private-switch > button { min-height: 24px; min-width: 24px; }

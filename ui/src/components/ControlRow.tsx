@@ -2,11 +2,20 @@ import { ControlProposeConfirm } from "./ControlProposeConfirm";
 import { ControlStateWord } from "./ControlStateWord";
 import { Glyph } from "./Glyph";
 import { Recitation } from "./Recitation";
-import { boardHref, controlHref, dayOf, isSuggestion, lastAct, type ControlQuestion, type ControlRowData, type ProposeAnswer, type RefusedControl } from "../lib/controls";
+import { boardHref, controlHref, dayOf, isSuggestion, lastAct, lookOf, type ControlQuestion, type ControlRowData, type ProposeAnswer, type RefusedControl } from "../lib/controls";
 
 /** What the viewer's session says, passed down so a row asks the server nothing: the name a proposal goes under, and, for an
  * administrator viewing as someone else, whom (the proposal is refused then). */
 export interface ProposeAs { by?: string; actingAs?: string; onProposed?: (answer: ProposeAnswer) => void }
+
+/** Whether the loader's sentence only says what the badge beside it already says ("adopted, in force" twice): the same words, or the badge's
+ * words with nothing but punctuation added. */
+export function sameAsBadge(sentence: string, badge: string | undefined): boolean {
+  if (!badge) return false;
+  const plain = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const a = plain(sentence), b = plain(badge);
+  return a === b || (a.includes(b) && !/[a-z0-9]/.test(a.replace(b, "")));
+}
 
 /** The line a declined, deferred, or retired control carries: its reason, its date, and the date it may be asked again. */
 function Closing({ row }: { row: ControlRowData }) {
@@ -35,7 +44,7 @@ export function ControlRow({ row, as = {}, inStep = false }: { row: ControlRowDa
         {row.basis.citation && <cite className="control-row-cite muted">{row.basis.citation}</cite>}
       </div>
       <p className="control-row-summary">{row.summary}</p>
-      {row.state === "adopted" && row.stateWord && <p className="muted control-row-words">{row.stateWord}</p>}
+      {row.state === "adopted" && row.stateWord && !sameAsBadge(row.stateWord, lookOf(row.standing, effective)?.word) && <p className="muted control-row-words">{row.stateWord}</p>}
       {row.state === "proposed" && (
         <p className="muted control-row-words">
           {row.proposedAs ? <>Before the board as item <a href={boardHref(row.proposedAs)}>{row.proposedAs}</a>{row.proposedStatus ? ` (${row.proposedStatus})` : ""}.</> : "Put before the board."} The board decides; the secretary records it.

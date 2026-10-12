@@ -17,6 +17,14 @@ function marked(text: string, mark?: string): ReactNode {
   return <>{text.slice(0, at)}<mark>{mark}</mark>{text.slice(at + mark.length)}</>;
 }
 
+/** Why nothing is recited, as one sentence with one full stop: a detail the server ended with its own period (or "..") is not
+ * stopped twice. */
+export function missWords(c: Pick<Citation, "found" | "citation" | "reason" | "detail">): string {
+  if (c.found) return `${c.citation}: an outline, not words to recite.`;
+  const said = `Not found: ${c.citation}${c.reason ? ` (${c.reason.replace(/_/g, " ")})` : ""}${c.detail ? `. ${c.detail}` : ""}`;
+  return `${said.replace(/[.\s]+$/, "")}.`;
+}
+
 /** The provision's operative words, quoted whole from the stored copy, with its citation, the version in force, and the
  * caveat. Never a paraphrase: a miss says why and recites nothing. `mark` highlights the words that answer the question.
  * A reading of these words goes after it, in a `ReadingLabel`, never inside. */
@@ -27,7 +35,7 @@ export function Recitation({ citation, mark }: { citation: Citation; mark?: stri
       <figure className="recitation recitation-miss">
         <div className="recitation-label">Recited words</div>
         <p className="muted">
-          {c.found ? `${c.citation}: an outline, not words to recite.` : `Not found: ${c.citation}${c.reason ? ` (${c.reason.replace(/_/g, " ")})` : ""}${c.detail ? `. ${c.detail}` : ""}.`} Nothing is quoted.
+          {missWords(c)} Nothing is quoted.
         </p>
       </figure>
     );

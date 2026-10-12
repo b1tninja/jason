@@ -1,0 +1,32 @@
+/* The approve bar (ApproveBar): decide on one side, sign on the other, the explanations behind a disclosure.
+   styles.css pins the bar to the foot of the page on a tall, wide screen; stacked in one column with its help paragraphs it was about
+   410px of a 900px screen and covered the rows and the progress strip. Side by side, with the help closed and a cap on its height, it
+   is about 240px and scrolls inside itself if a confirmation opens in it. The button states (an outline when it cannot be pressed, a
+   fill of at least 4.5:1 when it can) are in a11y.css. These rules out-rank styles.css whichever file the bundle loads first. */
+:root .approve-bar { padding: 10px 16px; gap: 8px; }
+:root .approve-bar .approve-decide legend { margin-bottom: 2px; }
+:root .approve-bar .approve-sign { gap: 6px; }
+:root .approve-bar p { margin: 0; }
+
+.approve-help > summary { cursor: pointer; font-size: 13px; color: var(--muted); min-height: 24px; display: list-item; padding: 2px 0; }
+.approve-help > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.approve-help[open] > summary { margin-bottom: 4px; }
+.approve-help p { margin: 4px 0 0; font-size: 13px; }
+
+@media (min-width: 720px) {
+  :root .approve-bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  :root .approve-bar > .approve-help, :root .approve-bar > .approve-note-held, :root .approve-bar > .notice { grid-column: 1 / -1; }
+  :root .approve-bar .approve-sign { border-top: 0; padding-top: 0; border-left: 1px solid var(--line); padding-left: 24px; }
+}
+
+/* Sticky only where there is room for it (styles.css: 820px tall and 720px wide). Capped, so it can never cover more than about a
+   third of the screen, and the cap scrolls rather than clips. */
+@media (min-height: 820px) and (min-width: 720px) {
+  :root .approve-bar { max-height: min(17rem, 34vh); overflow: auto; overscroll-behavior: contain; }
+}
+/* A bar that is blocked or closed stays in the flow, as before, with no cap */
+:root .approve-bar.approve-blocked { max-height: none; overflow: visible; }
+
+/* the disabled fieldset's inputs stay readable: a disabled text colour from the browser is under 4.5:1 */
+.approve-bar fieldset:disabled .approve-field, .approve-bar fieldset:disabled legend { color: var(--muted); }
+.approve-bar input:disabled { color: var(--muted); background: var(--panel); }

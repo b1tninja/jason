@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DataTable, Pill, PlanReview, RemoteView, type Column } from "../components";
 import { postJson, serverSession, type ApiError, type ServerSession } from "../lib/api";
 import { useControlNotice } from "../lib/controls";
 import { useApi } from "../lib/useApi";
-import { listState, plural, STATUS_MEANING, when, type ApplyHold, type ApplyPrefs, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck, type TypedCount } from "../lib/approvals";
+import { applyOutcomeWords, isClosed, listState, plural, STATUS_MEANING, when, type ApplyHold, type ApplyPrefs, type Approval, type AuditEntry, type ChainCheck, type KindFacts, type Recheck, type TypedCount } from "../lib/approvals";
 import type { Citation } from "../components/Recitation";
 import { boardItemHref } from "./BoardItemsView";
+import "../styles/plan-list.css";
 
 /** An approval as a list carries it: the engine's record, or (from `GET /api/approvals`) its summary, where `items` is
  * a count and `byClass` counts the items by class. */
@@ -38,7 +39,28 @@ export function approvalOf(d: Detail & Partial<Approval>): Approval | null {
 
 const OPEN = ["planned", "in_review", "approved", "partially_approved", "applying", "failed"];
 
-function counts(a: Listed): string {
+/** The plan with the server's beside-the-record fields (`/api/approvals/<id>`): whether a second person must sign, whether it is
+ * signed and waiting to be applied (and for how long), a terminal-only kind, a reminder, and the board's pause. The list's row and
+ * the plan's own header read the same record this way, so the two tell one state in one sentence. */
+export function withServerFields(a: Approval, d: Detail & Partial<Approval>): Approval {
+  return {
+    ...a, ...(d.needsSecond != null ? { needsSecond: d.needsSecond } : {}),
+    waitingToApply: !!d.waitingToApply, waitingHours: d.waitingHours ?? null, waitingStale: !!d.waitingStale, signedAt: d.signedAt ?? "",
+    terminalOnly: !!d.terminalOnly, reminderDue: !!d.reminderDue, reminderHours: d.reminderHours ?? null, pausing: !!d.pausing, pauseEndsAt: d.pauseEndsAt ?? "",
+  };
+}
+
+/** The list's "Items" cell: what is left for a person on an open plan ("6 to decide · 1 flagged"). A plan that is over has nothing
+ * to decide, so it says what happened instead: "6 applied", or that nothing is left to decide. */
+export function counts(a: Listed): string {
+  if (isClosed(a.status)) {
+    const applied = Array.isArray(a.items) ? a.items.filter((i) => i.result === "applied").length : Number(a.byResult?.applied ?? 0);
+    const failed = Array.isArray(a.items) ? a.items.filter((i) => i.result === "failed").length : Number(a.byResult?.failed ?? 0);
+    const changed = Array.isArray(a.items) ? a.items.filter((i) => i.result === "changed").length : Number(a.byResult?.changed ?? 0);
+    const uncertain = Array.isArray(a.items) ? a.items.filter((i) => i.result === "uncertain").length : Number(a.byResult?.uncertain ?? 0);
+    const out = [applied ? `${applied} applied` : "", applyOutcomeWords({ failed, changed, uncertain })].filter(Boolean).join(", ");
+    return out || "nothing left to decide";
+  }
   const items = a.items;
   const n = Array.isArray(items)
     ? (cls: string) => items.filter((i) => i.class === cls).length
@@ -90,7 +112,7 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
   useEffect(() => {
     if (!loaded) return;
     const d = r.status === "ready" ? r.data : null;
-    onLoaded?.(d ? { ...loaded, ...(d.needsSecond != null ? { needsSecond: d.needsSecond } : {}), waitingToApply: !!d.waitingToApply, waitingHours: d.waitingHours ?? null, waitingStale: !!d.waitingStale, signedAt: d.signedAt ?? "", terminalOnly: !!d.terminalOnly, reminderDue: !!d.reminderDue, reminderHours: d.reminderHours ?? null, pausing: !!d.pausing, pauseEndsAt: d.pauseEndsAt ?? "" } : loaded);
+    onLoaded?.(d ? withServerFields(loaded, d) : loaded);
   }, [loaded, onLoaded]);
   useEffect(() => { let on = true; serverSession().then((s) => on && setServer(s)); return () => { on = false; }; }, []);
   const step = (name: string, pick: (b: Record<string, unknown>) => Record<string, unknown>) => async (body?: object) => {
@@ -120,7 +142,7 @@ export function PlanPanel({ id, me, onOpen, onLoaded }: { id: string; me: string
         const a = approvalOf(d);
         if (!a) throw new Error("not an approval");
         return (
-          <PlanReview approval={a} me={me} audit={entries.length ? entries : d.audit} chain={chain ?? d.chain} recheck={recheck ?? d.recheck ?? d.check}
+          <PlanReview approval={withServerFields(a, d)} me={me} audit={entries.length ? entries : d.audit} chain={chain ?? d.chain} recheck={recheck ?? d.recheck ?? d.check}
             kind={d.kindFacts ?? undefined} notice={notice} twoPerson={!!d.kindFacts?.twoPerson}
             maxAgeHours={d.kindFacts?.maxAgeHours} recitations={d.recitations} boardHref={boardItemHref}
             busy={busy} error={error} onOpen={onOpen}
@@ -150,6 +172,16 @@ export function PlanApprovals({ page, me, open, onOpen }: { page: unknown; me: s
   ].sort((x, y) => Number(!OPEN.includes(x.status)) - Number(!OPEN.includes(y.status)) || String(y.requestedAt ?? "").localeCompare(String(x.requestedAt ?? "")));
   const waiting = rows.filter((a) => a.waitingToApply).length;
   const [onLoaded] = useState(() => (a: Approval) => setFresh((f) => (f[a.id] === a ? f : { ...f, [a.id]: a })));
+  // Choosing a plan opens its review below the table, which can be ten rows down: move focus to its heading and bring it into view
+  // (smooth only where the person has not asked for less motion), so a keyboard or screen reader user lands where the plan is.
+  const openRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const h = openRef.current;
+    if (!open || !h) return;
+    h.focus({ preventScroll: true });
+    const calm = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    h.scrollIntoView?.({ block: "start", behavior: calm ? "auto" : "smooth" });
+  }, [open]);
   const columns: Column<Listed>[] = [
     { key: "title", header: "Plan", render: (a) => <><strong>{a.title}</strong><br /><span className="muted">{a.kind} · {a.id}</span></> },
     { key: "status", header: "Status", render: (a) => <Pill word={a.status} meaning={STATUS_MEANING[a.status]} /> },
@@ -170,11 +202,17 @@ export function PlanApprovals({ page, me, open, onOpen }: { page: unknown; me: s
       {rows.length === 0 ? (
         <p className="muted">No plan of writes on disk. <code className="chip">jason approvals plan owner-info-tags --by NAME</code> makes one.</p>
       ) : (
-        <DataTable rows={rows} columns={columns} rowKey={(a) => a.id} selectedKey={open} onSelect={(a) => onOpen(a.id)} caption="Plans of writes, open first" />
+        <div className="table-scroll-cue">
+          <DataTable rows={rows} columns={columns} rowKey={(a) => a.id} selectedKey={open} onSelect={(a) => onOpen(a.id)} caption="Plans of writes, open first" />
+          <p className="muted table-scroll-hint">The table scrolls sideways: swipe it to see every column.</p>
+        </div>
       )}
       {open && (
         <section className="approvals-open" aria-label="Open plan">
-          <div className="row wrap"><strong>{open}</strong><button className="link" onClick={() => onOpen("")}>Close</button></div>
+          <div className="row wrap">
+            <h3 className="approvals-open-id" ref={openRef} tabIndex={-1}>{open}</h3>
+            <button className="link" onClick={() => onOpen("")}>Close</button>
+          </div>
           <PlanPanel key={open} id={open} me={me} onOpen={onOpen} onLoaded={onLoaded} />
         </section>
       )}

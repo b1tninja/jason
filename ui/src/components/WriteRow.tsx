@@ -28,12 +28,20 @@ function Diff({ item }: { item: PlanItem }) {
   );
 }
 
+/** What was done to a flagged item, after the badge that already says it: "[approved] as a one-off exception by ...", never "approved
+ * approved as ...". Where the badge says something else (the result once applied), the decision is named too. */
+export function flaggedHow(decision: PlanItem["decision"], badge: string): string {
+  if (decision === "held") return "kept flagged";
+  const exception = "as a one-off exception";
+  return badge === decision ? exception : `${decision} ${exception}`;
+}
+
 /** A flagged item's state: "flagged" until a person decides it as a one-off exception (approved, rejected, or kept
  * flagged with a note), then that decision with the person and the reason, and its result once applied. */
 function FlaggedState({ item }: { item: PlanItem }) {
   const decided = !!item.exception && item.decision !== "undecided";
   const word = item.result !== "pending" ? RESULT_WORDS[item.result] : decided && item.decision !== "held" ? item.decision : "flagged";
-  const how = item.decision === "approved" ? "approved as a one-off exception" : item.decision === "rejected" ? "rejected" : "kept flagged";
+  const how = flaggedHow(item.decision, word);
   return (
     <span className="write-state">
       <Pill word={word} meaning={item.resultDetail || undefined} />

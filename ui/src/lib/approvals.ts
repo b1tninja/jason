@@ -297,6 +297,17 @@ export function decisionProblem(a: Approval, ids: readonly string[], decision: D
   return "";
 }
 
+/** The statuses after which a plan is not decided, signed, or applied again: it is closed (a superseded plan is closed too, by a newer one). */
+export const CLOSED_STATUSES: readonly ApprovalStatus[] = ["applied", "failed", "withdrawn", "superseded"];
+/** Closed, but not replaced: nothing is stale about it, it is simply over. */
+const ENDED: readonly ApprovalStatus[] = ["applied", "failed", "withdrawn"];
+
+/** Whether a plan is over: applied, failed, withdrawn, or superseded. What is "to decide", "blocked", or "changed since review"
+ * is not said of one. */
+export function isClosed(status: ApprovalStatus): boolean {
+  return CLOSED_STATUSES.includes(status);
+}
+
 export interface Staleness {
   /** The plan cannot be decided or signed: it changed since review, or it was superseded. */
   blocked: boolean;
@@ -313,7 +324,10 @@ export function staleness(a: Approval, opts: { recheck?: Recheck | null; now?: s
   const fromItems: ChangedItem[] = a.items
     .filter((i) => i.result === "changed")
     .map((i) => ({ id: i.id, op: i.op, label: i.label, then: i.basis, now: "", why: i.resultDetail || "changed since review" }));
-  const changed = opts.recheck?.changed?.length ? opts.recheck.changed : fromItems;
+  // A plan that is over (applied, failed, withdrawn) is not "changed since it was reviewed": nothing more is decided or signed
+  // on it, so there is nothing to block. Its changed items are told in the apply result. A superseded plan keeps its own banner.
+  const ended = ENDED.includes(a.status);
+  const changed = ended ? [] : opts.recheck?.changed?.length ? opts.recheck.changed : fromItems;
   const superseded = a.status === "superseded";
   const read = Date.parse(a.readAt), now = Date.parse(opts.now ?? new Date().toISOString());
   const ageHours = Number.isFinite(read) && Number.isFinite(now) ? (now - read) / 3_600_000 : null;
@@ -389,6 +403,17 @@ export function applyCountsWords(a: Pick<Approval, "items">): string {
   return `Applying will make ${plural(c.changes, "change", "changes")} on ${plural(c.records, "record", "records")}: ${c.byField.map((f) => `${f.name} (${f.n})`).join(", ")}.`;
 }
 
+/** What did not go through, each apart: "1 failed, 1 changed since review, 1 uncertain". A count of none is left out, except that a
+ * plan with nothing wrong says "0 failed" when `always` (the sentence for an applied plan names failures even when there are none). */
+export function applyOutcomeWords(c: { failed: number; changed: number; uncertain: number }, always = false): string {
+  const parts = [
+    c.failed || always ? `${c.failed} failed` : "",
+    c.changed ? `${c.changed} changed since review` : "",
+    c.uncertain ? `${c.uncertain} uncertain` : "",
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
 /** A plan as a list row or the full record carries it: the full `Approval`, or `GET /api/approvals`'s summary, where
  * `items` is a count and the counts come by class, decision, and result (`engine.counts`), and the signers are names. */
 export interface PlanLike {
@@ -398,6 +423,8 @@ export interface PlanLike {
   first?: Signature | string | null; second?: Signature | string | null;
   needsSecond?: boolean | null; approved?: number; result?: Record<string, unknown>;
   waitingToApply?: boolean; waitingHours?: number | null; waitingStale?: boolean; terminalOnly?: boolean; reminderDue?: boolean;
+  /** The board's pause after the last signature has not ended: the plan is signed and held, not ready to apply. */
+  pausing?: boolean;
 }
 
 const signerOf = (s: Signature | string | null | undefined): string => (typeof s === "string" ? s : s?.name ?? "");
@@ -414,7 +441,10 @@ export function planState(a: PlanLike, me = "", opts: { needsSecond?: boolean | 
   const approved = r ? r.approved.length : a.approved ?? a.byDecision?.approved ?? 0;
   const res = a.byResult ?? {};
   const applied = r ? r.applied.length : Number(res.applied ?? a.result?.applied ?? 0);
-  const failed = r ? r.failed.length + r.uncertain.length : (res.failed ?? 0) + (res.uncertain ?? 0);
+  // Failed, changed since review, and uncertain are three different things for a person to look at: said apart, never lumped.
+  const failed = r ? r.failed.length : Number(res.failed ?? 0);
+  const changed = r ? r.changed.length : Number(res.changed ?? 0);
+  const uncertain = r ? r.uncertain.length : Number(res.uncertain ?? 0);
   switch (a.status) {
     case "planned":
     case "in_review":
@@ -430,8 +460,12 @@ export function planState(a: PlanLike, me = "", opts: { needsSecond?: boolean | 
       return "Signed, not applied yet. Nothing has been written.";
     }
     case "applying": return `Applying: ${applied} of ${plural(approved, "change", "changes")} written.`;
-    case "applied": return `Applied: ${plural(applied, "change", "changes")} made, ${failed} failed.`;
-    case "failed": return `Failed: ${plural(Math.max(approved - applied, failed), "change was", "changes were")} not made`;
+    case "applied": return `Applied: ${plural(applied, "change", "changes")} made, ${applyOutcomeWords({ failed, changed, uncertain }, true)}.`;
+    case "failed": {
+      const not = Math.max(approved - applied, failed + changed + uncertain);
+      const kinds = [failed, changed, uncertain].filter(Boolean).length;
+      return `Failed: ${plural(not, "change was", "changes were")} not made${kinds > 1 ? ` (${applyOutcomeWords({ failed, changed, uncertain })})` : ""}`;
+    }
     case "superseded": return "Replaced by a newer plan";
     case "withdrawn": return "Withdrawn";
   }
@@ -450,17 +484,25 @@ export function agoWords(hours: number | null | undefined): string {
 /** "Signed, waiting to be applied · 3 days", or for a plan read longer ago than its kind allows, "Signed 5 days ago; it will
  * be planned again before it is applied". "" for a plan that is not signed and waiting. The server decides which plan
  * waits (`waitingToApply`) and for how long; this only says it. A terminal-only kind adds where it is applied. */
-export function waitingWords(a: Pick<PlanLike, "waitingToApply" | "waitingHours" | "waitingStale" | "terminalOnly" | "reminderDue">): string {
+export function waitingWords(a: Pick<PlanLike, "waitingToApply" | "waitingHours" | "waitingStale" | "terminalOnly" | "reminderDue" | "pausing">): string {
   if (!a.waitingToApply) return "";
   const waited = agoWords(a.waitingHours);
   const base = a.waitingStale ? `Signed ${waited} ago; it will be planned again before it is applied` : `Signed, waiting to be applied · ${waited}`;
-  const where = a.terminalOnly ? `${base} · applied at the terminal` : base;
+  const held = a.pausing ? `${base} · held by the board's pause` : base;
+  const where = a.terminalOnly ? `${held} · applied at the terminal` : held;
   return a.reminderDue ? `${where} · reminder due` : where;
 }
 
-/** The list's "Where it stands": the waiting words for a signed plan the server says is waiting, else the plan's state. */
+/** The one sentence a plan's state is told in, wherever it is told: the waiting words for a signed plan the server says is waiting
+ * (the list's "Where it stands"), else the plan's state. The plan's header and its row in the list both use it, so they never
+ * say two things of one plan. */
+export function stateSentence(a: PlanLike, me = "", opts: { needsSecond?: boolean | null; twoPerson?: boolean } = {}): string {
+  return waitingWords(a) || planState(a, me, opts);
+}
+
+/** The list's "Where it stands" (see `stateSentence`). */
 export function listState(a: PlanLike, me = ""): string {
-  return waitingWords(a) || planState(a, me);
+  return stateSentence(a, me);
 }
 
 // --- the board's apply preferences (docs/console/approval-clarity.md, section 5) -----------------------------------------------

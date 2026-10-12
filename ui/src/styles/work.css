@@ -4,7 +4,14 @@
 .work-btn { display: inline-block; padding: .35rem .7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); text-decoration: none; min-height: 24px; }
 .work-btn:hover { border-color: var(--accent); }
 .work-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.work-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
+.work-btn-primary { background: var(--accent-fill, var(--accent)); border-color: var(--accent-fill, var(--accent)); color: var(--on-fill, var(--on-accent, #fff)); }
+/* A link button is an <a>: the console's `[data-community] a { color: var(--accent) }` (0,1,1) and its `:hover { color: var(--ink) }` (0,2,1)
+   would otherwise win over the colour above, leaving accent text on an accent fill. These rules out-rank both, for every state. */
+:root a.work-btn, :root a.work-btn:visited, :root a.work-btn:hover, :root a.work-btn:focus-visible { color: var(--ink); text-decoration: none; }
+:root a.work-btn.work-btn-primary, :root a.work-btn.work-btn-primary:visited, :root a.work-btn.work-btn-primary:hover, :root a.work-btn.work-btn-primary:focus-visible,
+:root a.work-btn.work-btn-primary:active { color: var(--on-fill, var(--on-accent, #fff)); }
+:root a.work-btn.work-btn-primary:hover { border-color: var(--ink); }
+@supports (color: contrast-color(red)) { :root a.work-btn.work-btn-primary, :root a.work-btn.work-btn-primary:visited, :root a.work-btn.work-btn-primary:hover, :root a.work-btn.work-btn-primary:focus-visible { color: contrast-color(var(--accent-fill, var(--accent))); } }
 .work-held { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; border-color: var(--warn); }
 .work-nav { gap: .25rem 1rem; font-size: .95rem; }
 .work-nav a[aria-current="page"] { color: var(--ink); font-weight: 600; text-decoration: none; border-bottom: 2px solid var(--accent); }
@@ -12,6 +19,14 @@
 .work-crumbs li + li::before { content: "\203A"; margin-right: .25rem; color: var(--muted); }
 .work-filters { align-items: center; gap: .5rem 1rem; }
 .work-filters label { font-size: .9rem; color: var(--muted); }
+.work-filters select, .work-filters input[type="search"] { max-width: 100%; min-width: 0; }
+/* a phone: label over control, one column, so a long workflow title cannot set the page's width */
+@media (max-width: 599px) {
+  form.work-filters { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: .25rem; }
+  form.work-filters label { margin-top: .35rem; }
+  form.work-filters label:first-child { margin-top: 0; }
+  form.work-filters select, form.work-filters input[type="search"] { width: 100%; }
+}
 .work-filters select, .work-filters input[type="search"], .work-field input, .work-field select, .work-text-confirm textarea, .work-text-confirm input {
   font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .3rem .5rem; min-height: 24px; }
 .work-filters select:focus-visible, .work-filters input:focus-visible, .work-field :is(input, select):focus-visible, .work-text-confirm :is(textarea, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -25,6 +40,7 @@
 .work-row:has(.work-row-link:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .work-row-link { display: grid; grid-template-columns: minmax(12rem, 1.2fr) minmax(12rem, 1.4fr) minmax(10rem, 1fr) minmax(12rem, 1fr); gap: .25rem 1rem; padding: .65rem .85rem; color: inherit; text-decoration: none; }
 .work-row-link:focus-visible { outline: none; }
+:root a.work-row-link, :root a.work-row-link:visited, :root a.work-row-link:hover { color: inherit; }
 .work-row-label { font-weight: 600; display: block; }
 .work-row-def, .work-row-age { font-size: .85rem; }
 .work-row-age { grid-column: 1 / -1; }
@@ -40,6 +56,10 @@
 .basis-pill { white-space: nowrap; }
 .basis-law { font-weight: 700; border-width: 2px; }
 .basis-proposed { border-style: dashed; }
+/* `.badge` takes its border away (`:root .badge { border: 0 }`, 0,2,0), so a width and a style alone drew nothing: the proposed date is
+   outlined (dashed) and the law's date has its heavier edge, both in the text colour so they hold in either scheme. */
+:root .badge.basis-proposed { border: 1px dashed currentColor; }
+:root .badge.basis-law { border: 2px solid currentColor; }
 .basis-unknown { font-style: italic; }
 .step-state-wrap { display: inline-flex; flex-wrap: wrap; gap: .25rem; }
 .step-state { white-space: nowrap; }
@@ -61,7 +81,14 @@
 .work-rail-current button { border-color: var(--accent); border-width: 2px; }
 .work-rail-selected button { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
 .work-rail-n { color: var(--muted); font-variant-numeric: tabular-nums; }
-.work-rail-here { font-size: .8rem; color: var(--accent); font-weight: 600; }
+.work-rail-here { font-size: .8rem; color: color-mix(in srgb, var(--accent) 70%, var(--ink)); font-weight: 600; }
+/* The console inverts any button[aria-pressed="true"] (ink fill, panel text), which leaves the number grey and "current step" purple on
+   it. The rail's selected step keeps the page colours and shows selection as a tint, a heavier ring, and its words. */
+:root .work-rail-step button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--ink); border-color: var(--accent); border-width: 2px; outline: 0; }
+:root .work-rail-step button[aria-pressed="true"] .work-rail-n { color: var(--ink); font-weight: 600; }
+:root .work-rail-step button[aria-pressed="true"] .muted { color: var(--ink); }
+:root .work-rail-step button[aria-pressed="true"] .badge { color: var(--ink); }
+:root .work-rail-step button[aria-pressed="true"] .work-rail-here { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .work-rail-group { border-left: 3px solid var(--line); padding-left: .5rem; }
 .work-rail-group-name { display: block; font-size: .8rem; color: var(--muted); text-transform: lowercase; margin: .15rem 0; }
 .work-rail-child { margin-left: 1.5rem; font-size: .9rem; }
@@ -89,6 +116,14 @@
 .work-said { margin: .5rem 0 0; }
 .work-link-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .5rem; }
 
+/* a button that is a link ("Go to the step", "Go to the check"): the accent, underlined, with a ring on focus. The console's `button.link`
+   is ink with a pale underline, which read as part of the sentence. */
+:root .work-changed button.link {
+  color: color-mix(in srgb, var(--accent) 80%, var(--ink)); text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: 3px; min-height: 24px;
+}
+:root .work-changed button.link:hover, :root .work-changed button.link:focus-visible { text-decoration-thickness: 2px; color: var(--ink); }
+:root .work-changed button.link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
 /* banners */
 .work-banner { margin: 0; display: flex; align-items: center; gap: .4rem; }
 .work-pending { display: grid; gap: .5rem; }
@@ -106,7 +141,8 @@
 .work-step-clock { margin: .5rem 0; }
 .work-history { list-style: none; margin: 0; padding: 0 0 0 .9rem; border-left: 2px solid var(--line); display: grid; gap: .5rem; }
 .work-history-at { font-variant-numeric: tabular-nums; color: var(--muted); }
-.work-history-pending { opacity: .85; }
+/* a pending entry is told by italics, not by fading: opacity would take its timestamp under 4.5:1 */
+.work-history-pending { font-style: italic; }
 .work-history-flag { margin-left: .4rem; }
 .work-history-evidence { list-style: none; margin: .2rem 0 0; padding: 0; }
 

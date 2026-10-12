@@ -1,4 +1,5 @@
 import { dayOf, safeAddress, shortHash, type ChangedRow } from "../lib/work";
+import "../styles/work.css";
 
 /** "Changed since": a store moved under a step that was done. It stands above the rail, before anything else on the page, and
  * says which step, what moved, what it was and what it is now; the step reads "changed since" too. Nothing done is silently

@@ -9,12 +9,24 @@
 .work-items-table thead th { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; background: var(--panel); }
 .work-items-table tbody th { font-weight: 600; overflow-wrap: anywhere; }
 .work-items-table tbody tr:last-child > * { border-bottom: 0; }
+.work-items-table caption { text-align: left; caption-side: top; padding-bottom: .25rem; }
+/* The console's `:root th` (0,1,1) and its `:root :is(th, ...)` label rule come after this file and win a tie: a row header would get a
+   2px bottom border and the small uppercase grey label look, 1px taller than its row's cells, and an item id would be shown in capitals.
+   An item id is a case-sensitive handle: it is shown exactly as stored. These out-rank them. */
+:root .work-items-table.work-items-table tbody th { padding: .55rem .6rem; border-bottom: 1px solid var(--line); white-space: normal; font-size: inherit; line-height: inherit; letter-spacing: 0; text-transform: none; color: var(--ink); font-weight: 600; }
+:root .work-items-table.work-items-table tbody th code { text-transform: none; letter-spacing: 0; font-size: .92em; }
+:root .work-items-table.work-items-table tbody td { padding: .55rem .6rem; border-bottom: 1px solid var(--line); }
+:root .work-items-table.work-items-table tbody tr:last-child > * { border-bottom: 0; }
+:root .work-items-table.work-items-table thead th { border-bottom: 2px solid var(--rule); }
 .work-items-table tr[data-late="true"] > * { background: color-mix(in srgb, var(--bad) 8%, var(--bg)); }
-.work-item-late { color: var(--bad); display: inline-flex; align-items: center; gap: .25rem; }
+.work-item-late { color: var(--bad); display: inline-flex; align-items: center; gap: .25rem; margin-left: .5rem; }
 .work-items-more { margin-top: .5rem; min-height: 24px; }
 .work-supply textarea { width: 100%; font-family: var(--mono, ui-monospace, monospace); }
 .work-supply input[type="text"] { width: 100%; }
-.work-remedy { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; margin: .5rem 0; }
+/* the glyph is a column of its own, so a long sentence wraps beside it and never leaves it alone on a line above */
+.work-remedy { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: .25rem .5rem; margin: .5rem 0; }
+.work-remedy > svg { margin-top: .2em; }
+.work-remedy-body { min-width: 0; }
 .work-remedy button { min-height: 24px; }
 .work-clock-items .work-clock-head { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; }
 .work-rail-items { font-size: .8rem; flex-basis: 100%; }
@@ -24,5 +36,5 @@
 .work-rail-section > ol[hidden] { display: none; }
 .work-rail-section[data-expanded="true"] { border-left-color: var(--accent); }
 @media (max-width: 639px) {
-  .work-items-table th, .work-items-table td { padding: .3rem .4rem; }
+  :root .work-items-table.work-items-table tbody th, :root .work-items-table.work-items-table tbody td { padding: .4rem .5rem; }
 }

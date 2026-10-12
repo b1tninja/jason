@@ -67,7 +67,7 @@ export function TextConfirm({ trigger, field, hint, required = true, rows = 2, s
       {single
         ? <input id={id} type="text" value={text} aria-required={required || undefined} aria-describedby={`${id}-hint`} onChange={(e) => setText(e.target.value)} />
         : <textarea id={id} rows={rows} value={text} aria-required={required || undefined} aria-describedby={`${id}-hint`} onChange={(e) => setText(e.target.value)} />}
-      <p id={`${id}-hint`} className="muted">{need ? `${field} is required.` : ""}{hint ? ` ${hint}` : ""}</p>
+      <p id={`${id}-hint`} className="muted">{need ? "Required: the button stays off until this is filled in." : ""}{hint ? ` ${hint}` : ""}</p>
       <Confirm busy={busy || need} label={label} summary={summary(text.trim())} onConfirm={() => onConfirm(text.trim())}>{trigger}</Confirm>
     </div>
   );

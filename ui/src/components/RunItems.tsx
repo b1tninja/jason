@@ -8,6 +8,7 @@ import {
   itemRollUp, itemRows, parseItemLines, postSupplyDry, refusalOf, setWords,
   type Run, type RunClock, type RunStep, type SupplyDry, type WorkViewer,
 } from "../lib/work";
+import "../styles/work-items.css";
 
 /** An item table shows this many rows, then a button for the rest. */
 export const ITEM_FOLD = 50;
@@ -61,7 +62,7 @@ export function ItemTable({ step, clocks, empty }: { step: RunStep; clocks: read
                 )}
                 {timed && (
                   <td>
-                    {r.clock?.due ? <time dateTime={r.clock.due}>{r.clock.due}</time> : <span className="muted">no date</span>}
+                    {r.clock?.due ? <time dateTime={r.clock.due}>{r.clock.due}</time> : !(r.clock && /no date/.test(r.words)) && <span className="muted">no date</span>}
                     {r.clock ? (
                       <span className={r.late ? "work-item-late" : "muted"}>
                         {" "}{r.late && <Glyph name="triangle-alert" size="1em" />}{r.late ? <strong>{r.words}</strong> : r.words}
@@ -174,14 +175,20 @@ export function RemedyNote({ step, steps, onGo }: {
     <>
       {step.remedyOf && (
         <p className="notice work-remedy" role="note" data-remedy="of">
-          <Glyph name="info" size="1em" /> This step is the remedy for the failed check above; the check stays recorded as failed.
-          {check && onGo ? <> <button type="button" onClick={() => onGo(check.id)}>Go to the check: step {check.n}, {check.title}</button></> : null}
+          <Glyph name="info" size="1em" />
+          <span className="work-remedy-body">
+            This step is the remedy for the failed check above; the check stays recorded as failed.
+            {check && onGo ? <> <button type="button" onClick={() => onGo(check.id)}>Go to the check: step {check.n}, {check.title}</button></> : null}
+          </span>
         </p>
       )}
       {step.remedy && (
         <p className="notice notice-warn work-remedy" role="note" data-remedy="by">
-          <Glyph name="triangle-alert" size="1em" /> This check failed and stays recorded as failed. {fix ? `Step ${fix.n}, ${fix.title}, is its remedy and is open, so the run goes on there.` : "A remedy step is open, so the run goes on there."}
-          {fix && onGo ? <> <button type="button" onClick={() => onGo(fix.id)}>Go to the remedy</button></> : null}
+          <Glyph name="triangle-alert" size="1em" />
+          <span className="work-remedy-body">
+            This check failed and stays recorded as failed. {fix ? `Step ${fix.n}, ${fix.title}, is its remedy and is open, so the run goes on there.` : "A remedy step is open, so the run goes on there."}
+            {fix && onGo ? <> <button type="button" onClick={() => onGo(fix.id)}>Go to the remedy</button></> : null}
+          </span>
         </p>
       )}
     </>
