@@ -1905,7 +1905,8 @@ Sync the Zoom account's meetings, transcripts, and AI summaries; list them with 
 | `--caption` | CAPTION | Post one line, prefixed 'jason:', into the live meeting's captions for everyone; needs --meeting-id and --yes |
 | `--lang` | LANG | With --caption: the caption language (default en-US) |
 | `--by` | BY | With --recording or --caption: who asked for it, for the log |
-| `--yes` |  | Confirm --create-board-meeting, --recording, or --caption |
+| `--mint-handles` |  | Give each saved hearing that has no handle one (a one-off migration: the console, the MCP tool, and the rule records only read; counts without --yes) |
+| `--yes` |  | Confirm --create-board-meeting, --recording, --caption, or --mint-handles |
 | `--json` |  | Print JSON |
 
 ### `jason contacts`
