@@ -24,6 +24,7 @@ One page per screen of the earlier spec, now read against the console that exist
 | [controls.md](controls.md) | none (its parts are in `#/documents`, `#/actions`, `#/decisions`, `#/approvals`) | Proposed whole, `#/controls`: the safeguards jason suggests from the governing documents and the board adopts | 3 |
 | [office-views.md](office-views.md) | `#/digest` (Today) | Proposed: a landing page per office and a lens to read another's; actions stay the holder's | 2 |
 | [work.md](work.md) | none (its parts are in Today, `#/approvals`, `#/actions`, `#/followups`) | Proposed whole, `#/work` and `#/work/<definition>/<id>`; the run store is not built | 2 |
+| [work-guide.md](work-guide.md) | `RunStepPanel` on `#/work/<definition>/<id>` (built: why, evidence, command, Mark done) | Proposed: the step panel's enable strip, nudge line, and guide, the list marks, and the away dialog | 2, after Work |
 | [mailroom.md](mailroom.md) | none (`jason mailroom` at the terminal) | Proposed whole, `#/mailroom`: the preview and the send plan | 2 to 4 |
 | [elections.md](elections.md) | none (its parts are in the notice catalog, the nomination form, and the decisions store) | Proposed whole, `#/elections`; no election store yet | after Work |
 | [collect-items.md](collect-items.md) | none | Proposed: a tracker inside a run step and the packet's Collect tab | after Work |
