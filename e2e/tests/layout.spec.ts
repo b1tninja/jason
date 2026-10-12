@@ -59,7 +59,7 @@ for (const size of SIZES) {
       expect(stage!.width).toBeGreaterThan(size.width - 40);
       expect(stage!.height).toBeGreaterThan(size.height * (size.width < 720 ? 0.4 : 0.5));
       const work = await page.locator(".split-gridwrap").boundingBox();
-      expect(work!.width).toBeGreaterThan(size.width - 40 - (big ? 420 : 0));
+      expect(work!.width).toBeGreaterThan(size.width - 40 - (big ? 420 : 0) - (size.width < 720 ? 0 : 68));   // the closed drawers' tabs stand in a 34 px gutter each side, off the pages (D20)
       expect(work!.height).toBeGreaterThan(size.height * (size.width < 720 ? 0.3 : 0.45));     // a phone keeps a bar of actions under the pages
       // remembered for the tab
       expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem("jason-split-layout-demo") ?? "{}").focus)).toBe(true);

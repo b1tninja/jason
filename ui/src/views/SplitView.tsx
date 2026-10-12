@@ -4,6 +4,7 @@ import type { GlyphName } from "../components/Glyph";
 import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
 import { useSession, NO_PEOPLE } from "../lib/session";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { SplitEditor } from "./SplitEditor";
 import { realBackend, type ListAnswer, type OpenAnswer, type OpenRef, type SplitBackend, type SplitLimits } from "./splitApi";
 import { LOCAL_ID, currentLocal, dropLocal, startLocal } from "./splitLocal";
@@ -177,6 +178,7 @@ function Drafts({ rows }: { rows: ListedSession[] }) {
 /** Setup > Split document (`#/setup/split`): drafts and the ways to open a file. `#/setup/split/<id>` is one draft; `#/setup/split/demo` is
  * a made-up 120-page draft that needs no server. Board only (officers, managers, administrators); never the owner view. */
 function SplitStart() {
+  useDocumentTitle("Split document");
   const r = useApi<ListAnswer>("/api/split-sessions");
   const { me } = useSession(NO_PEOPLE);
   useEffect(() => { dropLocal(); }, []);                  // coming back to the list lets go of a file held for the editor
@@ -201,20 +203,23 @@ function SplitStart() {
   );
 }
 
+function SplitLost() {
+  useDocumentTitle("Split document: The file is gone");
+  return (
+    <div className="stack split-view">
+      <ScreenHeader title="Split document" summary="A file chosen on this computer is held by this tab only." />
+      <p className="notice notice-warn" role="note">That file was held by the tab before it was reloaded. If it was saved, it is in the list of drafts; otherwise choose it again. <a href="#/setup/split">Back to the splitter</a></p>
+    </div>
+  );
+}
+
 export function SplitView() {
   const [hash] = useHash(`setup/split`);
   const { id, query } = parseSplitRoute(hash);
   if (!id) return <SplitStart />;
   if (id === LOCAL_ID) {
     const held = currentLocal();
-    if (!held) {
-      return (
-        <div className="stack split-view">
-          <ScreenHeader title="Split document" summary="A file chosen on this computer is held by this tab only." />
-          <p className="notice notice-warn" role="note">That file was held by the tab before it was reloaded. If it was saved, it is in the list of drafts; otherwise choose it again. <a href="#/setup/split">Back to the splitter</a></p>
-        </div>
-      );
-    }
+    if (!held) return <SplitLost />;
     return <SplitEditor key="local" backend={held} id={LOCAL_ID} />;
   }
   if (id === DEMO_ID) {

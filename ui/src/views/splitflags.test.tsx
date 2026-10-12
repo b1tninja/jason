@@ -7,7 +7,7 @@ import { SplitView, demoBackend, resetDemo } from "./SplitView";
 import type { SplitBackend } from "./splitApi";
 import { DEMO_PART_LIMIT, DemoBackend, demoFacts } from "./splitDemo";
 import { FactsCache } from "./splitFacts";
-import { cellLabel, flagItems, pagesList, segWord, sidewaysWords, stateWord, turnBody, turnWord, type Review, type ReviewPart } from "./splitModel";
+import { cellLabel, cellNote, flagItems, pagesList, segWord, sidewaysWords, stateWord, turnBody, turnWord, type Review, type ReviewPart } from "./splitModel";
 import { ThumbLoader } from "./splitThumbs";
 
 beforeEach(() => { resetServerSession(); resetDemo(); sessionStorage.clear(); });
@@ -56,7 +56,8 @@ describe("flag and turn words (the model)", () => {
     expect(f).toMatchObject({ n: 19, turn: 90, sideways: true, fix: 270, orientation: "landscape" });
     expect(sidewaysWords(f)).toBe("Sideways: its text is turned 90° clockwise; turning the page 270° clockwise makes it upright");
     expect(stateWord(f)).toBe("sideways");
-    expect(cellLabel(19, f, -1, 1, undefined, false, "fix")).toMatch(/Sideways: its text is turned 90°.*drawn landscape.*Will be turned in the new files: fix sideways \(turn 270°\)/);
+    expect(cellLabel(19, f, -1, 1, undefined, false, "fix")).toBe("Page 19, Sideways, Fix sideways (turn 270°), S1");
+    expect(cellNote(19, f, -1, 1, undefined, false, "fix")).toMatch(/Sideways: its text is turned 90°.*drawn landscape.*Will be turned in the new files: fix sideways \(turn 270°\)/);
   });
 
   it("never calls a scan or a blank page sideways: nothing was measured", () => {
@@ -133,7 +134,8 @@ describe("sideways pages on the cells and in the page menu", () => {
     const state = c.querySelector(".split-cell-turn")!;
     expect(state).toHaveTextContent("Sideways");
     expect(state.querySelector("svg[data-glyph='refresh-cw']")).toBeTruthy();
-    expect(cell(19)).toHaveAccessibleName(/Sideways: its text is turned 90° clockwise.*drawn landscape/);
+    expect(cell(19)).toHaveAccessibleName(/^Page 19, .*Sideways/);
+    expect(cell(19)).toHaveAccessibleDescription(/Sideways: its text is turned 90° clockwise.*drawn landscape/);
     expect(cell(18).closest("[data-cell]")!.querySelector(".split-cell-turn")).toBeNull();
   });
 
@@ -146,7 +148,7 @@ describe("sideways pages on the cells and in the page menu", () => {
     for (const n of [90, 180, 270]) expect(within(menu).getByRole("button", { name: `Turn ${n}° clockwise in the new files` })).toHaveAttribute("aria-pressed", "false");
     expect(within(menu).queryByRole("button", { name: "Do not turn this page" })).toBeNull();
     await user.click(within(menu).getByRole("button", { name: "Fix sideways (turn 270°) in the new files" }));
-    await waitFor(() => expect(cell(19)).toHaveAccessibleName(/Will be turned in the new files: fix sideways \(turn 270°\)/));
+    await waitFor(() => expect(cell(19)).toHaveAccessibleDescription(/Will be turned in the new files: fix sideways \(turn 270°\)/));
     expect(cell(19).closest("[data-cell]")!.querySelector(".split-cell-turn")).toHaveTextContent("Sideways, Fix sideways (turn 270°)");
     expect(screen.getByText("1 page to turn")).toBeInTheDocument();
     expect(JSON.parse(sessionStorage.getItem("jason-split-turns-demo")!)).toEqual({ "19": "fix" });
@@ -180,7 +182,7 @@ describe("flags on the rail", () => {
     expect(within(chips).getByText("3 sideways pages")).toBeInTheDocument();
     expect(chips.querySelectorAll("svg[data-glyph='refresh-cw']").length).toBe(1);
     expect(within(chips).queryByText("May be over the size limit")).toBeNull();                 // the rest are behind the button, and named in its label
-    const more = within(chips).getByRole("button", { name: /All 3 flags for segment 1: 3 sideways pages; May be over the size limit; May hold more than one document/ });
+    const more = within(chips).getByRole("button", { name: /all 3 flags for segment 1: 3 sideways pages; May be over the size limit; May hold more than one document/ });
     expect(more).toHaveTextContent("+2 more");
     await waitFor(() => expect(screen.getByText(/flags: 1 segment flagged/)).toBeInTheDocument());
   });
@@ -190,7 +192,7 @@ describe("flags on the rail", () => {
     await openDemo();
     await openRail(user);
     const chips = await screen.findByRole("group", { name: "Flags for segment 1" });
-    await user.click(within(chips).getByRole("button", { name: /All 3 flags/ }));
+    await user.click(within(chips).getByRole("button", { name: /all 3 flags/ }));
     const dialog = await screen.findByRole("dialog", { name: "Flags for segment 1" });
     expect(dialog).toHaveTextContent("Pages 19, 61, 66 are sideways: the text runs up or down the page, measured from the text layer");
     expect(dialog).toHaveTextContent(/about 4\.9 MB \(an estimate from the file's size in proportion to its pages\).*limit of 2\.0 MB/);
@@ -205,7 +207,7 @@ describe("flags on the rail", () => {
     await openDemo();
     await openRail(user);
     const chips = await screen.findByRole("group", { name: "Flags for segment 1" });
-    await user.click(within(chips).getByRole("button", { name: /All 3 flags/ }));
+    await user.click(within(chips).getByRole("button", { name: /all 3 flags/ }));
     const dialog = await screen.findByRole("dialog", { name: "Flags for segment 1" });
     await user.click(within(dialog).getByRole("button", { name: "Fix these 3 pages in the new files" }));
     expect(JSON.parse(sessionStorage.getItem("jason-split-turns-demo")!)).toEqual({ "19": "fix", "61": "fix", "66": "fix" });
@@ -217,7 +219,7 @@ describe("flags on the rail", () => {
     await openDemo();
     await openRail(user);
     const chips = await screen.findByRole("group", { name: "Flags for segment 1" });
-    await user.click(within(chips).getByRole("button", { name: /All 3 flags/ }));
+    await user.click(within(chips).getByRole("button", { name: /all 3 flags/ }));
     const dialog = await screen.findByRole("dialog", { name: "Flags for segment 1" });
     expect(dialog).toHaveTextContent(/look like the start of another document, strongest first/);
     await user.click(within(dialog).getByRole("button", { name: "Review these pages" }));

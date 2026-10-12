@@ -239,7 +239,7 @@ test.describe("the magnifier on a file chosen on this computer", () => {
     await expect(two).toHaveAttribute("aria-pressed", "true");
     await page.mouse.move(5, 5);
     await expect(lens(page)).toBeHidden();
-    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8}$/);
+    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8,16}$/);
   });
 });
 

@@ -92,8 +92,8 @@ const Row = memo(function Row(p: RowProps) {
       <div className="split-row-acts">
         <button type="button" onClick={() => p.onGo(seg.start)} aria-label={`Go to page ${seg.start}`}>Go to</button>
         {!readOnly && seg.start !== 1 && <>
-          <button type="button" onClick={() => p.onRemove(seg.start)} aria-label={`Merge segment starting at page ${seg.start} with the previous`}>Merge up</button>
-          {!compact && <button type="button" onClick={() => p.onLevel(seg.start, seg.level > 0 ? 0 : 1)} aria-label={seg.level > 0 ? `Make the start at page ${seg.start} a top-level segment` : `Make the start at page ${seg.start} nested`}>{seg.level > 0 ? "Make top-level" : "Make nested"}</button>}
+          <button type="button" onClick={() => p.onRemove(seg.start)} aria-label={`Merge up: the segment starting at page ${seg.start} with the previous`}>Merge up</button>
+          {!compact && <button type="button" onClick={() => p.onLevel(seg.start, seg.level > 0 ? 0 : 1)} aria-label={seg.level > 0 ? `Make top-level: the start at page ${seg.start}` : `Make nested: the start at page ${seg.start}`}>{seg.level > 0 ? "Make top-level" : "Make nested"}</button>}
         </>}
       </div>
       {p.flagLine && <FlagChips flags={flags} no={no} max={compact ? 1 : 2} onOpen={() => flags && p.onFlags?.(seg, no, flags)} />}

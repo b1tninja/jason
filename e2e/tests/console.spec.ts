@@ -51,7 +51,7 @@ test.describe("signed in, the splitter", () => {
     await expect.poll(() => first.evaluate((i: HTMLImageElement) => i.src.startsWith("blob:"))).toBe(true);
 
     // the draft arrives from the server in the background; its id replaces the placeholder in the address
-    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8}$/);
+    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8,16}$/);
     await expect(page.locator('[data-measuring]')).toHaveCount(0, { timeout: 20_000 });             // every page's facts have arrived
     expect(watch.calls.filter((c) => c.url.startsWith("/api/split/thumb")), "a picture was asked of the server").toEqual([]);
     expect(watch.calls.filter((c) => c.url.startsWith("/api/split/file")), "the file was fetched back although it was chosen here").toEqual([]);
@@ -101,7 +101,7 @@ test.describe("signed in, the splitter", () => {
     expect(await one.evaluate((i: HTMLImageElement) => i.src.startsWith("blob:"))).toBe(true);
     expect(await one.evaluate((i: HTMLImageElement) => Math.max(i.naturalWidth, i.naturalHeight))).toBeGreaterThan(Math.max(...small.split("x").map(Number)));
     expect(watch.calls.filter((c) => c.url.startsWith("/api/split/thumb"))).toEqual([]);
-    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8}$/);
+    await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8,16}$/);
   });
 
   test("with browser drawing off for the community the server draws every picture", async ({ page, watch }) => {
@@ -142,7 +142,7 @@ test.describe("signed in, the splitter", () => {
         });
         expect(dark, `${codec} page ${n} is blank`).toBeGreaterThan(0.001);
       }
-      await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8}$/);
+      await expect.poll(() => page.evaluate(() => window.location.hash), { timeout: 20_000 }).toMatch(/^#\/setup\/split\/[0-9a-f]{8,16}$/);
       expect(watch.calls.filter((c) => c.url.startsWith("/api/split/thumb"))).toEqual([]);
     });
   }

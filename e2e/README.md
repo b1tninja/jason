@@ -33,6 +33,7 @@ after Google answers. The shipped app has no such route or flag. A signed-out te
 - `layout.spec.ts` (served by Flask, on the demo draft, at 390, 768, and 1440 px): the page never scrolls sideways (in the draft, in
   focus mode, with a drawer open), focus mode hides the console's header and menu and fills the window, the segments and compare
   drawers open and close by key, button, and scrim with the focus returned, and the album's columns fill the width.
+- `a11y.spec.ts` (served by Flask, on the demo draft; [docs/pdf-splitter-accessibility.md](../docs/pdf-splitter-accessibility.md)): axe-core (`axe-core`, a dev dependency here only, injected into the page) over the start page's tabs and ten editor states at 390, 768, 1440, and 320 by 256 px, in the dark scheme and in forced colours, expecting no violation; the grid's roles and counts; a cell's name holding the words it shows; a start moved with `]` again and again and by the page menu with no drag; focus kept in and returned from the page menu, keyboard map, and flags dialog; one announcement for a mark; reflow at 320 by 256; text spacing; forced colours; reduced motion; the page title and the skip link; no splitter control under 24 by 24 px.
 - `vite.spec.ts` (Vite dev server): "Sign in with Google" reaches the server through the proxy (a 302 to Google, not Vite's
   `index.html`), and the signed-out splitter settles there too.
 - Every test (`tests/fixtures.ts`) fails on a console error, a request still pending at the end, or a read asked more than three

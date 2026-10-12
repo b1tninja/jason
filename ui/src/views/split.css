@@ -1,10 +1,26 @@
 /* Split document (docs/pdf-splitter.md, docs/console/screens/split.md): the page grid, the filmstrip, the segment list and rail, the page
    menu, the compare pane, and the review. Tokens only, so dark and light follow. No colour carries a meaning alone: a start is a bar, a tag
    with a number, and the words "Starts segment N"; a suggestion is dashed and says "Suggested" with its band. */
+/* Two tokens the splitter adds, both made of the console's own (docs/pdf-splitter-accessibility.md, D14; ui/src/views/contrast.test.ts holds the
+   ratios): a field's edge, which must reach 3:1 against the surface it sits on (WCAG 1.4.11) where --line is a hairline; and the text of a good or
+   warning badge, which sits on a tint of its own colour and reached only 4.1:1 on the page's grey. Mixing in the ink follows the scheme, dark and
+   light, and a pinned one. */
+.split-view, .skip-link {
+  --split-field-line: color-mix(in srgb, var(--ink) 55%, var(--bg));
+  --split-good-ink: color-mix(in srgb, var(--good) 70%, var(--ink));
+  --split-warn-ink: color-mix(in srgb, var(--warn) 70%, var(--ink));
+  --split-neutral-ink: color-mix(in srgb, var(--muted) 75%, var(--ink));
+}
+.split-view .badge-good { color: var(--split-good-ink); }
+.split-view .badge-warn { color: var(--split-warn-ink); }
+.split-view .badge.badge-neutral { color: var(--split-neutral-ink); }
 .split-view .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .split-view h2 { font-size: 1rem; margin: 0 0 .4rem; }
 .split-view h3 { font-size: .9rem; margin: .6rem 0 .25rem; }
-.split-view :is(input, select, textarea) { padding: .4rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; max-width: 100%; }
+.split-view :is(input, select, textarea) { padding: .4rem .6rem; border: 1px solid var(--split-field-line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; max-width: 100%; }
+/* the first tab stop on a splitter screen: hidden until it has the focus (WCAG 2.4.1) */
+.skip-link { position: fixed; left: .5rem; top: .5rem; z-index: 200; padding: .45rem .8rem; border: 2px solid var(--accent); border-radius: 6px; background: var(--panel); color: var(--ink); font-weight: 600; transform: translateY(-300%); }
+.skip-link:focus, .skip-link:focus-visible { transform: none; outline: 2px solid var(--ink); outline-offset: 2px; }
 .split-view :is(button, summary, input, select, [tabindex], a):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .split-counts, .split-selbar, .split-notes { margin: 0; }
 
@@ -72,6 +88,9 @@ html[data-split-focus] .console-body { gap: 0; }
 .split-stage[data-dock="left"] { grid-template-columns: var(--dock-w) minmax(0, 1fr); grid-template-areas: "dock work"; gap: .5rem; }
 .split-stage[data-dock="right"] { grid-template-columns: minmax(0, 1fr) var(--dock-w); grid-template-areas: "work dock"; gap: .5rem; }
 .split-work { grid-area: work; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* a closed drawer's tab stands in its own gutter, so it never covers a page at the edge of the grid (D20) */
+.split-stage[data-tabs~="left"] > .split-work { padding-left: 34px; }
+.split-stage[data-tabs~="right"] > .split-work { padding-right: 34px; }
 .split-gridwrap { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
 .split-gridwrap > .split-scroll { height: 100%; scrollbar-gutter: stable; }
 .split-gridwrap[data-axis="x"] { display: flex; align-items: center; }
@@ -158,6 +177,30 @@ html[data-split-focus] .console-body { gap: 0; }
 }
 @media (pointer: coarse) { .split-mi { min-height: 44px; } }
 
+/* Reflow (WCAG 1.4.10; D1): 400% zoom of a 1280 by 1024 window is 320 by 256 CSS px. The shell no longer has to fit the window: it grows past it
+   and the page scrolls, the pages keep a floor of their own, the toolbar is its one menu (Undo, Redo, and Focus are in it), the strip of chips
+   folds away (the segments drawer has the same list), and the bars under the pages are reached by scrolling. */
+@media (max-height: 340px) {
+  .split-shell, .split-shell[data-focus] { height: auto; min-height: 0; }
+  .split-shell > .split-stage { flex: none; height: max(16rem, 80vh); height: max(16rem, 80dvh); min-height: 14rem; }
+  .split-strip, .split-tb-short { display: none; }
+  .split-toolbar { flex-wrap: nowrap; overflow-x: auto; }
+  .split-menupop, .split-menuwrap[data-up] .split-menupop { position: fixed; left: .25rem; right: .25rem; top: .25rem; bottom: .25rem; min-width: 0; max-width: none; max-height: none; }
+  .split-actionbar { overflow-x: auto; }
+  .split-actionbar > * { flex: 1 0 auto; }
+}
+
+/* Small targets (WCAG 2.5.8; D18) that are not the phone's: the link to all drafts, the sliders, the library's "More filters", and its radios */
+.split-head-link { display: inline-flex; align-items: center; min-height: 24px; }
+.split-view input[type="range"] { min-height: 24px; }
+.lib-more > summary { padding-block: 3px; min-height: 24px; }
+.lib-table input[type="radio"] { width: 24px; height: 24px; }
+.split-menu-move { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.split-menu-move p { flex: 1 0 100%; margin: 0; color: var(--bad); }
+.split-menu-move input { width: 6rem; }
+.split-field-err { display: block; margin: .2rem 0 0; color: var(--bad); font-weight: 600; }
+input[aria-invalid="true"] { border-color: var(--bad); }
+
 .split-scroll { position: relative; overflow: auto; height: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); overscroll-behavior: contain; }
 .split-scroll-x { height: auto; overflow-y: hidden; }
 .split-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -174,9 +217,12 @@ html[data-split-focus] .console-body { gap: 0; }
 .split-cell { position: relative; flex: none; }
 .split-cell-btn { all: unset; box-sizing: border-box; position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; cursor: pointer;
   border: 2px solid var(--line); border-radius: var(--r, 2px); background: var(--panel); color: var(--ink); touch-action: manipulation; }
+/* The console's `:root button` rule (padding .4rem .85rem) wins over `all: unset`, which took 17px of the cell's height and cut the footer's words in
+   half (D5). The picture takes what the footer leaves, so the page number, the state, and the segment number are whole at any cell size. */
+.split-view .split-cell-btn { padding: 0; line-height: 1.3; }
 .split-scroll-x .split-cell-btn { touch-action: pan-x manipulation; }
 .split-cell-btn:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
-.split-pic { position: relative; display: block; flex: none; background: var(--paper); overflow: hidden; }
+.split-pic { position: relative; display: block; flex: 1 1 0; min-height: 0; background: var(--paper); overflow: hidden; }
 .split-lqip { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(2px); opacity: .85; }
 .split-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; opacity: 0; }
 .split-pic img[data-state="ready"] { opacity: 1; }
@@ -403,7 +449,7 @@ html[data-split-focus] .console-body { gap: 0; }
 .split-viewer-acts button:focus-visible, .split-viewer-grip:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 .split-viewer-pic { flex: 0 0 auto; width: 100%; height: 360px; background-color: var(--paper); background-repeat: no-repeat; pointer-events: none; }
 .split-viewer[data-size="cell"] .split-viewer-pic { background-color: var(--paper); }
-.split-viewer-grip { position: absolute; width: 22px; height: 22px; padding: 0; min-height: 0; border: 2px solid var(--ink); background: var(--accent); pointer-events: auto; touch-action: none; z-index: 1; border-radius: 4px; }
+.split-viewer-grip { position: absolute; width: 24px; height: 24px; padding: 0; min-height: 0; border: 2px solid var(--ink); background: var(--accent); pointer-events: auto; touch-action: none; z-index: 1; border-radius: 4px; }
 .split-viewer[data-corner$="right"] .split-viewer-grip { left: 0; cursor: nwse-resize; }
 .split-viewer[data-corner$="left"] .split-viewer-grip { right: 0; cursor: nesw-resize; }
 .split-viewer[data-corner^="bottom"] .split-viewer-grip { top: 62px; }
@@ -419,3 +465,35 @@ html[data-split-focus] .console-body { gap: 0; }
 .split-viewfinder[hidden] { display: none; }
 /* a press and hold on a page is the magnifier's, not the browser's text-selection or image-callout */
 .split-pic img { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+
+/* Forced colours (Windows high contrast; WCAG 1.4.11, D13). The system replaces every colour, drops box-shadows, and flattens tints, so each cue that was
+   a shadow or a tint is given an outline or a border in a system colour: the selected range, a start, a suggestion, the page being looked at, a pressed
+   button, the ticks. The pictures and the lens keep their own colours, since a page is the thing being read. */
+@media (forced-colors: active) {
+  .split-cell[data-selected] .split-cell-btn { box-shadow: none; outline: 3px solid Highlight; outline-offset: -3px; }
+  .split-cell-btn:focus-visible { outline: 3px solid CanvasText; outline-offset: -3px; }
+  .split-cell[data-selected] .split-cell-btn:focus-visible { outline-style: double; outline-width: 5px; outline-offset: -5px; }
+  .split-cell[data-start] .split-cell-btn { border-left-color: Highlight; border-top-color: Highlight; }
+  .split-cell[data-sug] .split-cell-btn { border-color: Highlight; }
+  .split-start-tag { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .split-sug-tag { border: 1px dashed Highlight; }
+  .split-handle { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .split-pic, .split-loupe { forced-color-adjust: none; }
+  .split-band-head { border-left: 4px solid CanvasText; border-bottom: 1px solid CanvasText; }
+  .split-row-item[data-current] { box-shadow: none; outline: 3px solid Highlight; outline-offset: -3px; }
+  .split-chipbtn[aria-current="true"] { border: 2px solid Highlight; }
+  .split-toolbar [aria-pressed="true"], .split-actionbar [aria-pressed="true"], .split-menu li > button[aria-pressed="true"], .split-menubtn[aria-expanded="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .split-mi[data-checked] .split-mi-label { text-decoration: underline; }
+  .split-ticks i { forced-color-adjust: none; }
+  .split-ticks .tick-start { background: Highlight; }
+  .split-ticks .tick-sug { border-left-color: Highlight; }
+  .split-ticks .tick-blank { background: GrayText; }
+  .lib-table tbody tr[data-selected] { box-shadow: none; outline: 3px solid Highlight; outline-offset: -3px; }
+  .split-scrim, .split-menu-backdrop { background: transparent; }
+  /* the fixed viewer: its edge was a shadow, so it takes a border; the page it shows keeps its colours; the grip and the viewfinder stay visible */
+  .split-viewer { box-shadow: none; border: 3px solid CanvasText; }
+  .split-viewer-pic { forced-color-adjust: none; }
+  .split-viewer-grip { forced-color-adjust: none; background: Highlight; border-color: CanvasText; }
+  .split-viewer-acts [aria-pressed="true"] { outline: 2px solid Highlight; }
+  .split-viewfinder { border-color: Highlight; outline-color: CanvasText; }
+}

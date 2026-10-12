@@ -289,17 +289,58 @@ export function pageAlt(n: number, f: PageFact | undefined, confidential: boolea
   return bits.join("; ");
 }
 
-/** The words for a page's cell: its number, what it is, and whether it starts a segment. */
-export function cellLabel(n: number, f: PageFact | undefined, level: number, no: number, sug: Suggestion | undefined, confidential: boolean, turn?: Turn): string {
-  const bits = [pageAlt(n, f, confidential)];
+/** The words a cell shows, in the order it shows them. The cell's footer and tags are drawn from these, and its accessible name is made from
+ * the same words, so what a person sees is inside what a speech user says (WCAG 2.5.3, label in name). */
+export interface CellWords {
+  /** the start tag ("Start 3", "Nested start") or the suggestion tag ("Suggested, High"); empty for a page that is neither */
+  tag: string;
+  /** "Sideways", with the turn chosen for it when there is one */
+  sideways: string;
+  /** "Blank", "Marked", "No text", or the measured state in other words; empty for ordinary content */
+  state: string;
+  measuring: boolean;
+  /** the turn a person chose for a page that is not measured sideways */
+  turned: string;
+  /** "S3": the segment the page is in */
+  seg: string;
+}
+
+export function cellWords(f: PageFact | undefined, level: number, no: number, sug: Suggestion | undefined, turn: Turn | undefined, strip = false): CellWords {
+  const tag = level >= 0 ? (level > 0 ? "Nested start" : `Start ${no}`) : sug && sug.state === "open" ? `Suggested, ${sug.band}` : "";
+  if (strip) return { tag, sideways: "", state: "", measuring: false, turned: "", seg: "" };
+  const st = stateWord(f);
+  const sideways = f?.sideways ? (turn !== undefined ? `Sideways, ${turnWord(turn, f.fix)}` : "Sideways") : "";
+  const state = !f?.sideways && st !== "content" && st !== "not measured yet" ? (st.startsWith("no text") ? "No text" : st === "blank" ? "Blank" : st === "marked" ? "Marked" : st) : "";
+  return {
+    tag, sideways, state, measuring: !f || !!f.pending,
+    turned: !f?.sideways && turn !== undefined ? turnWord(turn, f?.fix) : "", seg: no > 0 ? `S${no}` : "",
+  };
+}
+
+/** A page cell's accessible name: "Page 12, Start 3, Blank, S3". It is the visible words in the order they are drawn, and nothing else, so it is short
+ * and a speech user can say any word on the cell. The pressed state is `aria-pressed`, not words; the rest is `cellNote`. */
+export function cellLabel(n: number, f: PageFact | undefined, level: number, no: number, sug: Suggestion | undefined, _confidential: boolean, turn?: Turn, strip = false): string {
+  const w = cellWords(f, level, no, sug, turn, strip);
+  return [`Page ${n}`, w.tag, w.sideways, w.state, w.measuring && !strip ? "Measuring…" : "", w.turned, w.seg].filter(Boolean).join(", ");
+}
+
+/** What a cell says beyond its name, as its description: the first line the text layer gave, the way the page is drawn, the turn chosen, and
+ * what the segment is. The keys that act on it are said once for the whole grid, not on every cell. */
+export function cellNote(n: number, f: PageFact | undefined, level: number, no: number, sug: Suggestion | undefined, confidential: boolean, turn?: Turn): string {
+  const bits: string[] = [];
+  if (!confidential && f?.title) bits.push(`First line: ${f.title}`);
   if (f?.sideways) bits.push(`${sidewaysWords(f)}${f.orientation ? `, drawn ${f.orientation}` : ""}`);
   if (turn !== undefined) bits.push(`Will be turned in the new files: ${turnWord(turn, f?.fix).toLowerCase()}`);
-  if (n === 1) bits.push(`Starts segment 1. The first page always starts a segment`);
-  else if (level >= 0) bits.push(level > 0 ? `Starts a nested segment inside segment ${no}. Press Enter to remove the start` : `Starts segment ${no}. Press Enter to remove the start`);
-  else if (sug && sug.state === "open") bits.push(`Suggested start, ${String(sug.band).toLowerCase()} confidence. Press A to accept, X to reject, Enter to mark it yourself`);
-  else bits.push(`Segment ${no}. Press Enter to make this page start a segment`);
+  if (n === 1) bits.push("The first page always starts a segment");
+  else if (level > 0) bits.push(`Starts a nested segment inside segment ${no}`);
+  else if (level === 0) bits.push(`Starts segment ${no}`);
+  else if (sug && sug.state === "open") bits.push(`Suggested start, ${String(sug.band).toLowerCase()} confidence`);
+  else if (no > 0) bits.push(`In segment ${no}`);
   return bits.join(". ");
 }
+
+/** Said once, for the whole grid (its description): the keys that act on a cell. */
+export const GRID_HINT = "Enter or Space marks a page as the start of a segment, or removes the start. A accepts a suggested start and X rejects it. L opens the page menu.";
 
 export function sizeText(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;

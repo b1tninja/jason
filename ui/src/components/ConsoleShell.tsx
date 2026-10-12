@@ -147,6 +147,23 @@ const actingValue = (a?: { name: string; role: string } | null) => (!a ? "" : a.
 const actingTarget = (v: string): { name?: string; role?: string } =>
   v.startsWith("p:") ? { name: v.slice(2) } : v.startsWith("r:") ? { role: v.slice(2) } : {};
 
+/** The first tab stop on the splitter's screens (WCAG 2.4.1): it skips the header and the navigation to the pages (in a draft) or to the main
+ * column (on the start page). It is hidden until it has the focus (`.skip-link`, in split.css). The link is a button's work, not a route change,
+ * so it does not touch the hash the console routes by. */
+function SplitSkip() {
+  const draft = typeof window !== "undefined" && /^#\/?setup\/split\/[^/?]+/.test(window.location.hash);
+  const go = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const pages = draft ? document.querySelector<HTMLElement>('main [role="grid"], main .split-list') : null;
+    const target = pages ?? document.querySelector<HTMLElement>("main.console-main");
+    if (!target) return;
+    if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+    target.focus();
+  };
+  // (the href names the main column so that a checker sees a skip link with a target; the click is handled above and never changes the route)
+  return <a className="skip-link" href="#console-main" onClick={go}>{draft ? "Skip to the pages" : "Skip to the main content"}</a>;
+}
+
 /** The console's frame: a sticky header (wordmark, legal name, records date, the sign-in pick, the private view's switch
  * and, while it is open, its band, the dock, the Board / Owner view control), a grouped left nav that becomes a "Go to" select under 720px, the main column, and the slots
  * for a pinned or a floating drawer. The shell routes; it decides nothing. */
@@ -165,6 +182,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
   const priv = account ? session?.privateView : undefined;
   return (
     <div className="console">
+      {current === "setup/split" && <SplitSkip />}
       <header className="console-bar" ref={bar}>
         <div className="console-bar-inner">
           <div className="console-brand">
@@ -247,7 +265,7 @@ export function ConsoleShell({ wordmark, legal, recordsAsOf, groups, screens, cu
             ))}
           </nav>
         )}
-        <main className="console-main">
+        <main className="console-main" id="console-main">
           {owner && <p className="console-owner-banner">{OWNER_BANNER}</p>}
           {strip && who && <RoleStrip who={who.role ? `${who.name}, ${who.role}` : who.name} moves={strip} />}
           {children}

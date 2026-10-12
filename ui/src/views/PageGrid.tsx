@@ -1,12 +1,12 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Glyph } from "../components/Glyph";
 import type { FactsCache } from "./splitFacts";
-import { cellLabel, lqipUrl, sizesFor, stateWord, stepWithin, turnWord, type PageFact, type Size, type Suggestion, type Turn, type Turns } from "./splitModel";
+import { GRID_HINT, cellLabel, cellNote, cellWords, lqipUrl, sizesFor, stepWithin, type PageFact, type Size, type Suggestion, type Turn, type Turns } from "./splitModel";
 import type { Snapshot } from "./splitStore";
 import type { ThumbLoader } from "./splitThumbs";
 import {
   FAST_PX_PER_S, SETTLE_MS, bandedCenterPage, bandedLayout, bandedPagesIn, bandedRowStep, bandedScrollFor, bandedScrollForDoc, centerPage,
-  layoutOf, liveCells, motionOf, pagesIn, pixelMegabytes, rowInfo, scrollFor, visibleRows, visibleTracks,
+  layoutOf, liveCells, motionOf, pagesIn, pixelMegabytes, rowInfo, rowOfPage, scrollFor, visibleRows, visibleTracks,
   type Axis, type BandDoc, type Banded, type Layout, type Win,
 } from "./splitWindow";
 
@@ -81,9 +81,11 @@ function bandWord(s: Suggestion | undefined): string { return s ? String(s.band)
 interface CellProps {
   page: number; f: PageFact | undefined; start: number; no: number; sug: Suggestion | undefined; selected: boolean; focused: boolean;
   w: number; h: number; sizes: string; confidential: boolean; loader: ThumbLoader; variant: Variant; readOnly: boolean; turn: Turn | undefined;
+  /** the cell's column in its row (1-based); in a strip, the page */
+  col: number;
 }
 
-const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, focused, w, h, sizes, confidential, loader, variant, readOnly, turn }: CellProps) {
+const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, focused, w, h, sizes, confidential, loader, variant, readOnly, turn, col }: CellProps) {
   const img = useRef<HTMLImageElement>(null);
   const note = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -94,35 +96,37 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
     });
   }, [loader, page, sizes]);
   const lq = confidential ? "" : lqipUrl(f?.lqip);
-  const state = stateWord(f);
   const isStart = start >= 0;
   const open = !!sug && sug.state === "open" && !isStart;
-  const label = cellLabel(page, f, start, no, open ? sug : undefined, confidential, turn);
+  const words = cellWords(f, start, no, open ? sug : undefined, turn, variant === "strip");
+  const label = cellLabel(page, f, start, no, open ? sug : undefined, confidential, turn, variant === "strip");
+  const noteId = `split-note-${variant}-${page}`;
+  const noteText = cellNote(page, f, start, no, open ? sug : undefined, confidential, turn);
+  // The footer's words are drawn in the order the accessible name lists them (number, tag, state, segment), so the name holds the visible text
+  // as one run. The tag is placed at the cell's top-left by the stylesheet, whatever its place in the markup.
   return (
-    <div role="gridcell" aria-selected={selected} className="split-cell" data-cell="" data-page={page} data-variant={variant}
+    <div role="gridcell" aria-colindex={col} aria-selected={selected} className="split-cell" data-cell="" data-page={page} data-variant={variant}
       data-start={isStart ? (start > 0 ? "nested" : "top") : undefined} data-sug={open ? bandWord(sug) : undefined} data-band={no % 2} data-selected={selected || undefined}
       data-state={f?.pending ? "pending" : f?.blank === "blank" ? "blank" : undefined} style={{ width: w, height: h }}>
-      <button type="button" className="split-cell-btn" data-page={page} tabIndex={focused ? 0 : -1} aria-pressed={isStart} aria-label={label}>
-        <span className="split-pic" data-loupe={page} style={{ height: h - CHROME }}>
+      <button type="button" className="split-cell-btn" data-page={page} tabIndex={focused ? 0 : -1} aria-pressed={isStart} aria-label={label} aria-describedby={noteText ? noteId : undefined}>
+        <span className="split-pic" data-loupe={page}>
           <span className="split-lqip" style={lq ? { backgroundImage: `url(${lq})` } : undefined} aria-hidden="true" />
           <img ref={img} alt="" draggable={false} decoding="async" />
         </span>
         <span className="split-cell-foot" aria-hidden="true">
-          <span className="split-cell-n">{page}</span>
-          {variant !== "strip" && f?.sideways && (
-            <span className="split-cell-state split-cell-turn" data-sideways=""><Glyph name="refresh-cw" size={12} /> {turn !== undefined ? `Sideways, ${turnWord(turn, f.fix)}` : "Sideways"}</span>
-          )}
-          {variant !== "strip" && !f?.sideways && state !== "content" && state !== "not measured yet" && (
-            <span className="split-cell-state"><Glyph name={f?.blank === "blank" ? "file-minus" : f?.blank === "marked" ? "pencil" : "scan-line"} size={12} /> {state.startsWith("no text") ? "No text" : state === "blank" ? "Blank" : state === "marked" ? "Marked" : state}</span>
-          )}
-          {variant !== "strip" && (!f || f.pending) && <span className="split-cell-state" data-measuring=""><Glyph name="clock" size={12} /> Measuring…</span>}
-          {variant !== "strip" && !f?.sideways && turn !== undefined &&<span className="split-cell-state split-cell-turn" data-turned=""><Glyph name="refresh-cw" size={12} /> {turnWord(turn, f?.fix)}</span>}
-          {variant !== "strip" && no > 0 && <span className="split-cell-seg">S{no}</span>}
+          {/* (a space between the words: a checker reads the button's text as one run, and "2S1" is not "Page 2, S1") */}
+          <span className="split-cell-n">{page}</span>{" "}
+          {isStart && <><span className="split-start-tag">{page === 1 && <Glyph name="lock" size={11} />} {words.tag}</span>{" "}</>}
+          {open && <><span className="split-sug-tag">{words.tag}</span>{" "}</>}
+          {words.sideways && <><span className="split-cell-state split-cell-turn" data-sideways=""><Glyph name="refresh-cw" size={12} /> {words.sideways}</span>{" "}</>}
+          {words.state && <><span className="split-cell-state"><Glyph name={f?.blank === "blank" ? "file-minus" : f?.blank === "marked" ? "pencil" : "scan-line"} size={12} /> {words.state}</span>{" "}</>}
+          {variant !== "strip" && words.measuring && <><span className="split-cell-state" data-measuring=""><Glyph name="clock" size={12} /> Measuring…</span>{" "}</>}
+          {words.turned && <><span className="split-cell-state split-cell-turn" data-turned=""><Glyph name="refresh-cw" size={12} /> {words.turned}</span>{" "}</>}
+          {words.seg && <span className="split-cell-seg">{words.seg}</span>}
         </span>
         {variant !== "strip" && <span className="split-cell-note" ref={note} aria-hidden="true" />}
-        {isStart && <span className="split-start-tag" aria-hidden="true">{page === 1 && <Glyph name="lock" size={11} />} {start > 0 ? "Nested start" : `Start ${no}`}</span>}
-        {open && <span className="split-sug-tag" aria-hidden="true">Suggested, {bandWord(sug)}</span>}
       </button>
+      {noteText && <span id={noteId} hidden>{noteText}</span>}
       {isStart && page !== 1 && !readOnly && <span className="split-handle" data-handle={page} aria-hidden="true" title="Drag to move this start"><Glyph name="arrow-left-right" size={12} /></span>}
     </div>
   );
@@ -131,6 +135,7 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
 export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, ref) {
   const { count, axis, variant, aspect = 1.294, gap = 8, snap, facts, loader, focus, selection, confidential } = p;
   const box = useRef<HTMLDivElement>(null);
+  const hintId = `split-grid-hint-${variant}`;
   const [size, setSize] = useState({ w: 720, h: 520 });
   const cw = p.cellW === "fit" ? Math.max(120, Math.min(p.maxW ?? 560, size.w - 16)) : p.cellW;
   const ch = Math.round(cw * aspect) + CHROME;
@@ -158,9 +163,17 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
     const n = keepFocus.current;
     keepFocus.current = 0;
     if (!n || !box.current || box.current.contains(document.activeElement)) return;
-    box.current.querySelector<HTMLElement>(`button[data-page="${n}"]`)?.focus({ preventScroll: true });
+    // The page to give the focus back to is the screen's focus now, which is not the remembered page when the same act moved it (a start
+    // moved to the next page): giving it to the old page would be read as a person's focusing it and take the screen back there, so the
+    // second `]` found no start. The grid moves this focus itself, so it is not read as a person's.
+    const to = latest.current.focus || n;
+    programmatic.current = true;
+    box.current.querySelector<HTMLElement>(`button[data-page="${to}"]`)?.focus({ preventScroll: true });
+    programmatic.current = false;
   });
   const [win, setWin] = useState<Win>({ first: 0, last: -1 });
+  // focus is inside a cell: that cell stays mounted when a scroll takes it out of the window, so the focus is not dropped to the body (D20)
+  const [within, setWithin] = useState(false);
   const winRef = useRef(win);
   const factsVersion = useSyncExternalStore(facts.subscribe, facts.getVersion, facts.getVersion);
 
@@ -234,12 +247,22 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
     const next = scrollOf(bandedRef.current, l, page, offset(), axis === "y" ? sizeRef.current.h : sizeRef.current.w);
     if (next !== offset()) { if (axis === "y") el.scrollTop = next; else el.scrollLeft = next; }
     recompute();
-    requestAnimationFrame(() => {
+    const settle = (again: boolean) => requestAnimationFrame(() => {
       if (latest.current.focus !== page) return;                 // a later key moved on before the frame
+      const btn = el.querySelector<HTMLElement>(`button[data-page="${page}"]`);
+      if (!btn && again) {
+        // the layout changed with the act that asked (a start moved to another row): scroll by the new layout, then look once more
+        const to = scrollOf(bandedRef.current, layoutRef.current, page, offset(), axis === "y" ? sizeRef.current.h : sizeRef.current.w);
+        if (to !== offset()) { if (axis === "y") el.scrollTop = to; else el.scrollLeft = to; }
+        recompute();
+        settle(false);
+        return;
+      }
       programmatic.current = true;
-      el.querySelector<HTMLElement>(`button[data-page="${page}"]`)?.focus({ preventScroll: true });
+      btn?.focus({ preventScroll: true });
       programmatic.current = false;
     });
+    settle(true);
   }, [axis, recompute]);
 
   useImperativeHandle(ref, () => ({
@@ -278,7 +301,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
   };
   const drag = useRef<{ from: number; x: number; y: number; moved: boolean; target: number; raf: number } | null>(null);
   // stable listeners (added to and removed from the window), reading the latest props through a ref
-  const dragFns = useRef<{ move(e: PointerEvent): void; up(): void; cancel(): void; end(commit: boolean): void } | null>(null);
+  const dragFns = useRef<{ move(e: PointerEvent): void; up(): void; cancel(): void; key(e: KeyboardEvent): void; end(commit: boolean): void } | null>(null);
   if (!dragFns.current) {
     const end = (commit: boolean) => {
       const d = drag.current;
@@ -290,6 +313,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       window.removeEventListener("pointermove", fns.move);
       window.removeEventListener("pointerup", fns.up);
       window.removeEventListener("pointercancel", fns.cancel);
+      window.removeEventListener("keydown", fns.key);
       if (commit && d.moved && d.target && d.target !== d.from) latest.current.onMove(d.from, d.target);
       window.setTimeout(() => { suppress.current = false; }, 0);
     };
@@ -297,6 +321,8 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       end,
       up: () => end(true),
       cancel: () => end(false),
+      /** Escape drops a start being dragged where it was (WCAG 2.5.2) */
+      key: (e: KeyboardEvent) => { if (e.key === "Escape" && drag.current) { e.preventDefault(); end(false); } },
       move: (e: PointerEvent) => {
         const d = drag.current;
         if (!d) return;
@@ -335,6 +361,7 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       window.addEventListener("pointermove", dragFns.current!.move);
       window.addEventListener("pointerup", dragFns.current!.up);
       window.addEventListener("pointercancel", dragFns.current!.cancel);
+      window.addEventListener("keydown", dragFns.current!.key);
       e.preventDefault();
       return;
     }
@@ -363,15 +390,22 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
   };
   const onFocus = (e: React.FocusEvent) => {
     if (e.target === box.current) { focusPage(focus); return; }
-    if (programmatic.current) return;
     const page = pageOf(e.target);
+    setWithin(!!page);
+    if (programmatic.current) return;
     if (page && page !== focus) p.onFocusPage(page);
   };
+  const onBlur = (e: React.FocusEvent) => { if (!box.current?.contains(e.relatedTarget as Node | null)) setWithin(false); };
 
   const sel = selection ? { lo: Math.min(selection.a, selection.b), hi: Math.max(selection.a, selection.b) } : null;
   const cells: JSX.Element[] = [];
   const out: JSX.Element[] = [];
-  for (let t = win.first; t <= win.last; t++) {
+  const outside = within && count > 0 && win.last >= win.first && (focus < span.first || focus > span.last);
+  const pinned = outside ? (banded ? rowOfPage(banded, focus) : Math.floor((focus - 1) / layout.perTrack)) : -1;
+  const tracks: number[] = [];
+  for (let t = win.first; t <= win.last; t++) tracks.push(t);
+  if (pinned >= 0 && (pinned < win.first || pinned > win.last)) tracks[pinned < win.first ? "unshift" : "push"](pinned); // in document order, so a screen reader reads the rows in sequence
+  for (const t of tracks) {
     cells.length = 0;
     const ri = banded ? rowInfo(banded, t) : null;
     if (banded && ri && ri.kind === "band") {
@@ -398,21 +432,25 @@ export const PageGrid = forwardRef<GridApi, PageGridProps>(function PageGrid(p, 
       cells.push(
         <PageCell key={page} page={page} f={facts.get(page)} start={snap.starts.has(page) ? snap.starts.get(page)! : -1} no={snap.docNo[page] ?? 0}
           sug={snap.sugByPage.get(page)} selected={!!sel && page >= sel.lo && page <= sel.hi} focused={page === focus} w={cw} h={ch} sizes={sizes}
-          confidential={confidential} loader={loader} variant={variant} readOnly={snap.readOnly} turn={p.turns?.[page]} />,
+          confidential={confidential} loader={loader} variant={variant} readOnly={snap.readOnly} turn={p.turns?.[page]} col={axis === "y" ? page - firstPage + 1 : page} />,
       );
     }
     out.push(axis === "y"
-      ? <div key={t} role="row" aria-rowindex={t + 1} className="split-row" style={{ top: ri ? ri.top : t * layout.track, height: ch, gap }}>{[...cells]}</div>
+      ? <div key={t} role="row" aria-rowindex={t + 1} aria-label={firstPage >= lastPage ? `Page ${firstPage}` : `Pages ${firstPage} to ${lastPage}`} className="split-row" style={{ top: ri ? ri.top : t * layout.track, height: ch, gap }}>{[...cells]}</div>
       : <div key={t} role="presentation" className="split-col" style={{ left: t * layout.track, width: cw }}>{[...cells]}</div>);
   }
-  const focusLive = focus >= span.first && focus <= span.last;
+  const focusLive = (focus >= span.first && focus <= span.last) || pinned >= 0;
   void factsVersion;
+  // A grid of one row when the pages run across (the strip and the sideways scroll): the columns come and go with the window, so the row
+  // is the spacer that holds them and each cell says its own column.
   return (
-    <div ref={box} className={`split-scroll split-scroll-${axis}`} data-variant={variant} role={axis === "y" ? "grid" : "group"} aria-label={p.label}
-      aria-rowcount={axis === "y" ? (banded ? banded.rows : layout.tracks) : undefined} aria-colcount={axis === "y" ? layout.perTrack : undefined} aria-multiselectable={axis === "y" ? true : undefined}
+    <div ref={box} className={`split-scroll split-scroll-${axis}`} data-variant={variant} role="grid" aria-label={p.label} aria-describedby={hintId}
+      aria-rowcount={axis === "y" ? (banded ? banded.rows : layout.tracks) : 1} aria-colcount={axis === "y" ? layout.perTrack : count} aria-multiselectable={axis === "y" ? true : undefined}
       tabIndex={focusLive ? -1 : 0} onScroll={onScroll} onClick={onClick} onContextMenu={onContextMenu} onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onFocus={onFocus}>
-      <div className="split-spacer" style={axis === "y" ? { height: banded ? banded.total : layout.total } : { width: layout.total, height: ch }}>{out}</div>
+      onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onFocus={onFocus} onBlur={onBlur}>
+      <span id={hintId} hidden>{GRID_HINT}</span>
+      <div className="split-spacer" role={axis === "y" ? undefined : "row"} aria-rowindex={axis === "y" ? undefined : 1} aria-label={axis === "y" ? undefined : `Pages 1 to ${count}`}
+        style={axis === "y" ? { height: banded ? banded.total : layout.total } : { width: layout.total, height: ch }}>{out}</div>
     </div>
   );
 });

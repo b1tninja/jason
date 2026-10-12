@@ -2,8 +2,9 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExterna
 import { Badge, Confirm } from "../components";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { useSession, NO_PEOPLE } from "../lib/session";
+import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { PageGrid, type GridApi } from "./PageGrid";
-import { ComparePane, KeyHelp, PageMenu, ZOOMS, Figure, type Zoom } from "./SplitPanes";
+import { ComparePane, KeyHelp, PageMenu, ZOOMS, Figure, countFrom, type Zoom } from "./SplitPanes";
 import { Drawer, EdgeTab, useOpenFocus } from "./SplitDrawer";
 import { FlagsDialog, WalkBar } from "./SplitFlags";
 import { MenuButton, ToolButton, Toolbar, type MenuEntry, type MenuSpec } from "./SplitMenus";
@@ -69,6 +70,11 @@ export function SplitEditor({ backend, id }: { backend: SplitBackend; id: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backend, id]);
   useEffect(() => { if (boot && "store" in boot) boot.store.by = me; }, [boot, me]);
+  // The title says the screen and the draft's kind and size, never its file name (a confidential file's size is left out too).
+  const ready = boot && "store" in boot ? boot : null;
+  const status = ready ? String(ready.first.status ?? "draft") : "";
+  useDocumentTitle(!boot ? "Split document: Opening the draft" : !ready ? "Split document: The draft could not be opened"
+    : `Split document: ${status.charAt(0).toUpperCase()}${status.slice(1)}${ready.first.confidential || ready.first.source.confidential ? "" : `, ${ready.first.source.pages} pages`}`);
   if (!boot) return <p role="status" className="muted">Opening the draft…</p>;
   if ("error" in boot) {
     return <div role="alert" className="notice notice-error"><span>{boot.error}</span><a href="#/setup/split">Back to the splitter</a></div>;
@@ -107,8 +113,8 @@ function SegmentStrip({ rows, page, flagged, onGo, onMore }: { rows: SegmentRow[
           return (
             <li key={r.key}>
               <button type="button" className="split-chipbtn" aria-current={from + i === cur ? "true" : undefined} onClick={() => onGo(r.start)} title={`Segment ${no}: pages ${r.start} to ${r.end}`}
-                aria-label={`Go to segment ${no}, pages ${r.start} to ${r.end}${flag ? ", flagged" : ""}`}>
-                <b>{no}</b><span aria-hidden="true">p.{r.start}</span>{flag && <span aria-hidden="true" className="split-chipflag">!</span>}
+                aria-label={`Segment ${no}, p.${r.start}${flag ? ", flagged" : ""}`}>
+                <b>{no}</b> <span aria-hidden="true">p.{r.start}</span>{flag && <> <span aria-hidden="true" className="split-chipflag">!</span></>}
               </button>
             </li>
           );
@@ -188,6 +194,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
   const [anchor, setAnchor] = useState<number | null>(null);
   const [selection, setSelection] = useState<{ a: number; b: number } | null>(null);
   const [menu, setMenu] = useState<number | null>(null);
+  const menuLand = useRef<number | null>(null);                 // the page a start was moved to from the page menu: the focus goes there when the menu closes
   const [help, setHelp] = useState(false);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [drop, setDrop] = useState<number[]>(() => { try { return JSON.parse(sessionStorage.getItem(`jason-split-drop-${id}`) ?? "[]"); } catch { return []; } });
@@ -457,7 +464,15 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
       case "a": { const s = sugByPage.get(focus); if (s) { e.preventDefault(); store.accept([s.id]); } return; }
       case "x": { const s = sugByPage.get(focus); if (s) { e.preventDefault(); store.reject([s.id]); } return; }
       case "m": { e.preventDefault(); const at = startOf(focus); if (at === 1) setMessage("The first page always starts a segment."); else store.unmark([at]); return; }
-      case "[": case "]": { if (snap.starts.has(focus) && focus > 1) { e.preventDefault(); const to = focus + (lower === "]" ? 1 : -1); if (to > 1 && to <= pages) { store.move(focus, to); goTo(to); } } return; }
+      case "[": case "]": {
+        if (snap.starts.has(focus) && focus > 1) {
+          e.preventDefault();
+          const to = focus + (lower === "]" ? 1 : -1);
+          // the focus follows the start, so the next press moves it again; a page that already starts a segment refuses (the store says so) and the focus stays
+          if (to > 1 && to <= pages) { store.move(focus, to); if (!snap.starts.has(to)) goTo(to); }
+        }
+        return;
+      }
       case "l": e.preventDefault(); setMenu(focus); return;
       case "g": case "/": e.preventDefault(); goRef.current?.focus(); goRef.current?.select(); return;
       case "v": e.preventDefault(); setView(VIEWS[(VIEWS.findIndex((v) => v.id === view) + 1) % VIEWS.length].id); return;
@@ -497,6 +512,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
 
   // ---- bulk acts
   const [nth, setNth] = useState(2);
+  const [nthNote, setNthNote] = useState("");
+  const [goBad, setGoBad] = useState(false);
   const [blankKeep, setBlankKeep] = useState<BlankKeep>("before");
   const [blankPlan, setBlankPlan] = useState<ReturnType<typeof splitOnBlanks> | null>(null);
   const [duplexOk, setDuplexOk] = useState(false);
@@ -509,6 +526,9 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
 
   const saveWords = snap.save === "saving" ? "Saving…" : snap.save === "saved" ? (snap.savedAt ? `Draft saved ${snap.savedAt}` : "Draft saved") : snap.save === "offline" ? "Offline: marks held on this device" : snap.save === "conflict" ? "Not saved: the draft changed elsewhere" : "Not saved";
   const prog = facts.progress();
+  // said in steps of ten percent, so the status line changes ten times at most and is not read out at every batch
+  const readyPct = pages > 0 ? Math.min(100, Math.floor(((prog.known - prog.pending) / pages) * 10) * 10) : 0;
+  const readyWords = `about ${readyPct}% of the ${pages} pages ready`;
   const label = confidential ? "A confidential file" : session.source.kind === "demo" ? `${pages} made-up pages` : `${pages} pages, ${sizeText(session.source.size)}${session.source.sha256 ? `, ${session.source.sha256.slice(0, 8)}` : ""}`;
   const reviewOff = readOnly || snap.pending > 0 || snap.save !== "saved" || notYet;
   const guardMsg = readOnly ? `This split is ${session.status}.` : notYet ? "Wait for the file to finish saving on the server." : "Wait for the draft to finish saving.";
@@ -518,8 +538,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
   const jump = (e: React.FormEvent) => {
     e.preventDefault();
     const v = Number(goRef.current?.value);
-    if (Number.isInteger(v) && v >= 1 && v <= pages) goTo(v);
-    else setMessage(`This file has ${pages} pages.`);
+    if (Number.isInteger(v) && v >= 1 && v <= pages) { setGoBad(false); goTo(v); }
+    else { setGoBad(true); setMessage(`Enter a whole page number from 1 to ${pages}. This file has ${pages} pages.`); }
   };
 
   const common = { count: pages, snap: gridSnap, facts, loader, focus, selection, confidential, turns, onMenu, onMove, onFocusPage, noLongPress: magTouch };
@@ -608,7 +628,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
     pages: { id: "pages", label: "Pages", entries: pageEntries } as MenuSpec,
     help: { id: "help", label: "Help", entries: helpEntries, align: "end" } as MenuSpec,
     // on a phone one View menu holds the draft's links and the help too
-    phone: { id: "view", label: "View", entries: [...viewEntries, { type: "sep" }, { type: "heading", label: "Draft and help" }, draftEntries[0], ...helpEntries] } as MenuSpec,
+    // (Undo and Redo are here too: on a very short or narrow screen they leave the toolbar and the toolbar is this one menu)
+    phone: { id: "view", label: "View", entries: [...viewEntries, { type: "sep" }, { type: "heading", label: "Draft and help" }, draftEntries[0], draftEntries[1], draftEntries[2], ...helpEntries] } as MenuSpec,
   };
 
   const railH = Math.max(220, Math.round((typeof window === "undefined" ? 800 : window.innerHeight) * 0.36));
@@ -638,7 +659,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
       <h1>Split document</h1>
       <span className="muted split-sub">{label}</span>
       <p className="split-counts" aria-label="Draft summary">
-        <strong>{pages} pages</strong> · <span role="status" aria-live="polite" data-save={snap.save}>{saveWords}</span> · {topCount} {topCount === 1 ? "segment" : "segments"} · suggestions: {openSug.length} open
+        <strong>{pages} pages</strong> · <span data-save={snap.save}>{saveWords}</span> · {topCount} {topCount === 1 ? "segment" : "segments"} · suggestions: {openSug.length} open
         {prefs.showFlags && flags && flaggedTop > 0 && <> · <span data-flagged={flaggedTop}>flags: {flaggedTop} {flaggedTop === 1 ? "segment" : "segments"} flagged</span></>}
         {Object.keys(turns).length > 0 && <> · <span>{Object.keys(turns).length} {Object.keys(turns).length === 1 ? "page" : "pages"} to turn</span></>}
         {confidential && <> · <Badge tone="warn" glyph="file-lock">Confidential</Badge></>}
@@ -655,6 +676,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
   return (
     <div className="split-view split-shell" data-focus={prefs.focus || undefined} data-phone={phone || undefined} onKeyDown={onKeyDown}>
       {head}
+      {/* The one polite region for what a person just did. A save in progress or finished is on the screen (the summary line) and is not spoken: a
+          mark would otherwise make three announcements and a time of day. A save that fails is an alert below. */}
       <div className="split-live" role="status" aria-live="polite">{message}</div>
       <Loupe enabled={magOn} touchMode={magTouch} zoom={prefs.magnifierZoom} onZoom={setMagZoom} load={sharp} release={releaseSharp} budget={magBudget}
         maxPx={pictureStatus?.client ? LOUPE_MAX_PX : SERVER_MAX_PX} announce={setMessage}
@@ -670,7 +693,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
       {background?.phase === "uploading" && <p className="notice" role="status" data-background="uploading">The file is being saved on the server in the background. Your marks are kept here and are sent, in order, as soon as it is saved.</p>}
       {background?.phase === "refused" && <p className="notice notice-error" role="alert" data-background="refused"><span>The server did not keep this file: {background.words} Your marks cannot be saved. Nothing was sent anywhere else.</span><a href="#/setup/split">Back to the splitter</a></p>}
       {background?.phase === "saved" && background.words && <p className="muted split-line" role="status">{background.words}</p>}
-      {(prog.pending > 0 || facts.failed) && <p className="muted split-line" role="status">{facts.failed ? `Page facts could not be read: ${facts.failed}` : notYet ? `The server has not measured the pages yet: blank pages, sideways pages, repeats, page numbers and suggested starts appear as it measures them (${prog.known - prog.pending} of ${pages} pages ready).` : `Page facts are still being measured (${prog.known - prog.pending} of ${pages} pages ready). Each page shows what it is as it is measured.`}</p>}
+      {(prog.pending > 0 || facts.failed) && <p className="muted split-line" role="status">{facts.failed ? `Page facts could not be read: ${facts.failed}` : notYet ? `The server has not measured the pages yet: blank pages, sideways pages, repeats, page numbers and suggested starts appear as it measures them (${readyWords}).` : `Page facts are still being measured (${readyWords}). Each page shows what it is as it is measured.`}</p>}
       {session.notes.length > 0 && <ul className="muted split-notes">{session.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
 
       {walk && <WalkBar pages={walk.pages} at={walk.at} why={walk.why} isStart={snap.starts.has(walk.pages[walk.at])} readOnly={readOnly}
@@ -679,9 +702,9 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
       <Toolbar label="Splitter controls" className="split-toolbar">
         {phone ? (<>
           <MenuButton spec={menus.phone} />
-          <ToolButton onClick={() => store.undo()} disabled={undoOff}>Undo</ToolButton>
-          <ToolButton onClick={() => store.redo()} disabled={redoOff}>Redo</ToolButton>
-          <ToolButton aria-pressed={prefs.focus} onClick={toggleFocus} title="Focus (F)">Focus</ToolButton>
+          <ToolButton className="split-tb-short" onClick={() => store.undo()} disabled={undoOff}>Undo</ToolButton>
+          <ToolButton className="split-tb-short" onClick={() => store.redo()} disabled={redoOff}>Redo</ToolButton>
+          <ToolButton className="split-tb-short" aria-pressed={prefs.focus} onClick={toggleFocus} title="Focus (F)">Focus</ToolButton>
         </>) : (<>
           <MenuButton spec={menus.draft} />
           <MenuButton spec={menus.view} />
@@ -692,8 +715,8 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
           <span className="split-tb-gap" aria-hidden="true" />
           <ToolButton onClick={() => store.undo()} disabled={undoOff} title="Undo (Z)">Undo</ToolButton>
           <ToolButton onClick={() => store.redo()} disabled={redoOff} title="Redo (Y)">Redo</ToolButton>
-          <ToolButton aria-pressed={railOpen} aria-controls="split-drawer-rail" onClick={() => setRail(!railOpen)} title="Segments drawer (S)">Segments <span className="split-count">{topCount}</span></ToolButton>
-          <ToolButton aria-pressed={inspect} aria-controls="split-drawer-inspect" onClick={() => openInspect(!inspect)} title="Compare drawer (C)">Compare</ToolButton>
+          <ToolButton aria-pressed={railOpen} aria-controls={railOpen ? "split-drawer-rail" : undefined} onClick={() => setRail(!railOpen)} title="Segments drawer (S)">Segments <span className="split-count">{topCount}</span></ToolButton>
+          <ToolButton aria-pressed={inspect} aria-controls={inspect ? "split-drawer-inspect" : undefined} onClick={() => openInspect(!inspect)} title="Compare drawer (C)">Compare</ToolButton>
           <ToolButton aria-pressed={magOn} onClick={() => toggleMagnifier()} title={prefs.magMode === "fixed" ? "Magnifier: a viewer in a screen corner (E)" : "Magnifier: a lens over the page under the pointer (E)"}>Magnifier</ToolButton>
           <ToolButton aria-pressed={prefs.focus} onClick={toggleFocus} title="Focus: the pages fill the screen (F)">Focus</ToolButton>
           <ToolButton className="primary" disabled={reviewOff} onClick={() => setReviewing(true)}>Review and split</ToolButton>
@@ -702,7 +725,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
       <SegmentStrip rows={topRows} page={focus} flagged={prefs.showFlags ? flaggedKeys : new Set()} onGo={(p) => { goTo(p, false); setViewTo(p); }} onMore={() => setRail(true)} />
       {selSize > 1 && <p className="split-selbar" role="status">{selSize} pages selected ({lo} to {hi}). <button type="button" onClick={() => setSelection(null)}>Clear the selection</button> <span className="muted">Open the page menu (L) for what to do with them.</span></p>}
 
-      <div className="split-stage" data-dock={dockSide ?? undefined} style={dockSide ? ({ "--dock-w": docked === "inspect" ? "min(40rem, 45%)" : "min(24rem, 32%)" } as React.CSSProperties) : undefined}>
+      <div className="split-stage" data-dock={dockSide ?? undefined} data-tabs={[!phone && !railOpen ? prefs.railSide : "", !phone && !inspect ? "right" : ""].join(" ").trim() || undefined} style={dockSide ? ({ "--dock-w": docked === "inspect" ? "min(40rem, 45%)" : "min(24rem, 32%)" } as React.CSSProperties) : undefined}>
         <div className="split-work">
           <div ref={wrapRef} className="split-gridwrap" data-view={view} data-axis={view === "scroll" ? scrollAxis : "y"} onDoubleClick={onDoubleClick}>
             {view === "album" && <PageGrid ref={gridRef} {...common} axis="y" variant="album" bands={bands} cellW={cellW} label="Pages" onActivate={onActivate} />}
@@ -746,7 +769,9 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
         {tool && (
           <ToolPanel title={TOOL_TITLE[tool]} onClose={() => setTool(null)}>
             {tool === "nth" && (<>
-              <label className="row">Every <input type="number" min={1} max={500} value={nth} onChange={(e) => setNth(Math.max(1, Number(e.target.value) || 1))} aria-label="Every how many pages" /> pages, {selection ? `in the selection (pages ${lo} to ${hi})` : "across the file"}</label>
+              <label className="row">Every <input type="number" min={1} max={500} value={nth} onChange={(e) => { const c = countFrom(e.target.value, 1, 500); setNth(c.n); setNthNote(c.note); }} aria-label="Every how many pages"
+                aria-invalid={nthNote ? true : undefined} aria-describedby={nthNote ? "split-nth-err" : undefined} /> pages, {selection ? `in the selection (pages ${lo} to ${hi})` : "across the file"}</label>
+              {nthNote && <p id="split-nth-err" role="alert" className="split-field-err">{nthNote}</p>}
               <button type="button" disabled={readOnly || nthPages.length === 0} onClick={() => { store.range(selection ? lo : 1, selection ? hi : pages, nth); setTool(null); }}>Add {nthPages.length} {nthPages.length === 1 ? "start" : "starts"}</button>
             </>)}
             {tool === "blanks" && (<>
@@ -787,15 +812,15 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
             onChange={(e) => goTo(Number(e.target.value), false)} />
           <TicksM pages={pages} starts={snap.starts} suggestions={showSug ? session.suggestions : []} facts={facts} version={factsVersion} />
         </div>
-        <form onSubmit={jump} className="row"><label>Go to <input ref={goRef} type="number" min={1} max={pages} defaultValue={focus} key={focus} aria-label="Go to page" /></label><button type="submit">Go</button></form>
+        <form onSubmit={jump} noValidate className="row"><label>Go to <input ref={goRef} type="number" min={1} max={pages} defaultValue={focus} key={focus} aria-label="Go to page" aria-invalid={goBad ? true : undefined} onChange={() => setGoBad(false)} /></label><button type="submit">Go</button></form>
       </div>
 
       {phone && (
         <Toolbar label="Actions" className="split-actionbar">
           <MenuButton spec={menus.mark} up />
           <MenuButton spec={menus.pages} up />
-          <ToolButton aria-pressed={railOpen} aria-controls="split-drawer-rail" onClick={() => setRail(!railOpen)}>Segments <span className="split-count">{topCount}</span></ToolButton>
-          <ToolButton aria-pressed={inspect} aria-controls="split-drawer-inspect" onClick={() => openInspect(!inspect)}>Compare</ToolButton>
+          <ToolButton aria-pressed={railOpen} aria-controls={railOpen ? "split-drawer-rail" : undefined} onClick={() => setRail(!railOpen)}>Segments <span className="split-count">{topCount}</span></ToolButton>
+          <ToolButton aria-pressed={inspect} aria-controls={inspect ? "split-drawer-inspect" : undefined} onClick={() => openInspect(!inspect)}>Compare</ToolButton>
           <ToolButton aria-pressed={magOn} onClick={() => toggleMagnifier()} title="Magnifier: press and hold a page, then drag">Magnifier</ToolButton>
           <ToolButton className="primary" disabled={reviewOff} onClick={() => setReviewing(true)}>Review and split</ToolButton>
         </Toolbar>
@@ -808,12 +833,14 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
           level: (l) => store.setLevel(menu, l), larger: () => { setFocus(menu); openInspect(true); }, accept: () => menuSug && store.accept([menuSug.id]), reject: () => menuSug && store.reject([menuSug.id]),
           retry: () => loader.retry(menu), everyNth: (n) => store.range(lo, hi, n), markEach: () => store.mark(Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)),
           fact: facts.get(menu), turn: turns[menu], setTurn: (t) => setTurnOf(menu, t),
-          mergeSelection: () => store.unmark(Array.from({ length: hi - lo }, (_, i) => lo + 1 + i)), close: () => { const m = menu; setMenu(null); requestAnimationFrame(() => active()?.focusPage(m)); },
+          mergeSelection: () => store.unmark(Array.from({ length: hi - lo }, (_, i) => lo + 1 + i)),
+          pages, move: (to) => { store.move(menu, to); if (!snap.starts.has(to)) { menuLand.current = to; setFocus(to); } },
+          close: () => { const m = menuLand.current ?? menu; menuLand.current = null; setMenu(null); requestAnimationFrame(() => active()?.focusPage(m)); },
         }} />
       )}
-      {help && <KeyHelp onClose={() => setHelp(false)} />}
+      {help && <KeyHelp onClose={() => setHelp(false)} fallback={() => active()?.focusPage(focusRef.current)} />}
       {flagView && (
-        <FlagsDialog flags={flagView.flags} no={flagView.no} caveats={flags?.caveats ?? []} a={{
+        <FlagsDialog flags={flagView.flags} no={flagView.no} caveats={flags?.caveats ?? []} fallback={() => active()?.focusPage(focusRef.current)} a={{
           readOnly, go: (p) => { setFocus(p); setViewTo(p); active()?.scrollToPage(p, true); }, walk: startWalk,
           fixSideways: (pages) => setTurns({ ...turns, ...Object.fromEntries(pages.map((p) => [p, "fix" as Turn])) }),
           segStart: startOfKey, close: () => setFlagView(null),

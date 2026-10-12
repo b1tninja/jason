@@ -164,8 +164,10 @@ describe("marking pages in the demo", () => {
     const cells = document.querySelectorAll("[data-cell]").length;
     expect(cells).toBeGreaterThan(10);
     expect(cells).toBeLessThan(120);
-    expect(cell(1)).toHaveAccessibleName(/Page 1.*Starts segment 1.*first page always starts a segment/);
-    expect(cell(5)).toHaveAccessibleName(/Press Enter to make this page start a segment|Suggested start/);
+    expect(cell(1)).toHaveAccessibleName(/^Page 1, Start 1, S1$/);
+    expect(cell(1)).toHaveAccessibleDescription(/first page always starts a segment/);
+    expect(cell(5).getAttribute("aria-label")).not.toMatch(/Press Enter/);                     // the keys are said once, for the grid
+    expect(screen.getByRole("grid", { name: "Pages" })).toHaveAccessibleDescription(/Enter or Space marks a page/);
   });
 
   it("marks and unmarks a page by a tap, at once, and saves it", async () => {
@@ -173,7 +175,8 @@ describe("marking pages in the demo", () => {
     await openDemo();
     await user.click(cell(10));
     expect(cell(10)).toHaveAttribute("aria-pressed", "true");                         // before the server has answered
-    expect(cell(10)).toHaveAccessibleName(/Starts segment 2/);
+    expect(cell(10)).toHaveAccessibleName(/^Page 10, Start 2/);
+    expect(cell(10)).toHaveAccessibleDescription(/Starts segment 2/);
     expect(cell(10).closest("[data-cell]")).toHaveAttribute("data-start", "top");
     await saved();
     expect(screen.getByText(/2 segments/)).toBeInTheDocument();
@@ -269,10 +272,11 @@ describe("marking pages in the demo", () => {
     expect(dashed).toBeTruthy();
     expect(within(dashed).getByText(/Suggested, High/)).toBeInTheDocument();           // a word, not just a dash
     const page = Number(dashed.dataset.page);
-    expect(dashed.querySelector("button")).toHaveAccessibleName(/Suggested start, high confidence/);
+    expect(dashed.querySelector("button")).toHaveAccessibleName(/Suggested, High/);
+    expect(dashed.querySelector("button")).toHaveAccessibleDescription(/Suggested start, high confidence/);
     await pick(user, "Mark", /Accept \d+ at High confidence/);
     await waitFor(() => expect(cell(page)).toHaveAttribute("aria-pressed", "true"));
-    expect(cell(page)).toHaveAccessibleName(/Starts segment/);
+    expect(cell(page)).toHaveAccessibleName(/Start \d+/);
     await saved();
     expect(document.querySelector(`[data-cell][data-page="${page}"][data-sug]`)).toBeNull();
   });
@@ -281,12 +285,12 @@ describe("marking pages in the demo", () => {
     const user = userEvent.setup();
     await openDemo();
     await pick(user, "View", "Filmstrip", "menuitemradio");
-    expect(await screen.findByRole("group", { name: "Pages, as a strip" })).toBeInTheDocument();
+    expect(await screen.findByRole("grid", { name: "Pages, as a strip" })).toBeInTheDocument();
     expect(screen.getByText(/Page 1 of 120/, { selector: "strong" })).toBeInTheDocument();
     await pick(user, "View", "Scroll", "menuitemradio");
     expect(await screen.findByRole("grid", { name: "Pages, one at a time" })).toBeInTheDocument();
     await pick(user, "View", "Scroll across", "menuitemcheckbox");
-    expect(await screen.findByRole("group", { name: "Pages, one at a time" })).toBeInTheDocument();
+    expect(await screen.findByRole("grid", { name: "Pages, one at a time" })).toBeInTheDocument();
     await pick(user, "View", "List", "menuitemradio");
     const list = await screen.findByRole("region", { name: "Segments and suggested starts" });
     expect(within(list).getAllByRole("listitem").length).toBeGreaterThan(3);           // segment 1 and the suggestions

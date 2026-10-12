@@ -101,7 +101,7 @@ describe("the segment strip and the drawers", () => {
     const chips = within(strip).getAllByRole("button");
     expect(chips).toHaveLength(2);
     expect(chips[1]).toHaveAttribute("aria-current", "true");                        // page 10 has the focus
-    expect(chips[1]).toHaveAccessibleName("Go to segment 2, pages 10 to 120");
+    expect(chips[1]).toHaveAccessibleName("Segment 2, p.10");
     await user.click(chips[0]);
     await waitFor(() => expect(chips[0]).toHaveAttribute("aria-current", "true"));
     expect(chips[1]).not.toHaveAttribute("aria-current");

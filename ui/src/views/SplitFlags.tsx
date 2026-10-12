@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { Glyph } from "../components/Glyph";
+import { ModalSheet } from "./SplitDrawer";
 import { flagItems, pagesList, segWord, type FlagItem, type SegmentFlags } from "./splitModel";
 
 /** The splitter's flags (docs/pdf-splitter.md, 9.5): what the server read of each segment before the review. Each flag is a glyph and words,
@@ -17,7 +17,8 @@ export function FlagChips({ flags, no, onOpen, max = 2 }: { flags: SegmentFlags 
   return (
     <div className="split-flags" role="group" aria-label={`Flags for ${label}`}>
       {shown.map((i) => <span key={i.key} className="split-flag" data-flag={i.key}><Glyph name={i.glyph} size={12} /> <span>{i.short}</span></span>)}
-      <button type="button" className="split-flag-more" onClick={onOpen} aria-label={`All ${items.length} ${items.length === 1 ? "flag" : "flags"} for ${label}: ${items.map((i) => i.short).join("; ")}`}>
+      <button type="button" className="split-flag-more" onClick={onOpen}
+        aria-label={`${items.length > shown.length ? `+${items.length - shown.length} more` : "Details"}: all ${items.length} ${items.length === 1 ? "flag" : "flags"} for ${label}: ${items.map((i) => i.short).join("; ")}`}>
         {items.length > shown.length ? `+${items.length - shown.length} more` : "Details"}
       </button>
     </div>
@@ -60,16 +61,12 @@ function ItemActs({ item, flags, a }: { item: FlagItem; flags: SegmentFlags; a: 
 }
 
 /** Every flag of one segment, in full sentences, with its acts. Opens as a sheet like the page menu. */
-export function FlagsDialog({ flags, no, caveats, a }: { flags: SegmentFlags; no: number; caveats: readonly string[]; a: FlagActions }) {
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { box.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
+export function FlagsDialog({ flags, no, caveats, a, fallback }: { flags: SegmentFlags; no: number; caveats: readonly string[]; a: FlagActions; fallback?: () => void }) {
   const items = flagItems(flags);
   const name = no > 0 ? `Segment ${no}` : "Nested segment";
   const range = flags.start === flags.end ? `page ${flags.start}` : `pages ${flags.start}-${flags.end} (${flags.pages})`;
   return (
-    <div className="split-menu-wrap" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); a.close(); } }}>
-      <div className="split-menu-backdrop" onClick={a.close} />
-      <div ref={box} role="dialog" aria-modal="true" aria-label={`Flags for ${name.toLowerCase()}`} className="split-menu split-flags-dialog">
+    <ModalSheet label={`Flags for ${name.toLowerCase()}`} onClose={a.close} fallback={fallback} className="split-flags-dialog">
         <h2>{name}: {range}</h2>
         {flags.measured < flags.pages && <p className="muted">{flags.measured} of {flags.pages} pages have been measured so far; a flag that needs a page's facts waits for it.</p>}
         {items.length === 0 ? <p className="muted">Nothing is flagged for this segment.</p> : (
@@ -84,8 +81,7 @@ export function FlagsDialog({ flags, no, caveats, a }: { flags: SegmentFlags; no
         )}
         {caveats.map((c) => <p key={c} className="muted">{c}</p>)}
         <div className="row"><button type="button" onClick={a.close}>Close</button></div>
-      </div>
-    </div>
+    </ModalSheet>
   );
 }
 

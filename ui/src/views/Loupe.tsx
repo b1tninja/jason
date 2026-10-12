@@ -290,7 +290,7 @@ export function Loupe(p: LoupeProps) {
     const onKey = (e: KeyboardEvent) => {
       const L = live.current;
       if (!L.enabled) return;
-      if (e.key === "Escape" && s.shown) {
+      if (e.key === "Escape" && s.shown && !document.querySelector("[role=dialog][aria-modal=true]")) { // a modal dialog owns Esc while it is open
         s.escPage = s.page; s.kb = false; el.hidden = true; s.shown = false; s.ask = "";
         if (fixed()) {
           s.tgt.pin(false);
@@ -493,7 +493,7 @@ export function Loupe(p: LoupeProps) {
   if (typeof document === "undefined") return null;
   return createPortal(
     <>
-      <div ref={lens} className="split-loupe" role="img" aria-label="Magnified page" hidden style={{ pointerEvents: "none" }} data-zoom-min={LOUPE_ZOOM_MIN} />
+      <div ref={lens} className="split-loupe" role="img" aria-hidden="true" aria-label="Magnified page" hidden style={{ pointerEvents: "none" }} data-zoom-min={LOUPE_ZOOM_MIN} />
       <div ref={panel} className="split-viewer" role="region" aria-label="Magnified page" hidden data-viewer="" data-corner={p.corner ?? "bottom-right"}>
         <div className="split-viewer-head">
           <strong data-role="title">Page</strong>

@@ -8,7 +8,7 @@ import { dragIntent, type Side } from "./splitLayout";
  * opens and back to what opened it when it closes. Nothing in it is built while it is closed. */
 
 /** Focus moves into `panel` when `open` becomes true, and returns to what had it before when `open` becomes false. */
-export function useOpenFocus(open: boolean, panel: RefObject<HTMLElement>, fallback?: () => void) {
+export function useOpenFocus(open: boolean, panel: RefObject<HTMLElement>, fallback?: () => void, quiet?: { current: boolean }) {
   const opener = useRef<HTMLElement | null>(null);
   const was = useRef(false);
   // read while rendering: the commit that opens the drawer may already have moved the focus (a review focuses its own heading)
@@ -18,7 +18,10 @@ export function useOpenFocus(open: boolean, panel: RefObject<HTMLElement>, fallb
   useEffect(() => {
     if (!open) return;
     const el = panel.current;
-    if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+    // a drawer that was open when the screen loaded (docked by the layout, not opened by a person) does not take the focus from the page
+    const still = !!quiet?.current;
+    if (quiet) quiet.current = false;
+    if (el && !still && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
     return () => {
       const o = opener.current;
       if (o && o !== document.body && o.isConnected) o.focus({ preventScroll: true });
@@ -26,6 +29,73 @@ export function useOpenFocus(open: boolean, panel: RefObject<HTMLElement>, fallb
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+}
+
+const FOCUSABLE = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])';
+const focusables = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((e) => !e.closest("[hidden]"));
+
+/** What a dialog hands the focus back to: the element that had it when the dialog was first rendered. An item of a menu is gone by then (the
+ * menu closed with the act), so the menu's own button stands for it. */
+function openerOf(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const a = document.activeElement as HTMLElement | null;
+  if (a && /^menuitem/.test(a.getAttribute("role") ?? "")) return a.closest(".split-menuwrap")?.querySelector<HTMLElement>("[data-menubtn]") ?? a;
+  return a;
+}
+
+/** A modal dialog's focus (WAI-ARIA dialog pattern): focus goes to `initial` when it opens; Tab and Shift Tab stay inside it; focus that lands
+ * outside it (a page cell focused by a closing menu, a click on the page behind) is brought back; Esc closes it wherever the focus is; and when
+ * it closes the focus returns to what opened it, or to `fallback` when that is gone. */
+export function useModal(panel: RefObject<HTMLElement>, onClose: () => void, initial?: string, fallback?: () => void) {
+  const opener = useRef<HTMLElement | null>(null);
+  const first = useRef(true);
+  if (first.current) { first.current = false; opener.current = openerOf(); }
+  const close = useRef(onClose); close.current = onClose;
+  const back = useRef(fallback); back.current = fallback;
+  useEffect(() => {
+    const el = panel.current;
+    if (!el) return;
+    const start = (initial ? el.querySelector<HTMLElement>(initial) : null) ?? focusables(el)[0] ?? el;
+    start.focus({ preventScroll: true });
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented && !el.contains(e.target as Node)) { e.preventDefault(); close.current(); return; }
+      if (e.key !== "Tab" || !el.contains(e.target as Node)) return;
+      const all = focusables(el);
+      if (all.length === 0) { e.preventDefault(); return; }
+      const at = all.indexOf(e.target as HTMLElement);
+      if (e.shiftKey && at <= 0) { e.preventDefault(); all[all.length - 1].focus(); }
+      else if (!e.shiftKey && (at === all.length - 1 || at < 0)) { e.preventDefault(); all[0].focus(); }
+    };
+    const into = (e: FocusEvent) => {
+      if (el.contains(e.target as Node)) return;
+      const all = focusables(el);
+      (all[0] ?? el).focus({ preventScroll: true });
+    };
+    document.addEventListener("keydown", key);
+    document.addEventListener("focusin", into);
+    return () => {
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("focusin", into);
+      const o = opener.current;
+      if (o && o !== document.body && o.isConnected) o.focus({ preventScroll: true });
+      else back.current?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
+/** A sheet over the page (the page menu, the keyboard map, the flags): a backdrop that closes it, and a modal dialog that keeps the focus (`useModal`). */
+export function ModalSheet({ label, onClose, initial, fallback, className, children }: {
+  label: string; onClose(): void; initial?: string; fallback?: () => void; className?: string; children: ReactNode;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useModal(box, onClose, initial, fallback);
+  return (
+    <div className="split-menu-wrap" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
+      <div className="split-menu-backdrop" onClick={onClose} />
+      <div ref={box} role="dialog" aria-modal="true" aria-label={label} className={`split-menu${className ? ` ${className}` : ""}`}>{children}</div>
+    </div>
+  );
 }
 
 /** One pointer drag, from the first move past a threshold to its end; a tap that never passes it is left to the click. */
@@ -56,10 +126,10 @@ function useDrag(side: Side, open: boolean, onIntent: (i: "open" | "close") => v
 export function EdgeTab({ side, drawerId, label, count, onOpen, slot = 0 }: { side: Side; drawerId: string; label: string; count?: number; onOpen(): void; slot?: number }) {
   const drag = useDrag(side, false, () => onOpen());
   return (
-    <button type="button" className="split-edgetab" data-side={side} data-slot={slot} data-for={drawerId} aria-expanded={false} aria-controls={`split-drawer-${drawerId}`}
+    <button type="button" className="split-edgetab" data-side={side} data-slot={slot} data-for={drawerId} aria-expanded={false}
       aria-label={`${label}${count !== undefined ? `, ${count}` : ""}. Open the ${label.toLowerCase()} drawer`} title={`${label}: tap, or drag toward the pages`}
       onClick={() => { if (!drag.dragged.current) onOpen(); }} {...drag.props}>
-      <span className="split-edgetab-words" aria-hidden="true">{label}{count !== undefined ? <b>{count}</b> : null}</span>
+      <span className="split-edgetab-words" aria-hidden="true">{label}{count !== undefined ? <> <b>{count}</b></> : null}</span>
     </button>
   );
 }
@@ -83,7 +153,8 @@ export interface DrawerProps {
 
 export function Drawer({ id, label, open, side, onClose, children, docked = false, canPin, onPin, full, onFull, width, locked, fallbackFocus, head }: DrawerProps) {
   const panel = useRef<HTMLElement>(null);
-  useOpenFocus(open, panel, fallbackFocus);
+  const born = useRef(open && docked);
+  useOpenFocus(open, panel, fallbackFocus, born);
   const drag = useDrag(side, true, (i) => { if (i === "close" && !locked) onClose(); });
   useEffect(() => {
     if (open && !docked) panel.current?.setAttribute("data-entered", "");

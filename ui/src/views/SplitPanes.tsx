@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "../components";
 import { Glyph } from "../components/Glyph";
+import { ModalSheet } from "./SplitDrawer";
 import type { FactsCache } from "./splitFacts";
 import { BAND_GLYPH, TURN_DEGREES, figureSizes, pageAlt, sidewaysWords, stateWord, turnWord, type PageFact, type Size, type Suggestion, type Turn } from "./splitModel";
 import type { ThumbLoader } from "./splitThumbs";
@@ -65,25 +66,44 @@ export function ComparePane({ page, pages, prev, prevSegFirst, segFirst, loader,
   );
 }
 
+/** A typed count held to a range. The value used is always in range; `note` says so aloud when what was typed was not (WCAG 3.3.1, 3.3.3, D16). */
+export function countFrom(raw: string, min: number, max: number): { n: number; note: string } {
+  if (raw.trim() === "") return { n: min, note: "" }; // a field being retyped is not yet wrong
+  const typed = Number(raw);
+  const ok = raw.trim() !== "" && Number.isInteger(typed) && typed >= min && typed <= max;
+  if (ok) return { n: typed, note: "" };
+  const n = Math.min(max, Math.max(min, Math.trunc(typed) || min));
+  return { n, note: `Enter a whole number from ${min} to ${max}. Using ${n}.` };
+}
+
 export interface MenuActions {
   isStart: boolean; first: boolean; readOnly: boolean; sug: Suggestion | undefined; selectionSize: number; canNest: boolean; nested: boolean;
   mark(): void; unmark(): void; nest(): void; level(l: number): void; larger(): void; accept(): void; reject(): void; retry(): void;
   everyNth(n: number): void; markEach(): void; mergeSelection(): void; close(): void;
+  /** the file's page count, and a way to move this page's start to another page without dragging it (WCAG 2.5.7) */
+  pages: number; move(to: number): void;
   /** the page's measured facts, the turn a person chose for it (applied in the new files only), and a way to set or clear it */
   fact?: PageFact; turn?: Turn; setTurn(t: Turn | null): void;
 }
 
 /** The page menu: a long press, a right click, or `L`. A sheet, not a pop-up at the pointer, so a thumb reaches it. */
 export function PageMenu({ page, a }: { page: number; a: MenuActions }) {
-  const menu = useRef<HTMLDivElement>(null);
   const [every, setEvery] = useState(2);
+  const [everyNote, setEveryNote] = useState("");
   const [why, setWhy] = useState(false);
-  useEffect(() => { menu.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
+  const [dest, setDest] = useState("");
+  const [bad, setBad] = useState("");
   const done = (fn: () => void) => () => { fn(); a.close(); };
+  const movable = !a.first && !a.readOnly && a.isStart;
+  const goMove = (e: React.FormEvent) => {
+    e.preventDefault();
+    const n = Number(dest);
+    if (!Number.isInteger(n) || n < 2 || n > a.pages) { setBad(`Enter a whole page number from 2 to ${a.pages}.`); return; }
+    if (n === page) { setBad(`This start is already on page ${page}.`); return; }
+    a.move(n); a.close();
+  };
   return (
-    <div className="split-menu-wrap" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); a.close(); } }}>
-      <div className="split-menu-backdrop" onClick={a.close} />
-      <div ref={menu} role="dialog" aria-label={`Page ${page}`} className="split-menu" aria-modal="true">
+    <ModalSheet label={`Page ${page}`} onClose={a.close}>
         <h2>Page {page}</h2>
         {a.first && <p className="muted"><Glyph name="lock" size={12} /> The first page always starts a segment.</p>}
         {a.fact && !a.fact.pending && (
@@ -97,6 +117,18 @@ export function PageMenu({ page, a }: { page: number; a: MenuActions }) {
           {!a.first && !a.readOnly && a.canNest && !a.nested && <li><button type="button" onClick={done(a.nest)}>{a.isStart ? "Make this start nested (inside the one before)" : "Starts a segment inside this one"}</button></li>}
           {!a.first && !a.readOnly && a.isStart && a.nested && <li><button type="button" onClick={done(() => a.level(0))}>Make this a top-level start</button></li>}
           {!a.first && !a.readOnly && a.isStart && <li><button type="button" onClick={done(a.unmark)}>Remove this start (merge with the previous)</button></li>}
+          {movable && page - 1 >= 2 && <li><button type="button" onClick={done(() => a.move(page - 1))}>Move this start one page earlier (to page {page - 1})</button></li>}
+          {movable && page + 1 <= a.pages && <li><button type="button" onClick={done(() => a.move(page + 1))}>Move this start one page later (to page {page + 1})</button></li>}
+          {movable && (
+            <li>
+              <form className="split-menu-move" noValidate onSubmit={goMove} aria-label="Move this start to a page">
+                <label>Move this start to page <input type="number" inputMode="numeric" min={2} max={a.pages} value={dest} aria-invalid={bad ? true : undefined} aria-describedby={bad ? "split-move-err" : undefined}
+                  onChange={(e) => { setDest(e.target.value); setBad(""); }} /></label>
+                <button type="submit">Move</button>
+                {bad && <p id="split-move-err" role="alert">{bad}</p>}
+              </form>
+            </li>
+          )}
           {a.sug && !a.readOnly && <li><button type="button" onClick={done(a.accept)}>Accept the suggestion</button></li>}
           {a.sug && !a.readOnly && <li><button type="button" onClick={done(a.reject)}>Reject the suggestion</button></li>}
           {a.sug && <li><button type="button" aria-expanded={why} onClick={() => setWhy(!why)}>Why was this suggested?</button></li>}
@@ -111,15 +143,16 @@ export function PageMenu({ page, a }: { page: number; a: MenuActions }) {
         {a.selectionSize > 1 && !a.readOnly && (
           <div className="split-menu-sel" role="group" aria-label={`The ${a.selectionSize} selected pages`}>
             <h3>{a.selectionSize} pages selected</h3>
-            <label className="row">Every <input type="number" min={1} max={500} value={every} onChange={(e) => setEvery(Math.max(1, Number(e.target.value) || 1))} aria-label="Every how many pages" /> pages
+            <label className="row">Every <input type="number" min={1} max={500} value={every} onChange={(e) => { const c = countFrom(e.target.value, 1, 500); setEvery(c.n); setEveryNote(c.note); }} aria-label="Every how many pages"
+                aria-invalid={everyNote ? true : undefined} aria-describedby={everyNote ? "split-every-err" : undefined} /> pages
+              {everyNote && <span id="split-every-err" role="alert" className="split-field-err">{everyNote}</span>}
               <button type="button" onClick={done(() => a.everyNth(every))}>Every {every}{every === 1 ? "st" : every === 2 ? "nd" : every === 3 ? "rd" : "th"} page in the selection starts a segment</button></label>
             <button type="button" onClick={done(a.markEach)}>Mark each page in the selection as a start</button>
             <button type="button" onClick={done(a.mergeSelection)}>Merge the selection into one segment</button>
           </div>
         )}
         <div className="row"><button type="button" onClick={a.close}>Close</button></div>
-      </div>
-    </div>
+    </ModalSheet>
   );
 }
 
@@ -147,19 +180,14 @@ export const KEYS: [string, string][] = [
   ["Esc", "Close a menu, a drawer, or focus; clear the selection"],
 ];
 
-export function KeyHelp({ onClose }: { onClose(): void }) {
-  const close = useRef<HTMLButtonElement>(null);
-  useEffect(() => { close.current?.focus(); }, []);
+export function KeyHelp({ onClose, fallback }: { onClose(): void; fallback?: () => void }) {
   return (
-    <div className="split-menu-wrap" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
-      <div className="split-menu-backdrop" onClick={onClose} />
-      <div role="dialog" aria-label="Keyboard map" className="split-menu" aria-modal="true">
+    <ModalSheet label="Keyboard map" onClose={onClose} fallback={fallback} initial="button">
         <h2>Keyboard map</h2>
         <dl className="split-keys">{KEYS.map(([k, v]) => <div key={k}><dt><kbd>{k}</kbd></dt><dd>{v}</dd></div>)}</dl>
         <p className="muted">On a touch screen: tap marks, press and hold opens the page menu, and the grip on a start can be dragged to another page. With the Magnifier button on, press and hold a page for a moment, then drag: the lens rides above your finger (the page menu is then opened from the Pages menu or with the L key). In the fixed corner viewer mode the same hold shows the page in a band above the action bar.</p>
         <p className="muted">The corner viewer (the View menu, Magnifier, Mode: fixed corner viewer) keeps the last page after the pointer leaves, can be pinned to a page with its Pin button, shows a region or the whole page, hops to the opposite corner when the pointer stays under it (the View menu's Do not hop turns that off), and is resized by its corner grip (drag it, or focus it and use the arrow keys).</p>
-        <button type="button" ref={close} onClick={onClose}>Close</button>
-      </div>
-    </div>
+        <button type="button" onClick={onClose}>Close</button>
+    </ModalSheet>
   );
 }

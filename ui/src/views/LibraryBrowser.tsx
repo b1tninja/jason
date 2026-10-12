@@ -107,7 +107,7 @@ export function LibraryBrowser({ selectedId, onSelect, fetcher = libraryFiles }:
           <select id={`${id}-o`} value={applied.sort} onChange={(e) => ask({ ...applied, sort: e.target.value as LibrarySort, order: "" })}>
             {(Object.keys(SORT_WORDS) as LibrarySort[]).map((s) => <option key={s} value={s}>{SORT_WORDS[s]}</option>)}
           </select></div>
-        <button type="button" aria-label={`Order: ${answer?.order === "asc" ? "smallest or earliest first" : "largest or latest first"}. Press to reverse`}
+        <button type="button" aria-label={`${answer?.order === "asc" ? "Ascending" : "Descending"}: ${answer?.order === "asc" ? "smallest or earliest first" : "largest or latest first"}. Press to reverse the order`}
           onClick={() => ask({ ...applied, order: (answer?.order ?? "desc") === "asc" ? "desc" : "asc" })} disabled={busy}>{answer?.order === "asc" ? "Ascending" : "Descending"}</button>
       </div>
 

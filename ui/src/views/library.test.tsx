@@ -136,7 +136,7 @@ describe("the library browser", () => {
     await waitFor(() => expect(f).toHaveBeenLastCalledWith(expect.objectContaining({ q: "alpha", minPages: "20", since: "2099-01-01" }), ""));
     await user.selectOptions(screen.getByLabelText("Sort by"), "pages");
     await waitFor(() => expect(f).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "pages" }), ""));
-    await user.click(screen.getByRole("button", { name: /Order: largest or latest first/ }));
+    await user.click(screen.getByRole("button", { name: /Descending: largest or latest first/ }));
     await waitFor(() => expect(f).toHaveBeenLastCalledWith(expect.objectContaining({ order: "asc" }), ""));
     await user.selectOptions(screen.getByLabelText("Text"), "no");
     await waitFor(() => expect(f).toHaveBeenLastCalledWith(expect.objectContaining({ text: "no" }), ""));
