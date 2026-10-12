@@ -6,9 +6,10 @@ import { BasisPill, OfficeRowItem, WorkflowRail } from "../components";
 import { resetServerSession } from "../lib/api";
 import {
   ACT_ANSWER, ACTING, ACTING_PAGE, BILL_PAGE, CONTACT_EVENT, DEFINITION_PAGE, DEFINITIONS_PAGE, ELECTION_PAGE, EMPTY_PAGE, MANAGER, PAGE, PAUSED_PAGE,
+  EMPTY_ITEMS_PAGE, GROUPS_PAGE, HELD_ITEMS_PAGE, ITEMS_PAGE, NO_SUPPLY_PAGE, NO_SUPPLY_WHY, REMEDY_PAGE, SUPPLY_ANSWER, SUPPLY_DRY,
   HELD_DEF, HELD_PAGE, HELD_ROW, PENDING_PAGE, QUIET_RUN_PAGE, RUN_PAGE, START_BAD, START_DONE, START_OK, ROWS, definitionsPage, due, manyYours, row, runPage, step, workPage,
 } from "../lib/work.fixtures";
-import { parseRoute, headingLine, runHref } from "../lib/work";
+import { clockWords, headingLine, itemRollUp, itemRows, parseItemLines, parseRoute, runHref, setWords } from "../lib/work";
 import owned from "../ownerScreens.json";
 import { WorkView } from "./WorkView";
 
@@ -711,5 +712,240 @@ describe("Work, the pieces", () => {
     expect(panel).toHaveTextContent("Waiting on the approvals engine");
     expect(panel).toHaveTextContent("in review");
     expect(within(panel).queryByRole("button", { name: /Mark done|Skip/ })).toBeNull();
+  });
+});
+
+
+// -- item sets, step groups, and a remedy (engine round three) ---------------------------------------------------------------
+
+const ITEMS_ID = "run-1100aa22bb";
+const GROUPS_ID = "run-2200bb33cc";
+const REMEDY_ID = "run-3300cc44dd";
+
+describe("Work, item sets: the table, the roll-up, and the clocks", () => {
+  it("draws one row for each item with its state, its clock, and when it is due, in words", async () => {
+    serve({ runs: { [ITEMS_ID]: { body: ITEMS_PAGE } } });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "2. Decide each request" }).closest("section")!;
+    const table = within(panel).getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Item", "State", "Clock", "Due"]);
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(12);
+    expect(within(rows[0]).getByRole("rowheader")).toHaveTextContent("req:01");
+    expect(rows[0]).toHaveTextContent("done");
+    expect(rows[0]).toHaveTextContent("met");
+    expect(rows[3]).toHaveTextContent("req:04");
+    expect(rows[3]).toHaveTextContent("needs a person");
+    expect(rows[3]).toHaveTextContent("late by 3 days");               // a word, not only a colour
+    expect(rows[3]).toHaveAttribute("data-late", "true");
+    expect(rows[4]).toHaveTextContent("late by 1 day");
+    expect(rows[8]).toHaveTextContent("due in 5 days");
+    expect(rows[8]).not.toHaveAttribute("data-late");
+    expect(within(rows[3]).getByText("late by 3 days").closest("span")?.querySelector("svg")).not.toBeNull();   // with a glyph beside it
+    expect(within(panel).getByRole("region", { name: "Items of step 2, Decide each request" })).toHaveAttribute("tabindex", "0");   // scrolls by keyboard
+  });
+
+  it("rolls the items up: 3 of 12 done, 2 late", async () => {
+    serve({ runs: { [ITEMS_ID]: { body: ITEMS_PAGE } } });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "2. Decide each request" }).closest("section")!;
+    expect(within(panel).getByText("3 of 12 done, 2 late")).toBeInTheDocument();
+    // the rail says it too
+    const rail = screen.getByRole("navigation", { name: "Steps of this run" });
+    expect(rail).toHaveTextContent("3 of 12 items done");
+  });
+
+  it("draws the clocks of a step's items as one card, not twelve, with the count late and the nearest date", async () => {
+    serve({ runs: { [ITEMS_ID]: { body: ITEMS_PAGE } } });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const clocks = screen.getByRole("heading", { level: 2, name: "Clocks" }).closest("section")!;
+    const cards = clocks.querySelectorAll("li.work-clock");
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveAttribute("data-item-clocks", "12");
+    expect(cards[0]).toHaveTextContent("2 late");
+    expect(cards[0]).toHaveTextContent("one clock for each of its 12 items");
+    expect(cards[0]).toHaveTextContent("next due");
+    expect(cards[0]).toHaveTextContent("PERSON");
+    expect(clocks.textContent).not.toContain("req:04");
+  });
+
+  it("folds a long table after fifty items and shows the rest on request", async () => {
+    const ids = Array.from({ length: 60 }, (_, i) => `req:${i + 100}`);
+    const base = ITEMS_PAGE.steps[1];
+    const page = { ...ITEMS_PAGE, clocks: [], steps: [ITEMS_PAGE.steps[0], { ...base, items: ids.map((item) => ({ item, state: "needs a person" })) }] };
+    serve({ runs: { [ITEMS_ID]: { body: page } } });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "2. Decide each request" }).closest("section")!;
+    expect(within(panel).getAllByRole("row")).toHaveLength(51);
+    const more = within(panel).getByRole("button", { name: "Show all 60 items" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(more);
+    expect(within(panel).getAllByRole("row")).toHaveLength(61);
+    expect(within(panel).getByRole("button", { name: "Show the first 50" })).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
+describe("Work, item sets: supplying items", () => {
+  it("says a set with no items is empty and what the step waits for, and offers the form", async () => {
+    serve({ runs: { [ITEMS_ID]: { body: EMPTY_ITEMS_PAGE } } });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "1. Decide each request" }).closest("section")!;
+    expect(within(panel).getByText("No items have been supplied to the set requests yet. This step waits until some are.")).toBeInTheDocument();
+    expect(within(panel).queryByRole("table")).toBeNull();
+    expect(within(panel).getByRole("heading", { level: 3, name: "Supply items" })).toBeInTheDocument();
+  });
+
+  it("gives the server's sentence, and no form, to a viewer who may not supply", async () => {
+    serve({ runs: { [ITEMS_ID]: { body: NO_SUPPLY_PAGE } } });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "1. Decide each request" }).closest("section")!;
+    expect(panel).toHaveTextContent(NO_SUPPLY_WHY);
+    expect(within(panel).queryByRole("heading", { name: "Supply items" })).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Check the list" })).toBeNull();
+  });
+
+  it("checks the list on the server first, then records it as one act with the run's n and no name", async () => {
+    const calls = serve({ runs: { [ITEMS_ID]: { body: EMPTY_ITEMS_PAGE } }, writes: [{ body: SUPPLY_DRY }, { body: SUPPLY_ANSWER }] });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "1. Decide each request" }).closest("section")!;
+    const check = within(panel).getByRole("button", { name: "Check the list" });
+    expect(check).toBeDisabled();                                                       // nothing typed
+    await userEvent.type(within(panel).getByLabelText("Item ids for the set requests, one to a line"), "req:20{enter}req:21{enter}{enter}req:01");
+    expect(within(panel).getByText("3 ids typed.")).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Check the list" }));
+    expect(await within(panel).findByText(/2 new items would be added; 1 already in the set \(req:01\)\. Nothing is recorded yet\./)).toBeInTheDocument();
+    expect(writes(calls)).toHaveLength(1);
+    expect(writes(calls)[0].body).toEqual({ act: "supply-items", dryRun: true, set: "requests", items: ["req:20", "req:21", "req:01"] });
+    await userEvent.click(within(panel).getByRole("button", { name: "Supply 2 items" }));
+    const group = within(panel).getByRole("group", { name: "Supply" });
+    expect(group).toHaveTextContent(`under the name ${MANAGER}`);
+    expect(group).toHaveTextContent("2 new items");
+    expect(writes(calls)).toHaveLength(1);                                              // one click writes nothing
+    await userEvent.click(within(group).getByRole("button", { name: "Yes, do it" }));
+    await waitFor(() => expect(writes(calls)).toHaveLength(2));
+    expect(writes(calls)[1].body).toEqual({ act: "supply-items", set: "requests", items: ["req:20", "req:21", "req:01"], expect: 9 });
+    expect(writes(calls)[1].body).not.toHaveProperty("by");
+    expect(await screen.findByText(/Recorded: .*supplied 2 items to the set requests/)).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.url.startsWith("/api/work-run")).length).toBeGreaterThan(1));      // the run is read again
+  });
+
+  it("shows the server's own refusal of a name and offers no record", async () => {
+    const refusal = "'Jane Doe' is not an item id: letters, digits, and : _ . # / - only, at most 64 characters (an opaque handle, never a name or an address)";
+    const calls = serve({ runs: { [ITEMS_ID]: { body: EMPTY_ITEMS_PAGE } }, writes: [{ status: 400, body: { error: refusal } }] });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "1. Decide each request" }).closest("section")!;
+    await userEvent.type(within(panel).getByLabelText("Item ids for the set requests, one to a line"), "Jane Doe");
+    await userEvent.click(within(panel).getByRole("button", { name: "Check the list" }));
+    const alert = await within(panel).findByRole("alert");
+    expect(alert).toHaveTextContent(refusal);
+    expect(within(panel).queryByRole("button", { name: /^Supply \d/ })).toBeNull();
+    expect(writes(calls)).toHaveLength(1);
+  });
+
+  it("asks the server again when the list changes after a check", async () => {
+    serve({ runs: { [ITEMS_ID]: { body: EMPTY_ITEMS_PAGE } }, writes: [{ body: SUPPLY_DRY }] });
+    await open(ITEMS_ID, "request-month", "Requests, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "1. Decide each request" }).closest("section")!;
+    const ids = within(panel).getByLabelText("Item ids for the set requests, one to a line");
+    await userEvent.type(ids, "req:20");
+    await userEvent.click(within(panel).getByRole("button", { name: "Check the list" }));
+    await within(panel).findByRole("button", { name: "Supply 2 items" });
+    await userEvent.type(ids, "{enter}req:22");
+    expect(within(panel).queryByRole("button", { name: /^Supply \d/ })).toBeNull();           // the check is stale: ask again
+    expect(within(panel).getByRole("button", { name: "Check the list" })).toBeEnabled();
+  });
+});
+
+describe("Work, step groups", () => {
+  it("draws a titled group as a collapsible section, open where it holds the current step and shut where it is not yet reached", async () => {
+    serve({ runs: { [GROUPS_ID]: { body: GROUPS_PAGE } } });
+    await open(GROUPS_ID, "group-flow", "Group flow, October");
+    const rail = screen.getByRole("navigation", { name: "Steps of this run" });
+    const intake = within(rail).getByRole("button", { name: /Intake/ });
+    const board = within(rail).getByRole("button", { name: /The board/ });
+    expect(intake).toHaveAttribute("aria-expanded", "true");
+    expect(board).toHaveAttribute("aria-expanded", "false");
+    expect(intake).toHaveTextContent("needs a person");
+    expect(intake).toHaveTextContent("0 of 2 done");
+    expect(board).toHaveTextContent("not started");
+    expect(within(rail).getByRole("list", { name: "Intake steps" })).not.toHaveAttribute("hidden");
+    expect(rail.querySelector('ol[aria-label="The board steps"]')).toHaveAttribute("hidden");        // a name is not computed for a hidden list
+    expect(within(rail).queryByRole("button", { name: /3 Decide/ })).toBeNull();              // hidden steps are not reachable
+  });
+
+  it("opens and closes a group from the keyboard, and the person's choice stays", async () => {
+    serve({ runs: { [GROUPS_ID]: { body: GROUPS_PAGE } } });
+    await open(GROUPS_ID, "group-flow", "Group flow, October");
+    const rail = screen.getByRole("navigation", { name: "Steps of this run" });
+    const board = within(rail).getByRole("button", { name: /The board/ });
+    board.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(board).toHaveAttribute("aria-expanded", "true");
+    expect(within(rail).getByRole("button", { name: /3\s*Decide/ })).toBeInTheDocument();
+    await userEvent.keyboard(" ");
+    expect(board).toHaveAttribute("aria-expanded", "false");
+    const intake = within(rail).getByRole("button", { name: /Intake/ });
+    await userEvent.click(intake);
+    expect(intake).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps a run that declares no groups exactly as it was", async () => {
+    serve();
+    await open();
+    const rail = screen.getByRole("navigation", { name: "Steps of this run" });
+    expect(rail.querySelectorAll("[data-group]")).toHaveLength(0);
+  });
+});
+
+describe("Work, a remedy", () => {
+  it("says on the remedy step that it remedies the failed check above, which stays recorded as failed", async () => {
+    serve({ runs: { [REMEDY_ID]: { body: REMEDY_PAGE } } });
+    await open(REMEDY_ID, "remedy-flow", "Remedy flow, October");
+    const panel = screen.getByRole("heading", { level: 2, name: "2. Complete the roster" }).closest("section")!;
+    expect(within(panel).getByText("This step is the remedy for the failed check above; the check stays recorded as failed.", { exact: false })).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Go to the check: step 1, The roster is complete" }));
+    const check = screen.getByRole("heading", { level: 2, name: "1. The roster is complete" }).closest("section")!;
+    expect(check).toHaveTextContent("This check failed and stays recorded as failed.");
+    expect(check).toHaveTextContent("Step 2, Complete the roster, is its remedy and is open");
+    expect(check).toHaveTextContent("This step failed: the roster is incomplete");
+  });
+});
+
+describe("Work, a held run's items", () => {
+  it("shows a count of items and no id outside the private view", async () => {
+    serve({ runs: { [ITEMS_ID]: { body: HELD_ITEMS_PAGE } } });
+    await open(ITEMS_ID, "hearing", "A member's hearing");
+    expect(screen.getByText(/12 items; their ids show only in the private view/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/req:\d/);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Supply items" })).toBeNull();
+  });
+});
+
+describe("Work, the item words", () => {
+  it("words a clock without colour", () => {
+    expect(clockWords({ status: "overdue", days: -3 })).toEqual({ text: "late by 3 days", late: true });
+    expect(clockWords({ status: "overdue", days: -1 })).toEqual({ text: "late by 1 day", late: true });
+    expect(clockWords({ status: "due", days: 0 })).toEqual({ text: "due today", late: false });
+    expect(clockWords({ status: "upcoming", days: 5 })).toEqual({ text: "due in 5 days", late: false });
+    expect(clockWords({ status: "satisfied", days: 2 })).toEqual({ text: "met", late: false });
+    expect(clockWords({ status: "not applicable, recorded", days: 2 })).toEqual({ text: "not applicable, recorded", late: false });
+    expect(clockWords({ status: "undated", days: null })).toEqual({ text: "no date yet", late: false });
+    expect(clockWords(null)).toEqual({ text: "no clock", late: false });
+  });
+
+  it("rolls a step's items up by the loader's own clocks", () => {
+    const rows = itemRows(ITEMS_PAGE.steps[1], ITEMS_PAGE.clocks);
+    expect(itemRollUp(rows)).toBe("3 of 12 done, 2 late");
+    expect(itemRollUp([])).toBe("0 of 0 done");
+    expect(itemRollUp([{ item: "a", state: "failed", clock: null, words: "no clock", late: false }, { item: "b", state: "skipped", clock: null, words: "no clock", late: false }]))
+      .toBe("0 of 2 done, 1 failed, 1 skipped");
+  });
+
+  it("reads item ids one to a line, once each, in order", () => {
+    expect(parseItemLines(" a \r\n\r\nb\na\n  \nc d\n")).toEqual(["a", "b", "c d"]);          // a line is one id: the server refuses "c d"
+    expect(parseItemLines("")).toEqual([]);
+    expect(setWords("requests")).toBe("the set requests");
+    expect(setWords("")).toBe("the run's own items");
   });
 });

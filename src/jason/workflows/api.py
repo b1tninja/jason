@@ -343,13 +343,42 @@ def arrived(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_o
 
 def supply_items(data_dir: Path | str, run_id: str, item_set: str, items: Iterable[Any], by: str, *,
                  roles_of: Callable[[str], Iterable[Any]] | None = None, record: str = "", readers: Readers | None = None,
-                 expect: int | None = None, at: str | None = None, today: date | None = None) -> dict[str, Any]:
+                 expect: int | None = None, at: str | None = None, today: date | None = None,
+                 dry_run: bool = False) -> dict[str, Any]:
     """Give a named item set (``""`` is the run's own) more items while the run goes. Each item is an opaque id, or
     ``{"id": ..., "dates": {slot: "YYYY-MM-DD"}}`` for the dates its own clocks read (those need a ``record``). The log gets a
-    ``note`` event whose detail has ``items_supplied``; the steps that repeat over the set then take the items."""
+    ``note`` event whose detail has ``items_supplied``; the steps that repeat over the set then take the items.
+
+    ``dry_run`` makes every check a real call makes (the ids, the dates, the person, the run's state) and appends nothing: it
+    answers ``{"ok": True, "dryRun": True, "set", "wouldAdd", "alreadyThere", "withDates", "text", "record"}`` or is refused with
+    the same sentence a real call is refused with."""
+    if dry_run:
+        return _supply_preview(data_dir, run_id, item_set, items, by, roles_of=roles_of, record=record, readers=readers,
+                               expect=expect, today=today)
     return _do(data_dir, run_id, by, lambda wf, v: steps.supply_items_act(wf, v, item_set=item_set, items=items, by=by,
                                                                           roles_of=roles_of, record=record),
                expect=expect, today=today, at=at, readers=readers)
+
+
+def _supply_preview(data_dir: Path | str, run_id: str, item_set: str, items: Iterable[Any], by: str, *,
+                    roles_of: Callable[[str], Iterable[Any]] | None, record: str, readers: Readers | None,
+                    expect: int | None, today: date | None) -> dict[str, Any]:
+    """What ``supply_items`` would record, checked the same way and written nowhere (it takes no lock and appends nothing)."""
+    day = _today(today)
+    definition = store.locate(data_dir, run_id)
+    wf = _workflow(definition)
+    run = store.read(data_dir, definition, run_id)
+    if expect is not None and expect != run.n:
+        raise RunChanged(f"run {run_id} changed: you saw n={expect}, it is now n={run.n}; read it again", expected=expect, actual=run.n)
+    view = _view(run, wf, day, readers)
+    act = steps.supply_items_act(wf, view, item_set=item_set, items=items, by=by, roles_of=roles_of, record=record)
+    entries = act.detail["items_supplied"]["items"]
+    have = set(view.item_sets.get(item_set, ()))
+    ids = [e["id"] if isinstance(e, dict) else e for e in entries]
+    return {"ok": True, "dryRun": True, "run": run_id, "set": item_set, "wouldAdd": [i for i in ids if i not in have],
+            "alreadyThere": [i for i in ids if i in have],
+            "withDates": [e["id"] for e in entries if isinstance(e, dict)], "text": act.detail.get("text", ""),
+            "record": act.detail.get("record", ""), "n": run.n}
 
 
 def skip(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,

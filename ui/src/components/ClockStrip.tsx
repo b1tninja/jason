@@ -4,7 +4,7 @@ import { DueDate } from "./DueDate";
 import { Pill } from "./Pill";
 import { ReadingLabel } from "./ReadingLabel";
 import { Recitation, type Citation } from "./Recitation";
-import type { LawWords, RunClock } from "../lib/work";
+import { clockWords, type LawWords, type RunClock } from "../lib/work";
 
 /** The statute's words as the authorities shelf holds them, as a `Citation` for `Recitation`. A shelf that lacks the
  * section recites nothing and says why. A path the server may have named as the source is not shown. */
@@ -61,10 +61,49 @@ function ClockCard({ clock, today }: { clock: RunClock; today?: Date }) {
   );
 }
 
+/** The clocks one step keeps for each of its items, as one card: how many, how many are late, and the nearest date, with the
+ * basis word. Each item's own date and words are in the step's item table; the law's words (if the basis is the law) are once. */
+function ItemClockCard({ clocks, today }: { clocks: readonly RunClock[]; today?: Date }) {
+  const head = clocks[0];
+  const late = clocks.filter((c) => clockWords(c).late);
+  const open = clocks.filter((c) => c.due && ["upcoming", "due", "overdue"].includes(c.status)).map((c) => c.due as string).sort();
+  const next = open[0] ?? null;
+  const pastLegal = head.legal && late.length > 0;
+  return (
+    <li className={`work-clock work-clock-items${late.length ? " work-clock-past" : ""}`} data-item-clocks={clocks.length}>
+      <div className="work-clock-head">
+        <strong>{head.label || head.stepTitle || head.key}</strong> <BasisPill basis={head.basis} label={head.basisLabel} />
+        {head.cite && <span className="muted"> {head.cite}</span>}
+      </div>
+      <p className="muted work-clock-scope">{head.stepTitle ? `Step: ${head.stepTitle}` : "A step"} · one clock for each of its {clocks.length} {clocks.length === 1 ? "item" : "items"}</p>
+      <p>
+        {late.length ? <><Glyph name="triangle-alert" size="1em" /> <strong>{late.length} late</strong>, </> : "None late, "}
+        {next ? <>next due <DueDate iso={next} today={today} /></> : "no date to come"}. Each item's date is in the step's table.
+      </p>
+      {pastLegal && (
+        <p className="work-past" role="note"><Glyph name="triangle-alert" size="1em" /> Past a legal date for {late.length} {late.length === 1 ? "item" : "items"}. The law's words are below.</p>
+      )}
+      {head.law && <LawBlock law={head.law} cite={head.cite} />}
+    </li>
+  );
+}
+
 /** The run's deadlines, each with whose date it is. A `law` clock recites the statute's operative words from the stored text
  * before any reading, and jason's reading follows, labeled as a reading. A run past a legal clock says so in the law's
  * words. A proposed number is never drawn as a stamp (`BasisPill`). */
 export function ClockStrip({ clocks, today }: { clocks: readonly RunClock[]; today?: Date }) {
   if (!clocks.length) return <p className="muted">This run has no dates yet.</p>;
-  return <ul className="work-clocks">{clocks.map((c) => <ClockCard key={c.key} clock={c} today={today} />)}</ul>;
+  const perItem = new Map<string, RunClock[]>();
+  for (const c of clocks) if (c.item) perItem.set(c.step, [...(perItem.get(c.step) ?? []), c]);
+  const seen = new Set<string>();
+  return (
+    <ul className="work-clocks">
+      {clocks.map((c) => {
+        if (!c.item) return <ClockCard key={c.key} clock={c} today={today} />;
+        if (seen.has(c.step)) return null;           // the step's item clocks are one card, drawn where the first of them stands
+        seen.add(c.step);
+        return <ItemClockCard key={`items-${c.step}`} clocks={perItem.get(c.step) ?? [c]} today={today} />;
+      })}
+    </ul>
+  );
 }

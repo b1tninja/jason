@@ -468,6 +468,152 @@ def test_opening_through_the_stores_readers_runs_a_plain_check_as_before(run, mo
     assert states(run, rid)[C1] == "done" and states(run, rid)[C2] == "needs a person"
 
 
+# --- item sets: --supply --------------------------------------------------------------------------------------------
+
+@pytest.fixture
+def items(run):
+    """``run`` with the made-up item flow (steps over the set ``requests``, a per-item clock) registered beside example-cycle."""
+    from test_workflows_engine_v3 import ITEMS, item_flow
+
+    definitions.register(item_flow())
+    code, out, err = run("--start", ITEMS, "--subject", "period:2099-10", "--label", "Item flow", "--by", OWNER, "--yes", "--json", *ASOF)
+    assert code == 0, err
+    rid = json.loads(out)["run"]["id"]
+    code, out, err = run("--open", rid, "--by", OWNER, "--yes", *ASOF)
+    assert code == 0, err
+    return rid
+
+
+def shown(run, rid) -> dict:
+    code, out, err = run("--show", rid, "--json", *ASOF)
+    assert code == 0, err
+    return json.loads(out)
+
+
+def supply(run, rid, *extra, by=OWNER):
+    return run("--supply", rid, "--set", "requests", "--by", by, *extra, *ASOF)
+
+
+def test_supply_is_in_the_help_and_is_a_write_that_needs_by(run, capsys):
+    with pytest.raises(SystemExit):
+        parser().parse_args(["workflow", "--help"])
+    text = capsys.readouterr().out
+    for option in ("--supply", "--set NAME", "--item-date"):
+        assert option in text
+    code, out, err = run("--supply", "run-x", "--item", "a")
+    assert code == 2 and "--supply is a write: it needs --by" in err
+
+
+def test_supply_without_yes_prints_what_would_be_recorded_and_writes_nothing(items, run):
+    before = shown(run, items)["n"]
+    code, out, err = supply(run, items, "--item", "req:1", "--item", "req:2", "--item", "req:1")
+    assert code == 0, err
+    assert "would supply 2 items to the set requests" in out and "nothing is written without --yes" in out
+    assert "new: req:1, req:2" in out
+    assert shown(run, items)["n"] == before and "itemSets" not in shown(run, items)
+    code, out, err = supply(run, items, "--item", "req:1", "--json")
+    body = json.loads(out)
+    assert code == 0 and body["dryRun"] is True and body["wouldAdd"] == ["req:1"] and body["set"] == "requests"
+
+
+def test_supply_with_yes_records_the_items_in_order_and_a_second_supply_adds_only_new_ones(items, run):
+    code, out, err = supply(run, items, "--item", "req:1", "--item", "req:2", "--yes")
+    assert code == 0, err
+    assert "supplied 2 items to the set requests by " + OWNER in out and "note" in out
+    body = shown(run, items)
+    assert body["itemSets"] == {"requests": ["req:1", "req:2"]} and body["n"] == shown(run, items)["n"]
+    step1 = next(s for s in body["steps"] if s["id"] == "i.1")
+    assert [i["item"] for i in step1["items"]] == ["req:1", "req:2"]
+    code, out, err = supply(run, items, "--item", "req:2", "--item", "req:3")
+    assert code == 0 and "would supply 1 item to" in out and "already in the set: req:2" in out and "(1 already there)" in out
+    code, out, err = supply(run, items, "--item", "req:2", "--yes")
+    assert code == 2 and "those items are already in the set" in err
+    code, out, err = supply(run, items, "--item", "req:3", "--yes")
+    assert code == 0 and shown(run, items)["itemSets"]["requests"] == ["req:1", "req:2", "req:3"]
+
+
+def test_supply_refuses_a_name_or_an_address_with_the_engines_own_words_with_or_without_yes(items, run):
+    n = shown(run, items)["n"]
+    for bad in ("Jane Doe", "jane@example.org", "123 Main St"):
+        for extra in ((), ("--yes",)):
+            code, out, err = supply(run, items, "--item", bad, *extra)
+            assert code == 2 and "is not an item id" in err and "an opaque handle, never a name or an address" in err, (bad, err)
+    assert shown(run, items)["n"] == n
+
+
+def test_supply_needs_a_person_on_the_roster_and_the_role_the_engine_asks(items, run):
+    code, out, err = supply(run, items, "--item", "a", "--yes", by=VISITOR)
+    assert code == 2 and "is not on the roster" in err and VISITOR in err
+    code, out, err = supply(run, items, "--item", "a", "--yes", by="jason")
+    assert code == 2 and "is not on the roster" in err
+    # on the roster, not the run's owner, holding no role a step over the set needs
+    code, out, err = supply(run, items, "--item", "a", "--yes", by=TREASURER)
+    assert code == 2 and "holds no role that a step over the set requests needs" in err
+    # a role a step needs is enough (the secretary is not the owner either, and holds none of the manager's)
+    code, out, err = supply(run, items, "--item", "a", "--yes", by=SECRETARY)
+    assert code == 2 and "holds no role" in err
+    assert "itemSets" not in shown(run, items)
+
+
+def test_supply_names_the_roster_when_the_profile_has_none(items, run, monkeypatch):
+    monkeypatch.setattr(cli, "_officers", lambda: ())
+    code, out, err = supply(run, items, "--item", "a", "--yes")
+    assert code == 2 and "is not on the roster" in err and "the profile names no officers" in err
+
+
+def test_supply_refuses_an_unknown_set_no_items_and_a_closed_run(items, run):
+    code, out, err = run("--supply", items, "--set", "nope", "--item", "a", "--by", OWNER, "--yes", *ASOF)
+    assert code == 2 and "no step of item-flow repeats over the set nope" in err
+    code, out, err = supply(run, items, "--yes")
+    assert code == 2 and "no items to supply" in err
+    run("--cancel", items, "--reason", "r", "--yes", "--by", OWNER, *ASOF)
+    code, out, err = supply(run, items, "--item", "a", "--yes")
+    assert code == 2 and "the run is cancelled; items are supplied while it is a draft or going" in err
+
+
+def test_supply_gives_an_item_its_own_dates_with_a_record_and_the_clock_reads_them(items, run):
+    code, out, err = supply(run, items, "--item", "a", "--item-date", "b", "due_on=2099-09-30", "--yes")
+    assert code == 2 and "need the record" in err
+    code, out, err = supply(run, items, "--item", "a", "--item-date", "b", "due_on=2099-09-30", "--item-date", "b", "nope=2099-09-30",
+                            "--record", "mail:1", "--yes")
+    assert code == 2 and "no date slot nope" in err
+    code, out, err = supply(run, items, "--item", "a", "--item-date", "b", "due_on=2099-09-30", "--record", "mail:1")
+    assert code == 0 and "with their own dates: b" in out and "record: mail:1" in out
+    code, out, err = supply(run, items, "--item", "a", "--item-date", "b", "due_on=2099-09-30", "--record", "mail:1", "--yes")
+    assert code == 0, err
+    clocks = {c["key"]: c for c in shown(run, items)["clocks"]}
+    assert "i.2[b]" in clocks and clocks["i.2[b]"]["item"] == "b" and clocks["i.2[b]"]["due"] == "2099-10-03"
+    code, out, err = run("--show", items, *ASOF)
+    assert code == 0 and "i.2[b]" in out and "item a:" in out and "items:" in out
+
+
+def test_supply_expect_refuses_a_run_that_moved_on(items, run):
+    code, out, err = supply(run, items, "--item", "a", "--yes", "--expect", "1")
+    assert code == 2 and "changed" in err and "you saw n=1" in err
+
+
+def test_show_names_a_group_and_the_check_a_remedy_stays_failed_for(run):
+    from test_workflows_engine_v3 import GROUPS, group_flow
+    from jason.workflows.types import StepGroup
+
+    definitions.register(group_flow(groups=(StepGroup("intake", "Intake"), StepGroup("board", "The board"))))
+    code, out, err = run("--start", GROUPS, "--subject", "period:2099-10", "--by", OWNER, "--yes", "--json", *ASOF)
+    rid = json.loads(out)["run"]["id"]
+    run("--open", rid, "--by", OWNER, "--yes", *ASOF)
+    code, out, err = run("--show", rid, *ASOF)
+    assert code == 0 and "group intake (Intake): needs a person, 0 of 2 done, expanded" in out
+    assert "group board (The board): not started, 0 of 2 done, collapsed" in out
+    from jason.commands.workflow import show_lines
+
+    page = {"id": "run-x", "definition": "d", "label": "L", "subject": "s", "owner": "o", "opened": "", "state": "failed", "n": 3,
+            "dates": {}, "pausedReason": "", "cancelledReason": "", "current": "r.2", "clocks": [], "pastLaw": [], "links": [],
+            "children": [], "orphans": [], "steps": [{"id": "r.1", "state": "failed", "kind": "check", "role": "jason", "title": "T",
+                                                      "by": "", "at": "", "record": "", "reason": "", "changed": [], "items": [],
+                                                      "remedy": "r.2", "itemCounts": {"done": 2, "ready": 1}}]}
+    text = "\n".join(show_lines(page))
+    assert "stays recorded as failed; the step r.2 remedies it" in text and "items: 2 done, 1 ready" in text
+
+
 # --- boundaries -----------------------------------------------------------------------------------------------------
 
 def test_a_lifecycle_writes_only_under_the_workflows_folder(run):

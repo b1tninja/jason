@@ -11,6 +11,7 @@ import {
   type RunLink, type RunPage, type WorkViewer,
 } from "../lib/work";
 import "../styles/work.css";
+import "../styles/work-items.css";
 
 type Dialog = "" | "pause" | "note" | "cancel";
 
@@ -164,6 +165,11 @@ export function WorkRunView({ definition, id }: { definition: string; id: string
             <ul className="work-links">
               <li className="work-link-row"><span className="muted">state</span> <Pill word={run.state} /></li>
               <li className="work-link-row"><span className="muted">step</span> {run.current?.title || "No open step"}</li>
+              {(run.itemTotal ?? 0) > 0 && (
+                <li className="work-link-row" data-held-items="true">
+                  <span className="muted">items</span> {run.itemTotal} {run.itemTotal === 1 ? "item" : "items"}; their ids show only in the private view
+                </li>
+              )}
               <li className="work-link-row">
                 <span className="muted">next date</span>{" "}
                 {run.due ? <><DueDate iso={run.due.date} today={today} /> <BasisPill basis={run.due.basis} label={run.due.basisLabel} /></> : <span className="muted">No date</span>}
@@ -201,7 +207,8 @@ export function WorkRunView({ definition, id }: { definition: string; id: string
           <div className="work-run-grid">
             <WorkflowRail page={d} selected={selected} onSelect={select} href={childHref} compact={compact} />
             {step ? (
-              <RunStepPanel ref={panel} step={step} run={run} viewer={viewer} acts={stepActs} childHref={childHref} onReread={reload} />
+              <RunStepPanel ref={panel} step={step} run={run} viewer={viewer} acts={stepActs} childHref={childHref} onReread={reload}
+                clocks={d.clocks} steps={d.steps} onGo={select} />
             ) : <EmptyState>This run has no steps.</EmptyState>}
           </div>
           <Card title="Clocks"><ClockStrip clocks={d.clocks} today={today} /></Card>

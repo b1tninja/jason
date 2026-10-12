@@ -401,3 +401,62 @@ def test_the_scope_outside_a_request_is_the_person_at_the_terminal(world):
     got = {r["id"]: r for r in out["runs"]}
     assert got[rid]["label"] == "A service" and got[held]["held"] is False and got[held]["label"] == LABEL
     assert not served(world)
+
+
+# --- item sets in a held run -------------------------------------------------------------------------------------------------
+
+
+def held_items(world):
+    """A held item flow with two items supplied; the item ids are the only thing a leak test looks for."""
+    from test_workflows_engine_v3 import item_flow
+
+    definitions.register(item_flow(key="item-held", title="Example item hearing", visibility=Visibility.HELD, held_title=HELD_TITLE))
+    rid = start(world, "item-held", subject=SUBJECT, label=LABEL, dates={})
+    api.supply_items(world, rid, "requests", ["req:7001", "req:7002"], MANAGER, today=TODAY, at=AT)
+    return rid
+
+
+def test_a_held_run_outside_the_private_view_gives_a_count_of_items_and_no_item_id(app, world):
+    rid = held_items(world)
+    r = as_(app, TREASURER).get(f"/api/work-run?definition=item-held&id={rid}")
+    assert r.status_code == 200 and r.json["held"] is True
+    blob = r.get_data(as_text=True)
+    for word in ("req:7001", "req:7002", "7001", "requests", "Read each request", LABEL, SUBJECT):
+        assert word not in blob, word
+    run = r.json["run"]
+    assert run["itemTotal"] == 2 and run["itemCount"] == 0 and "itemSets" not in run
+    assert r.json["steps"] == [] and r.json["clocks"] == [] and r.json["history"] == [] and "groups" not in r.json
+    assert run["acts"]["supplyItems"]["offered"] is False and run["acts"]["supplyItems"]["sets"] == []
+    listed = as_(app, TREASURER).get("/api/work")
+    assert "req:7" not in listed.get_data(as_text=True)
+    assert "req:7" not in json.dumps(rows_by(listed)[rid])
+    assert not served(world)
+
+
+def test_supplying_items_to_a_held_run_outside_the_private_view_is_the_404_a_missing_run_gets_and_a_dry_run_too(app, world):
+    rid = held_items(world)
+    n = store.read(world, "item-held", rid).n
+    c = as_(app, MANAGER)
+    missing = c.post("/api/write/work/item-held/run-0000000000", json={"act": "supply-items", "set": "requests", "items": ["req:1"]})
+    assert missing.status_code == 404
+    for extra in ({}, {"dryRun": True}):
+        r = c.post(f"/api/write/work/item-held/{rid}", json={"act": "supply-items", "set": "requests", "items": ["req:1"], **extra})
+        assert r.status_code == 404, extra
+        assert r.get_data(as_text=True).replace(rid, "RID") == missing.get_data(as_text=True).replace("run-0000000000", "RID")
+    assert store.read(world, "item-held", rid).n == n and not served(world)
+
+
+def test_inside_the_private_view_the_items_show_and_may_be_supplied_and_each_opening_is_logged_without_an_id(app, world):
+    rid = held_items(world)
+    c = as_(app, MANAGER, private=True)
+    page = c.get(f"/api/work-run?definition=item-held&id={rid}")
+    assert page.status_code == 200 and page.json.get("held") is None
+    step = {s["id"]: s for s in page.json["steps"]}["i.1"]
+    assert [i["item"] for i in step["items"]] == ["req:7001", "req:7002"]
+    assert page.json["run"]["acts"]["supplyItems"]["offered"] is True
+    made = c.post(f"/api/write/work/item-held/{rid}", json={"act": "supply-items", "set": "requests", "items": ["req:7003"]})
+    assert made.status_code == 200, made.json
+    assert "req:7003" not in json.dumps(made.json["run"]["history"])
+    lines = served(world)
+    assert [x["address"] for x in lines] == [f"api/work-run/{rid}", f"api/write/work/{rid}"]
+    assert "req:7" not in json.dumps(lines)                                              # the log names the run, never an item

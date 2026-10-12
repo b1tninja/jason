@@ -135,6 +135,7 @@ export { StepStateWord } from "./StepStateWord";
 export { RunRow, moveWords, isPastLegal } from "./RunRow";
 export { WorkflowRail } from "./WorkflowRail";
 export { RunStepPanel, evidenceRef } from "./RunStepPanel";
+export { ITEM_FOLD, ItemTable, RemedyNote, SupplyItems } from "./RunItems";
 export { ClockStrip, LawBlock, lawCitation } from "./ClockStrip";
 export { ChangedSince } from "./ChangedSince";
 export { RunHistory } from "./RunHistory";

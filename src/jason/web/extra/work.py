@@ -10,8 +10,9 @@ the small acts, over ``jason.workflows``.
   ``key`` one definition read whole (its steps, clocks, and the statute words a law clock cites).
 - ``POST /api/write/work/<definition>/<run id>`` with ``{act, step?, record?, reason?, text?, ...}``: ``attest``, ``arrived``,
   ``skip``, ``na`` (a step recorded as not applicable, with a reason and a record), ``set-date`` (a late or optional date slot
-  given a day, with a record), ``reopen``, ``pause``, ``resume``, ``note``, ``cancel``, ``open``, each one ``jason.workflows.api`` function with
-  the signed-in person's own name as ``by`` and the roles their offices hold. ``POST /api/write/work/start`` (or
+  given a day, with a record), ``supply-items`` (more items for an item set while the run goes: ``{set?, items, record?, dryRun?}``;
+  each item an opaque id, or ``{id, dates}``), ``reopen``, ``pause``, ``resume``, ``note``, ``cancel``, ``open``, each one
+  ``jason.workflows.api`` function with the signed-in person's own name as ``by`` and the roles their offices hold. ``POST /api/write/work/start`` (or
   ``.../<definition>/start``) with ``{definition, subject, label, dates, items?, yes?, dryRun?}`` starts a draft run.
 
 **Who.** A signed-in person whose offices open P2 (the manager and every board office), or an administrator (who then reads
@@ -47,7 +48,7 @@ from jason.web.extra.work_scope import STEP_WORDS
 
 Args = dict[str, str]
 
-ACTS = ("attest", "arrived", "skip", "na", "set-date", "reopen", "pause", "resume", "note", "cancel", "open")
+ACTS = ("attest", "arrived", "skip", "na", "set-date", "supply-items", "reopen", "pause", "resume", "note", "cancel", "open")
 GROUPS = (("yours", "Yours"), ("others", "Waiting on others"), ("clock", "Waiting on a clock"), ("board", "The board"))
 DUE_FILTERS = ("soon", "week", "overdue", "legal", "past")
 WEEK = 7
@@ -222,8 +223,11 @@ def _basis(clock: Any) -> dict[str, Any]:
 
 
 def _clock_row(c: Any) -> dict[str, Any]:
-    return {"key": c.key, "step": c.step, "label": c.label, "due": c.due or None, "status": c.status, "days": c.days,
-            "cite": c.cite, **_basis(c)}
+    out = {"key": c.key, "step": c.step, "label": c.label, "due": c.due or None, "status": c.status, "days": c.days,
+           "cite": c.cite, **_basis(c)}
+    if c.item:                      # a per-item clock: the item it is for (an opaque id; a held run shows no clock at all)
+        out["item"] = c.item
+    return out
 
 
 def _due(view: Any, step_id: str = "") -> dict[str, Any] | None:
@@ -270,6 +274,9 @@ def _pressing(wf: Any, view: Any) -> Any:
     for i, sv in enumerate(view.steps):
         if sv.state not in rank:
             continue
+        fix = view.step(sv.remedy) if sv.remedy else None
+        if sv.state.value == "failed" and fix is not None and fix.state in rank:
+            continue            # a failed check whose remedy is open is not the one to look at (the fold's own rule): the remedy is
         due = _due(view, sv.id) if any(c.step == sv.id and c.due and c.status != "satisfied" for c in view.clocks) else None
         found.append(((rank[sv.state], 0 if due and due["legal"] else 1, due["date"] if due else "9999", i), sv))
     return min(found, key=lambda f: f[0])[1] if found else None
@@ -695,6 +702,38 @@ def _notice(sd: Any, ctx: Who, view: Any) -> dict[str, Any]:
     return {"acts": offered, "notOffered": refused}
 
 
+def _item_sets(wf: Any, view: Any) -> list[dict[str, Any]]:
+    """The item sets some step repeats over (``""`` is the run's own items): how many items each holds now, and the steps over
+    it. A count and step titles; the ids are in the step's own table, which a held run outside the private view does not have."""
+    from jason.workflows.types import Repeat
+
+    names: list[str] = []
+    for sd in wf.steps:
+        if sd.repeat is not Repeat.ONCE and sd.item_set not in names:
+            names.append(sd.item_set)
+    return [{"name": n, "label": f"the set {n}" if n else "the run's own items", "count": len(view.item_sets.get(n, ())),
+             "steps": [sd.title for sd in wf.steps if sd.repeat is not Repeat.ONCE and sd.item_set == n]} for n in names]
+
+
+def _supply_act(wf: Any, view: Any, ctx: Who) -> tuple[bool, str, list[dict[str, Any]]]:
+    """Whether the viewer may supply items now, the sentence when not, and the sets they may supply to: the engine's own rule
+    (``steps.supply_items_act``): the run is a draft or going, and the viewer opened it or may act on a step over the set."""
+    from jason.workflows.steps import ACTING, may_act
+    from jason.workflows.types import Repeat, RunState
+
+    sets = _item_sets(wf, view)
+    if not sets:
+        return False, "No step of this run repeats over a set of items.", []
+    if view.state not in ACTING and view.state is not RunState.DRAFT:
+        return False, f"The run is {view.state.value}; items are supplied while it is a draft or going.", []
+    mine = [s for s in sets if ctx.account and (ctx.account == view.owner or any(
+        may_act(sd, ctx.account, ctx.roles_of) for sd in wf.steps if sd.repeat is not Repeat.ONCE and sd.item_set == s["name"]))]
+    if not mine:
+        return False, ("Only the person who opened the run, or a person who holds a role a step over the items needs, "
+                       "may supply items."), []
+    return True, "", mine
+
+
 def _run_acts(wf: Any, view: Any, ctx: Who, acting_as: str) -> dict[str, Any]:
     from jason.workflows.steps import ACTING, CANCEL_ROLES
     from jason.workflows.types import RunState, StepState
@@ -709,6 +748,7 @@ def _run_acts(wf: Any, view: Any, ctx: Who, acting_as: str) -> dict[str, Any]:
     cancel_ok = not legal or any(ctx.holds(r) for r in CANCEL_ROLES)
     settable = [d for d in view.date_slots if d.settable]
     may_set = [d.name for d in settable if (wf.slot(d.name).roles == () or any(ctx.holds(r) for r in wf.slot(d.name).roles))]
+    can_supply, supply_why, supply_sets = _supply_act(wf, view, ctx)
     return {
         "open": one(state is RunState.DRAFT, "" if state is RunState.DRAFT else f"The run is {state.value}, not a draft.",
                     needsYes=wf.has_legal_clock()),
@@ -718,6 +758,7 @@ def _run_acts(wf: Any, view: Any, ctx: Who, acting_as: str) -> dict[str, Any]:
         "setDate": one(bool(may_set), ("" if may_set else ("No date is left to set on this run." if not settable
                                                            else "Only the roles the definition names may set these dates.")),
                        slots=may_set),
+        "supplyItems": one(can_supply, supply_why, sets=supply_sets),
         "cancel": one(state not in (RunState.CANCELLED, RunState.DONE) and cancel_ok,
                       "" if state not in (RunState.CANCELLED, RunState.DONE) and cancel_ok
                       else (f"The run is already {state.value}." if state in (RunState.CANCELLED, RunState.DONE)
@@ -876,6 +917,32 @@ def _step_controls(root: Path, wf: Any, steps: list[dict[str, Any]], events: lis
     return []
 
 
+def _item_fields(sd: Any, sv: Any) -> dict[str, Any]:
+    """What round three adds to a step row, only where it applies (a step with none of it is as it was): that the step repeats
+    over items and which set, how many items are in each state, the check this step is the remedy for, and the step that
+    remedies this failed check."""
+    from jason.workflows.types import Repeat
+
+    out: dict[str, Any] = {}
+    if sd.repeat is not Repeat.ONCE:
+        out["perItem"] = True
+    if sd.item_aware:
+        out["itemAware"], out["itemSet"] = True, sd.item_set
+    if sv.item_counts:
+        out["itemCounts"] = {st.value: n for st, n in sv.item_counts}
+    if sv.remedy:
+        out["remedy"] = sv.remedy
+    if sd.remedy_of:
+        out["remedyOf"] = sd.remedy_of
+    return out
+
+
+def _groups(view: Any) -> list[dict[str, Any]]:
+    """The step groups as the fold reads them: titled, rolled up, and expanded where they hold the current or a failed step."""
+    return [{"key": g.key, "title": g.title, "steps": list(g.steps), "state": g.state.value, "done": g.done, "total": g.total,
+             "expanded": g.expanded, "current": g.current} for g in view.groups]
+
+
 def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, acting_as: str = "",
                 readers: Any = None) -> dict[str, Any]:
     """One run, read now: the stored events folded with what opening the run would append (``pending``), each step with whose
@@ -927,6 +994,7 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
             "yours": bool(who.holds_step(sd) and sv.state.value in ("needs a person", "failed", "ready")),
             **_notice(sd, who, view),
         }
+        step.update(_item_fields(sd, sv))
         if acting_as:
             step["acts"], step["notOffered"] = [], {a: ACTING_REFUSED.format(who=acting_as) for a in ACTS}
         if sd.kind is StepKind.DECISION:
@@ -971,6 +1039,7 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
     if view.orphans:
         problems.append({"what": "Steps in the events", "why": f"the definition no longer has {', '.join(view.orphans)}"})
     closing = [s["id"] for s in steps if s["state"] in ("ready", "running", "waiting", "needs a person", "failed")]
+    sets = _item_sets(wf, view)
     return {
         "found": True, "asOf": day.isoformat(), "caveats": list(CAVEATS),
         "run": {
@@ -984,8 +1053,10 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
             "current": ({"id": pressing.id, "title": pressing.title, "n": order[pressing.id], "of": len(wf.steps)}
                         if pressing else None),
             "acts": _run_acts(wf, view, who, acting_as), "cancelWill": {"openSteps": closing, "childRuns": list(view.children)},
+            **({"itemSets": sets} if sets else {}),
         },
         "phases": [{"key": p.key, "title": p.title, "steps": list(p.steps)} for p in wf.phases],
+        **({"groups": _groups(view)} if view.groups else {}),
         "steps": steps, "clocks": clocks, "links": links, "history": history,
         "changed": _changed_rows(view, events, titles, order, virtual_n),
         "pending": [{"kind": e.kind.value, "step": e.step, "stepTitle": titles.get(e.step, "")} for e in virtual],
@@ -1025,12 +1096,13 @@ def held_page(root: Path, wf: Any, rid: str, who: Who, day: date, *, readers: An
         "run": {
             "id": rid, "handle": rid, "definition": wf.key, "definitionTitle": wf.held_title, "family": wf.family,
             "label": wf.held_title, "subject": "", "subjectKind": "", "state": row["state"], "n": 0, "updated": "",
-            "opened": "", "openedBy": "", "dates": {}, "itemCount": 0, "dateSlots": [], "openSlots": [], "parent": "",
+            "opened": "", "openedBy": "", "dates": {}, "itemCount": 0,
+            "itemTotal": sum(len(v) for v in view.item_sets.values()),     # a count only: no item id leaves a held run "dateSlots": [], "openSlots": [], "parent": "",
             "children": [], "pausedReason": "", "cancelledReason": "", "torn": False, "corrupt": 0, "orphans": [],
             "pastLaw": ["law"] if row["pastLaw"] else [], "age": row["age"], "due": row["due"],
             "current": {"id": "", "title": cur["title"], "n": cur["n"], "of": cur["of"]} if cur["title"] else None,
             "acts": {"open": none, "pause": none, "resume": none, "note": none, "cancel": {**none, "legal": False},
-                     "setDate": {**none, "slots": []}},
+                     "setDate": {**none, "slots": []}, "supplyItems": {**none, "sets": []}},
             "cancelWill": {"openSteps": [], "childRuns": []},
         },
         "phases": [], "steps": [], "clocks": [], "links": [], "history": [], "changed": [], "pending": [],
@@ -1225,6 +1297,16 @@ def _need(body: dict[str, Any], key: str) -> str:
     return value
 
 
+def _supplied(raw: Any) -> list[Any]:
+    """The ``items`` of a supply: a list of ids (or ``{id, dates}``), or text with one id a line. A line is one id whatever is in
+    it, so a name with a space in it reaches the engine whole and is refused in its words."""
+    if isinstance(raw, str):
+        return [line.strip() for line in raw.splitlines() if line.strip()]
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("items is a list of item ids (or of {id, dates} objects)")
+    return list(raw)
+
+
 def _expect(body: dict[str, Any]) -> int | None:
     raw = body.get("expect", body.get("n"))
     if raw in (None, ""):
@@ -1331,6 +1413,13 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
         elif act == "set-date":
             out = api.set_date(root, rid, _need(body, "slot"), _need(body, "day"), by, roles_of=who.roles_of,
                                record=text("record"), reason=text("reason"), **common)
+        elif act == "supply-items":
+            dry = body.get("dryRun") in (True, "1", "true", "yes")
+            out = api.supply_items(root, rid, text("set"), _supplied(body.get("items")), by, roles_of=who.roles_of,
+                                   record=text("record"), dry_run=dry, **common)
+            if dry:               # the same checks as the real act, and nothing written
+                return {"ok": True, "act": act, "by": by, "dryRun": True, **{k: out[k] for k in (
+                    "set", "wouldAdd", "alreadyThere", "withDates", "text", "record", "n")}}
         elif act == "reopen":
             out = api.reopen(root, rid, _need(body, "step"), by, roles_of=who.roles_of, reason=text("reason"), item=text("item"), **common)
         elif act == "pause":

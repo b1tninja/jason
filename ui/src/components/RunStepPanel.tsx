@@ -3,6 +3,7 @@ import { BasisPill } from "./BasisPill";
 import { Command } from "./Command";
 import { Confirm } from "./Confirm";
 import { ControlStepNotice } from "./ControlNotice";
+import { ItemTable, RemedyNote, SupplyItems } from "./RunItems";
 import { Doc } from "./Doc";
 import { Glyph } from "./Glyph";
 import { Pill } from "./Pill";
@@ -11,7 +12,7 @@ import { StepStateWord } from "./StepStateWord";
 import { addressScheme, driveDocRef, fileDocRef, type DocRef } from "../lib/docref";
 import {
   KIND_WORDS, WORDS, dayOf, refusalsFor, safeAddress, shortHash, waitingWords,
-  type Run, type RunLink, type RunStep, type StepEvidence, type WorkViewer,
+  type Run, type RunClock, type RunLink, type RunStep, type StepEvidence, type WorkViewer,
 } from "../lib/work";
 
 /** A DocRef for an evidence address the server named, so a document opens in the viewer (one logged view) rather than by a
@@ -186,11 +187,17 @@ function KindBlock({ step, run, viewer, acts, onReread }: { step: RunStep; run: 
  * terminal. Only a person's attestation is written here. */
 export const RunStepPanel = forwardRef<HTMLHeadingElement, {
   step: RunStep; run: Run; viewer: WorkViewer; acts: Acts; childHref: (l: RunLink) => string | null; onReread?: () => void;
-}>(function RunStepPanel({ step, run, viewer, acts, childHref, onReread }, ref) {
+  /** The run's clocks (a per-item clock is read from them), its steps and a way to go to one (a remedy names its check). */
+  clocks?: readonly RunClock[]; steps?: readonly RunStep[]; onGo?: (id: string) => void;
+}>(function RunStepPanel({ step, run, viewer, acts, childHref, onReread, clocks = [], steps = [], onGo }, ref) {
   const yours = step.yours;
   const refusals = refusalsFor(step);
   const mine = step.acts.includes("attest") && (step.kind === "person" || step.kind === "branch");
   const waiting = !yours && step.waitingOn && !["done", "skipped", "superseded"].includes(step.state);
+  const supply = run.acts.supplyItems;
+  const setName = step.itemSet ?? "";
+  const mayFill = !!(supply?.offered && step.perItem && supply.sets?.some((s) => s.name === setName));
+  const notFilled = step.itemAware && step.items.length === 0 && !mayFill && supply && !supply.offered ? supply.why : "";
   return (
     <section className="work-step" aria-labelledby="work-step-h">
       <h2 id="work-step-h" ref={ref} tabIndex={-1}>{step.n}. {step.title}</h2>
@@ -208,6 +215,7 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
       {step.state === "blocked" && (
         <p className="notice notice-warn" role="note">Blocked: it waits on {step.blockedBy.length ? step.blockedBy.join(", ") : "another step or a fact"}.</p>
       )}
+      <RemedyNote step={step} steps={steps} onGo={onGo} />
       {step.reason && step.state !== "failed" && <p className="muted">{step.reason}</p>}
       {step.changed.length > 0 && (
         <p className="notice notice-warn" role="note">
@@ -226,6 +234,8 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
       )}
       {step.command && <Section title="Command"><Command cmd={step.command} /></Section>}
       <KindBlock step={step} run={run} viewer={viewer} acts={acts} onReread={onReread} />
+      <ItemTable step={step} clocks={clocks} empty={notFilled ? `No items have been supplied yet. ${notFilled}` : undefined} />
+      {mayFill && <SupplyItems step={step} run={run} viewer={viewer} acts={acts} setName={setName} />}
       {step.clock && (
         <p className="work-step-clock">
           Clock: <strong>{step.clock.label || step.clock.slot}</strong> <BasisPill basis={step.clock.basis} label={step.clock.basisLabel} />

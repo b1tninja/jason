@@ -166,6 +166,10 @@ export interface RunStep {
    * whether the step is recorded as one; the child runs spawned from the step and whether it waits for them. */
   roles?: string[]; na?: boolean; naOutcome?: { roles: string[]; reasonRequired: boolean; recordRequired: boolean } | null;
   children?: string[]; waitsOnChild?: boolean;
+  /** Item sets (engine round three), present only where they apply: the step repeats over items (`perItem`), uses the item-set
+   * rules and names its set (`itemAware`, `itemSet`; "" is the run's own items), counts of its items by state, the step that
+   * remedies this failed check (`remedy`), and the failed check this step is the remedy for (`remedyOf`). */
+  perItem?: boolean; itemAware?: boolean; itemSet?: string; itemCounts?: Record<string, number>; remedy?: string; remedyOf?: string;
   evidence: StepEvidence[]; links: RunLink[]; changed: StepChange[]; waitingOn: WaitingOn | null; yours: boolean;
   acts: string[]; notOffered: Record<string, string>;
   decision?: DecisionRead; plan?: PlanRead; job?: JobRead;
@@ -184,6 +188,8 @@ export interface LawWords {
 export interface RunClock extends BasisInfo {
   key: string; step: string; label: string; due: string | null; status: string; days: number | null; cite: string;
   past: boolean; stepTitle: string; scope: "step" | "run" | string; law?: LawWords;
+  /** A per-item clock: the item it is for (an opaque id). A clock on a step or the whole run has none. */
+  item?: string;
 }
 
 export interface HistoryEvent {
@@ -195,6 +201,13 @@ export interface ChangedRow { step: string; stepTitle: string; n: number; addres
 
 export interface RunAct { offered: boolean; why: string; needsYes?: boolean; legal?: boolean; slots?: string[] }
 
+/** An item set some step repeats over (`""` is the run's own items): how many it holds and the steps over it. A count and
+ * titles; the ids are in the step's own table. */
+export interface RunItemSet { name: string; label: string; count: number; steps: string[] }
+
+/** A step group as the fold reads it (`GroupView`): titled, rolled up, and expanded where it holds the current or a failed step. */
+export interface RunGroup { key: string; title: string; steps: string[]; state: string; done: number; total: number; expanded: boolean; current: string }
+
 /** One date slot of a run: its day, who set it after the start, and whether a person may set it now (`set-date`). */
 export interface RunDateSlot {
   name: string; label: string; value: string | null; required: boolean; late: boolean; settable: boolean; correction: boolean;
@@ -205,10 +218,10 @@ export interface Run {
   id: string; definition: string; definitionTitle: string; family: string; label: string; subject: string; subjectKind: string;
   handle?: string; due?: WorkDue | null;
   state: RunState | string; n: number; updated: string; opened: string; openedBy: string; dates: Record<string, string>;
-  itemCount: number; parent: string | null; children: string[]; pausedReason: string; cancelledReason: string;
+  itemCount: number; itemTotal?: number; itemSets?: RunItemSet[]; parent: string | null; children: string[]; pausedReason: string; cancelledReason: string;
   torn: boolean; corrupt: number | null; orphans: string[]; pastLaw: string[]; age: RunAge;
   current: { id: string; title: string; n: number; of: number } | null;
-  acts: { open: RunAct; pause: RunAct; resume: RunAct; note: RunAct; cancel: RunAct; setDate?: RunAct };
+  acts: { open: RunAct; pause: RunAct; resume: RunAct; note: RunAct; cancel: RunAct; setDate?: RunAct; supplyItems?: RunAct & { sets?: RunItemSet[] } };
   dateSlots?: RunDateSlot[]; openSlots?: string[];
   cancelWill: { openSteps: string[]; childRuns: string[] };
 }
@@ -217,6 +230,8 @@ export interface Run {
  * state, the general title, and the date and its basis word; `heldWhy` says where it opens. */
 export interface RunPage {
   found: boolean; asOf: string; caveats: string[]; run: Run; held?: boolean; heldTitle?: string; heldWhy?: string; phases: { key: string; title: string; steps: string[] }[];
+  /** The step groups, only when the definition has some (`RunView.groups`). */
+  groups?: RunGroup[];
   steps: RunStep[]; clocks: RunClock[]; links: RunLink[]; history: HistoryEvent[]; changed: ChangedRow[];
   pending: { kind: string; step: string; stepTitle: string }[]; viewer: { roles: string[] }; problems: Problem[]; notComposed: Problem[];
 }
@@ -431,6 +446,58 @@ export function openingStep(page: Pick<RunPage, "steps" | "run">): string {
 export const pastLegal = (page: Pick<RunPage, "run" | "clocks">): boolean =>
   page.run.pastLaw.length > 0 || page.clocks.some((c) => c.legal && c.past);
 
+// -- items, in words --------------------------------------------------------------------------------------------------------
+
+const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
+
+/** A per-item clock in words, never by colour: "late by 3 days", "due today", "due in 5 days", "no date yet". `late` is true only
+ * for a clock the engine reads as overdue. An item that has no clock reads "no clock". */
+export function clockWords(c: Pick<RunClock, "status" | "days"> | null | undefined): { text: string; late: boolean } {
+  if (!c) return { text: "no clock", late: false };
+  const n = c.days === null || c.days === undefined ? null : Math.abs(c.days);
+  switch (c.status) {
+    case "overdue": return { text: n === null ? "late" : `late by ${days(n)}`, late: true };
+    case "due": return { text: "due today", late: false };
+    case "upcoming": return { text: n === null ? "upcoming" : `due in ${days(n)}`, late: false };
+    case "satisfied": return { text: "met", late: false };
+    case "undated": return { text: "no date yet", late: false };
+    case "not running": return { text: "not running yet", late: false };
+    default: return { text: c.status || "no clock", late: false };
+  }
+}
+
+/** One row of a step's item table: the item, its state, its own clock (the loader's `step[item]` clock), and the clock in words. */
+export interface ItemRow { item: string; state: string; clock: RunClock | null; words: string; late: boolean }
+
+export function itemRows(step: Pick<RunStep, "id" | "items">, clocks: readonly RunClock[]): ItemRow[] {
+  const own = new Map(clocks.filter((c) => c.item && c.step === step.id).map((c) => [c.item as string, c]));
+  return step.items.map((i) => {
+    const clock = own.get(i.item) ?? null;
+    const w = clockWords(clock);
+    return { item: i.item, state: i.state, clock, words: w.text, late: w.late };
+  });
+}
+
+/** "3 of 12 done, 2 late": the items finished of all of them, then the ones the engine reads as late, failed, and skipped. */
+export function itemRollUp(rows: readonly ItemRow[]): string {
+  const n = (f: (r: ItemRow) => boolean) => rows.filter(f).length;
+  const parts = [`${n((r) => r.state === "done")} of ${rows.length} done`];
+  const late = n((r) => r.late), failed = n((r) => r.state === "failed"), skipped = n((r) => r.state === "skipped");
+  if (late) parts.push(`${late} late`);
+  if (failed) parts.push(`${failed} failed`);
+  if (skipped) parts.push(`${skipped} skipped`);
+  return parts.join(", ");
+}
+
+/** The ids typed one to a line: blank lines dropped, each id once, in the order typed. An id is not checked here; the server
+ * refuses a name or an address in its own words (the check button asks it). */
+export function parseItemLines(text: string): string[] {
+  return [...new Set(text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean))];
+}
+
+/** The words for an item set: "the set requests", or "the run's own items" for the set named "". */
+export const setWords = (name: string | undefined) => (name ? `the set ${name}` : "the run's own items");
+
 // -- reading ----------------------------------------------------------------------------------------------------------------
 
 export type WorkRemote<T> =
@@ -502,9 +569,16 @@ export function useRunDefinitions(ids: readonly string[]): Record<string, string
 /** The body of an act on a run. There is no `by`: the server records the signed-in person, and refuses a body that names
  * another. `expect` is the `n` the page last read, so a run that moved on is refused (409) and not overwritten. */
 export interface ActBody {
-  act: "attest" | "arrived" | "skip" | "reopen" | "pause" | "resume" | "note" | "cancel" | "open";
+  act: "attest" | "arrived" | "skip" | "reopen" | "pause" | "resume" | "note" | "cancel" | "open" | "supply-items";
   step?: string; record?: string; reason?: string; text?: string; choice?: string; what?: string; yes?: boolean; expect?: number;
+  /** `supply-items`: the item set ("" is the run's own) and the ids; `dryRun` checks them and writes nothing. */
+  set?: string; items?: string[]; dryRun?: boolean;
 }
+
+/** What `supply-items` with `dryRun` answers: the ids that would be added and those already in the set. */
+export interface SupplyDry { ok: boolean; act: string; dryRun: true; set: string; wouldAdd: string[]; alreadyThere: string[]; withDates: string[]; text: string; record: string; n: number }
+export const postSupplyDry = (definition: string, id: string, body: Pick<ActBody, "set" | "items" | "record">) =>
+  postJson<SupplyDry>(writeUrl(definition, id), { act: "supply-items", dryRun: true, ...body });
 
 export const postAct = (definition: string, id: string, body: ActBody) => postJson<ActAnswer>(writeUrl(definition, id), body);
 

@@ -110,6 +110,17 @@ Six bands. The rail and the step panel are the page; the others read from them.
 - **History**: the event log, newest first, with who and when. A correction is a later entry, never an edit.
 - **Changed since**: the resume check's differences, shown before anything else on the page.
 
+### Item sets, step groups, and a remedy (built)
+
+Engine round three ([../../workflows-engine.md](../../workflows-engine.md)) gave a run item sets, step groups, and a remedy. The run page shows all three in plain words; none of it is a colour alone.
+
+- **Step groups.** A group the definition titles (`Workflow.groups`) is a collapsible section in the rail with its title, its roll-up state as a word, and "N of M done". It is open where the fold says `expanded` (it holds the run's current step or a failed one, and the run is not finished) or where the picked step stands, and shut when it is done or not yet reached. Its toggle is a real button (`aria-expanded`; Enter and Space); a person's own click on it wins until they leave the page. A run with no declared groups draws the rail as it was. A step that counts its items shows "N of M items done" in the rail.
+- **Items.** A step that repeats over a set shows an **Items** table in its panel: one row for each item (its opaque id as the row header, its state word and glyph, its own clock with its basis word, and its date with "late by 3 days", "due today", "due in 5 days", or "met"), under a roll-up line such as "3 of 12 done, 2 late" (failed and skipped items are counted in words too). A late row is marked by its words and a glyph; the row's tint only repeats them. The table scrolls sideways on a phone inside a focusable region, and folds after fifty rows ("Show all 60 items"). A set with no items says "No items have been supplied to the set requests yet. This step waits until some are." The Clocks band draws a step's per-item clocks as one card (how many, how many late, the nearest date, the basis), not one card each.
+- **Supply items.** Where the viewer may (the run is a draft or going, and they opened it or hold a role a step over the set needs: the engine's own rule, `acts.supplyItems`), the panel of a step over the set has a form: the ids one to a line and an optional record. **Check the list** asks the server to make every check a real supply makes and writes nothing (the dry run), and shows the server's sentence when it refuses (an id is an opaque handle: letters, digits, and `: _ . # / -`, 64 at most, never a name or an address). Only a list that passed offers a `Confirm`, which says the count and the name it is recorded under; the act is one `note` on the run's history that holds a count and never an id. Editing the list asks the server again. Where the viewer may not, the server's sentence stands in place of the form.
+- **A remedy.** The step that remedies a failed check says "This step is the remedy for the failed check above; the check stays recorded as failed." with a button to go to the check; the check says it stays recorded as failed and names the remedy step. While the remedy is open the run's current step is the remedy (the list's current step follows the fold), and the failed check is not the run's current step.
+- **Held runs.** Outside the private view a held run shows a count of its items ("12 items; their ids show only in the private view") and no id, no table, no clock, and no form; supplying items to it is the 404 a missing run gets, a dry run too. Inside the private view the table and the form show, and the opening and the act are lines in `access/served.jsonl` that name the run, never an item.
+- **Loader.** `work-run` adds `groups` (only when the definition has some), `run.itemSets` (the sets some step repeats over: name, label, count, step titles), `run.acts.supplyItems` (`offered`, `why`, `sets`), and on a step `perItem`, `itemAware`, `itemSet`, `itemCounts`, `remedy`, `remedyOf`; a per-item clock carries `item`. A held page has `run.itemTotal`, a count. The writer takes `{act: "supply-items", set?, items, record?, dryRun?}` (`items` a list of ids or `{id, dates}`, or text with an id to a line).
+
 ## Layout: the definitions catalog and the Start-a-run picker
 
 `#/work/definitions` (a tab of Work, "What can be run"). A **read-only** catalog of the workflows jason has, so a person can find one to start and the board can read how a task is done.
@@ -141,7 +152,7 @@ Six bands. The rail and the step panel are the page; the others read from them.
 
 ## Components
 
-Built: `StageSteps`, `Findings`, `Command`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`. Specified, not yet built ([../handoff-admin-components.md](../handoff-admin-components.md)): `TerminalStep`, `AgeStamp`. To add: `DefinitionRow`, `DefinitionPage`, `WorkflowRail`, `RunStepPanel` (the name `StepPanel` is `DriveChooser`'s), `ClockStrip`, `BasisPill` (a `Pill` preset for the five basis words), `RunRow`, `StartRun`, and `ChangedSince`.
+Built: `StageSteps`, `Findings`, `Command`, `Confirm`, `Doc`, `DueDate`, `Freshness`, `Caveats`, `Recitation`, `ReadingLabel`, `PlanReview`, `Pill`, `Glyph`. Specified, not yet built ([../handoff-admin-components.md](../handoff-admin-components.md)): `TerminalStep`, `AgeStamp`. Built since: `ItemTable`, `SupplyItems`, and `RemedyNote` (`RunItems`), and the titled groups in `WorkflowRail`. To add: `DefinitionRow`, `DefinitionPage`, `WorkflowRail`, `RunStepPanel` (the name `StepPanel` is `DriveChooser`'s), `ClockStrip`, `BasisPill` (a `Pill` preset for the five basis words), `RunRow`, `StartRun`, and `ChangedSince`.
 
 ## Where a step's work happens
 
@@ -166,6 +177,7 @@ One rule settles it for every family: **the run page embeds reads and links writ
 - **Mark a step done** (`attest`): only a `person` step, only by the role it names, with the evidence it asks for. A `Confirm` says what is being attested and the name it is recorded under. A step that needs a record (an invoice, a minute, a posting) refuses without it, with the sentence the definition gives.
 - **Skip**: only where the definition allows, by the role it names, with a reason. A legal step has no skip: it is done, or its absence is recorded as a finding for the board.
 - **Pause, resume, reopen, note, cancel**: small dialogs, each a `Confirm` recorded by name, each requiring a reason except a note.
+- **Supply items** (`supply-items`): more items for an item set while the run goes, by the person who opened the run or one who holds a role a step over the set needs, checked first with a dry run, then recorded behind a `Confirm` as a note that holds a count. At a terminal: `jason workflow --supply RUN --set NAME --item ID ... --by NAME` (add `--yes` to record).
 - **Start a run** (`StartRun`): a definition, its subject (with its label), the cycle's dates (checked against the definition's rule: for example, leave room for one correction before an answer-by date), and who is the manager for this run. It creates a run in `draft`; opening it starts the clocks.
 - **Print the history**: a `Doc` of the run's events with their evidence addresses, for the board's record.
 - A `plan` step's decision, a `job` step's run, and a `decision` step's record happen on their own screens (`#/approvals`, the job queue, `#/decisions`); the run reads the result. An administrator viewing as someone else cannot act: "Viewing as NAME (admin view): go back to yourself first."
@@ -206,3 +218,8 @@ One rule settles it for every family: **the run page embeds reads and links writ
 12. The catalog lists every registered definition once, with its family, step count, and procedure; a definition whose procedure lost a step is marked DRIFTED with the sentence, and the heading counts them.
 13. "Start" is offered only for a definition the viewer's office may start; otherwise the row names the role that can.
 14. The catalog has no control that edits a definition.
+15. A step over an item set lists every item with its state and its own clock in words, and a roll-up line counts the done and the late; a late item is never marked by colour alone.
+16. A titled step group is a collapsible section, open where it holds the current or a failed step; a person can open and shut it from the keyboard.
+17. Items are supplied only after a dry run passes, in the signed-in name, as one note that holds a count; a name or an address in an id is refused in the engine's words, with or without the dry run.
+18. A held run outside the private view shows a count of its items and no id; supplying to it is a 404.
+19. The step that remedies a failed check says the check stays recorded as failed.

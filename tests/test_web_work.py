@@ -758,3 +758,150 @@ def test_outside_a_request_the_communitys_roster_names_the_roles(world, monkeypa
     done = w.write(f"example-cycle/{rid}", {"act": "attest", "step": C2, "record": "r", "by": "a. manager"})
     assert done["by"] == "A. Manager" and done["run"]["steps"][1]["by"] == "A. Manager"
     assert w.work({})["runs"][0]["group"] == "others"                       # no viewer, so nothing is anyone's
+
+
+# --- item sets, step groups, and a remedy (docs/workflows-engine.md, "Engine round three") ----------------------------------------
+
+
+def item_world(world):
+    """The made-up item flow, group flow, and a remedy flow whose check fails, registered beside the others for one test."""
+    from test_workflows_engine_v3 import GROUPS, ITEMS, REMEDY, group_flow, item_flow, remedy_flow
+    from jason.workflows.types import CheckResult, StepGroup
+
+    definitions.register(item_flow())
+    definitions.register(group_flow(groups=(StepGroup("intake", "Intake"), StepGroup("board", "The board"))))
+    broken = remedy_flow()
+    steps = tuple(replace(s, check=lambda view: CheckResult(False, (), "the roster is incomplete")) if s.id == "r.1" else s
+                  for s in broken.steps)
+    definitions.register(remedy_flow(steps=steps))
+    return ITEMS, GROUPS, REMEDY
+
+
+def supplied(app, rid, items, *, who=MANAGER, definition="item-flow", **body):
+    return post(as_(app, who), f"{definition}/{rid}", {"act": "supply-items", "set": "requests", "items": items, **body})
+
+
+def item_run(world, **kw):
+    return start(world, "item-flow", subject="period:2099-10", label="Item flow", dates=kw.pop("dates", {}), **kw)
+
+
+def test_the_run_page_has_the_item_sets_the_viewer_may_supply_to_and_nothing_when_none_repeats(app, world):
+    item_world(world)
+    rid = item_run(world)
+    got = page(app, MANAGER, rid, "item-flow")
+    assert got["run"]["itemSets"] == [{"name": "requests", "label": "the set requests", "count": 0,
+                                       "steps": ["Read each request", "Decide each request", "Which way", "Send the grant",
+                                                 "Send the denial"]}]
+    assert got["run"]["acts"]["supplyItems"]["offered"] is True
+    assert [s["name"] for s in got["run"]["acts"]["supplyItems"]["sets"]] == ["requests"]
+    step = {s["id"]: s for s in got["steps"]}["i.1"]
+    assert step["itemAware"] is True and step["itemSet"] == "requests" and step["perItem"] is True and step["items"] == []
+    assert step["state"] == "waiting" and "no items in the set requests yet" in step["reason"]
+    plain = page(app, MANAGER, start(world))["run"]
+    assert "itemSets" not in plain
+    assert plain["acts"]["supplyItems"] == {"offered": False, "why": "No step of this run repeats over a set of items.", "sets": []}
+
+
+def test_supplying_items_records_one_note_and_the_page_then_lists_them_with_a_clock_for_each(app, world):
+    item_world(world)
+    rid = item_run(world, dates={"due_on": "2099-10-01"})
+    n = store.read(world, "item-flow", rid).n
+    r = supplied(app, rid, ["req:1", {"id": "req:2", "dates": {"due_on": "2099-09-30"}}, "req:1"], record="mail:1")
+    assert r.status_code == 200, r.json
+    assert r.json["act"] == "supply-items" and r.json["by"] == MANAGER and r.json["event"]["kind"] == "note"
+    assert "supplied 2 items to the set requests" in r.json["event"]["text"] and r.json["event"]["by"] == MANAGER
+    assert "req:1" not in json.dumps(r.json["event"]) and "req:1" not in json.dumps(r.json["run"]["history"])   # the history holds a count
+    assert store.read(world, "item-flow", rid).n == n + 1
+    got = r.json["run"]
+    step = {s["id"]: s for s in got["steps"]}["i.1"]
+    assert [i["item"] for i in step["items"]] == ["req:1", "req:2"] and sum(step["itemCounts"].values()) == 2
+    assert got["run"]["itemSets"][0]["count"] == 2
+    clocks = {c["key"]: c for c in got["clocks"]}
+    assert clocks["i.2[req:1]"]["item"] == "req:1" and clocks["i.2[req:1]"]["step"] == "i.2" and clocks["i.2[req:1]"]["due"] == "2099-10-04"
+    assert clocks["i.2[req:2]"]["due"] == "2099-10-03"
+    assert all("item" not in c for c in page(app, MANAGER, start(world))["clocks"])
+
+
+def test_a_dry_run_makes_the_same_checks_and_writes_nothing(app, world):
+    item_world(world)
+    rid = item_run(world)
+    n = store.read(world, "item-flow", rid).n
+    r = supplied(app, rid, ["a", "b"], dryRun=True)
+    assert r.status_code == 200 and r.json["dryRun"] is True and r.json["wouldAdd"] == ["a", "b"] and r.json["alreadyThere"] == []
+    assert store.read(world, "item-flow", rid).n == n
+    bad = supplied(app, rid, ["Jane Doe"], dryRun=True)
+    assert bad.status_code == 400 and "is not an item id" in bad.json["error"] and "never a name or an address" in bad.json["error"]
+    assert store.read(world, "item-flow", rid).n == n
+    supplied(app, rid, ["a"])
+    again = supplied(app, rid, ["a", "c"], dryRun=True)
+    assert again.json["wouldAdd"] == ["c"] and again.json["alreadyThere"] == ["a"]
+
+
+def test_supply_items_is_refused_in_the_engines_words(app, world):
+    item_world(world)
+    rid = item_run(world)
+    n = store.read(world, "item-flow", rid).n
+    for bad in ("Jane Doe", "jane@example.org", "123 Main St", "x" * 65):
+        r = supplied(app, rid, [bad])
+        assert r.status_code == 400 and "is not an item id" in r.json["error"], bad
+    assert supplied(app, rid, []).status_code == 400
+    assert supplied(app, rid, "Jane Doe").status_code == 400                       # text is one id a line: a line with a space is refused
+    assert supplied(app, rid, {"a": 1}).status_code == 400
+    odd = supplied(app, rid, ["a"], set="nope")
+    assert odd.status_code == 400 and "no step of item-flow repeats over the set nope" in odd.json["error"]
+    stale = supplied(app, rid, ["a"], expect=n - 1)
+    assert stale.status_code == 409 and stale.json["actual"] == n
+    assert supplied(app, rid, ["a"], by="Pat Example").status_code == 403           # a body by naming someone else
+    assert store.read(world, "item-flow", rid).n == n
+
+
+def test_a_person_with_no_role_a_step_needs_and_not_the_opener_is_a_403(app, world):
+    item_world(world)
+    rid = item_run(world)
+    n = store.read(world, "item-flow", rid).n
+    r = supplied(app, rid, ["a"], who=TREASURER)
+    assert r.status_code == 403 and "holds no role that a step over the set requests needs" in r.json["error"]
+    run = page(app, TREASURER, rid, "item-flow")["run"]
+    assert run["acts"]["supplyItems"]["offered"] is False and "Only the person who opened the run" in run["acts"]["supplyItems"]["why"]
+    assert store.read(world, "item-flow", rid).n == n
+    assert supplied(app, rid, ["a"], who=MANAGER).status_code == 200
+
+
+def test_a_closed_run_supplies_nothing(app, world):
+    item_world(world)
+    rid = item_run(world)
+    post(as_(app, MANAGER), f"item-flow/{rid}", {"act": "cancel", "reason": "r"})
+    r = supplied(app, rid, ["a"])
+    assert r.status_code == 400 and "the run is cancelled; items are supplied while it is a draft or going" in r.json["error"]
+    run = page(app, MANAGER, rid, "item-flow")["run"]
+    assert run["acts"]["supplyItems"]["offered"] is False and "cancelled" in run["acts"]["supplyItems"]["why"]
+
+
+def test_an_open_group_is_expanded_and_a_not_yet_reached_one_is_collapsed(app, world):
+    item_world(world)
+    rid = start(world, "group-flow", subject="period:2099-10", label="Group flow", dates={})
+    got = page(app, MANAGER, rid, "group-flow")
+    groups = {g["key"]: g for g in got["groups"]}
+    assert list(groups) == ["intake", "board"] and groups["intake"]["title"] == "Intake" and groups["intake"]["expanded"] is True
+    assert groups["intake"]["current"] == "g.1" and groups["board"]["expanded"] is False and groups["board"]["title"] == "The board"
+    assert groups["intake"]["steps"] == ["g.1", "g.2"] and groups["intake"]["total"] == 2
+    assert "groups" not in page(app, MANAGER, start(world))
+    assert "itemSets" not in got["run"]                                              # no step of it repeats over items
+
+
+def test_a_failed_check_with_a_remedy_names_the_remedy_step_and_the_step_names_the_check(app, world):
+    item_world(world)
+    rid = start(world, "remedy-flow", subject="period:2099-10", label="Remedy flow", dates={})
+    got = page(app, MANAGER, rid, "remedy-flow")
+    steps = {s["id"]: s for s in got["steps"]}
+    assert steps["r.1"]["state"] == "failed" and steps["r.1"]["remedy"] == "r.2" and "remedyOf" not in steps["r.1"]
+    assert steps["r.2"]["remedyOf"] == "r.1" and steps["r.2"]["state"] in ("needs a person", "ready")
+    assert steps["r.3"]["state"] == "blocked" and "remedy" not in steps["r.3"]
+    assert got["run"]["current"]["id"] == "r.2"
+
+
+def test_a_run_with_no_item_rules_has_none_of_the_new_fields(app, world):
+    rid = start(world)
+    got = page(app, MANAGER, rid)
+    assert "groups" not in got and "itemSets" not in got["run"]
+    assert all(not ({"itemAware", "itemSet", "itemCounts", "remedy", "remedyOf", "perItem"} & set(s)) for s in got["steps"])

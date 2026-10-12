@@ -1,0 +1,28 @@
+/* Work: item sets, step groups, and a remedy (docs/console/screens/work.md, "Item sets, groups, and a remedy").
+   Tokens only, so dark and light follow. A late item is a word with a glyph, never a colour alone. */
+.work-items-rollup { margin: 0 0 .35rem; }
+.work-items-empty { margin: 0; padding: .5rem .65rem; border: 1px dashed var(--line); border-radius: 6px; }
+.work-items-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; max-width: 100%; }
+.work-items-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.work-items-table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+.work-items-table th, .work-items-table td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.work-items-table thead th { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; background: var(--panel); }
+.work-items-table tbody th { font-weight: 600; overflow-wrap: anywhere; }
+.work-items-table tbody tr:last-child > * { border-bottom: 0; }
+.work-items-table tr[data-late="true"] > * { background: color-mix(in srgb, var(--bad) 8%, var(--bg)); }
+.work-item-late { color: var(--bad); display: inline-flex; align-items: center; gap: .25rem; }
+.work-items-more { margin-top: .5rem; min-height: 24px; }
+.work-supply textarea { width: 100%; font-family: var(--mono, ui-monospace, monospace); }
+.work-supply input[type="text"] { width: 100%; }
+.work-remedy { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; margin: .5rem 0; }
+.work-remedy button { min-height: 24px; }
+.work-clock-items .work-clock-head { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; }
+.work-rail-items { font-size: .8rem; flex-basis: 100%; }
+.work-rail-section { border-left: 3px solid var(--line); padding-left: .5rem; }
+.work-rail-section-h { margin: 0; font-size: .9rem; }
+.work-rail-section > ol { list-style: none; margin: 0 0 .5rem; padding: 0; display: grid; gap: .25rem; }
+.work-rail-section > ol[hidden] { display: none; }
+.work-rail-section[data-expanded="true"] { border-left-color: var(--accent); }
+@media (max-width: 639px) {
+  .work-items-table th, .work-items-table td { padding: .3rem .4rem; }
+}

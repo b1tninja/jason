@@ -433,3 +433,104 @@ export const HELD_DEF = definitionRow({
   key: "hearing", title: "A hearing", family: "board", steps: 16, held: true, heldTitle: "A member's hearing", visibility: "held", startable: false,
   startableWhy: "A run of this kind concerns a member's discipline, an account, or a restricted record, so it starts only in the private view.",
 });
+
+// -- item sets, step groups, and a remedy (engine round three) ---------------------------------------------------------------
+
+/** Twelve opaque item ids: three done, two needing a person and late, seven needing a person with time left. */
+export const ITEM_IDS = Array.from({ length: 12 }, (_, i) => `req:${String(i + 1).padStart(2, "0")}`);
+const itemState = (i: number) => (i < 3 ? "done" : "needs a person");
+const itemClock = (i: number, item: string): RunClock => {
+  const days = i < 3 ? 2 : i === 3 ? -3 : i === 4 ? -1 : 5;
+  const status = i < 3 ? "satisfied" : days < 0 ? "overdue" : "upcoming";
+  const due = `2099-10-${String(9 + days).padStart(2, "0")}`;
+  return { key: `ri.decide[${item}]`, step: "ri.decide", item, label: "Reply to the request", due, status, days, cite: "", past: status === "overdue",
+    stepTitle: "Decide each request", scope: "step", ...BASIS.person };
+};
+export const ITEM_CLOCKS: RunClock[] = ITEM_IDS.map((id, i) => itemClock(i, id));
+
+const SUPPLY_SETS = [{ name: "requests", label: "the set requests", count: 12, steps: ["Read each request", "Decide each request"] }];
+const ITEM_RUN: Run = {
+  ...OWNER_INFO_RUN, id: "run-1100aa22bb", definition: "request-month", definitionTitle: "The month's requests", label: "Requests, October",
+  subject: "period:2099-10", subjectKind: "period", children: [], itemSets: SUPPLY_SETS,
+  current: { id: "ri.decide", title: "Decide each request", n: 2, of: 2 }, cancelWill: { openSteps: ["ri.decide"], childRuns: [] },
+  acts: { ...OWNER_INFO_RUN.acts, supplyItems: { offered: true, why: "", sets: SUPPLY_SETS } },
+};
+const itemStep = (over: Partial<RunStep> & Pick<RunStep, "id" | "n" | "title" | "kind">) =>
+  step({ of: 2, phase: "work", phaseTitle: "Work", perItem: true, itemAware: true, itemSet: "requests", ...over });
+
+export const ITEMS_PAGE: RunPage = runPage({
+  run: ITEM_RUN, phases: [{ key: "work", title: "Work", steps: ["ri.read", "ri.decide"] }],
+  steps: [
+    itemStep({ id: "ri.read", n: 1, title: "Read each request", kind: "check", role: "jason", state: "done", by: "jason", at: "2099-10-08T08:00:00Z",
+      items: ITEM_IDS.map((item) => ({ item, state: "done" })), itemCounts: { done: 12 } }),
+    itemStep({ id: "ri.decide", n: 2, title: "Decide each request", kind: "person", state: "needs a person", current: true, yours: true,
+      reason: "9 of 12 items need a person; the most pressing is req:04", needsRecord: "the decision",
+      items: ITEM_IDS.map((item, i) => ({ item, state: itemState(i) })), itemCounts: { done: 3, "needs a person": 9 },
+      acts: ["attest"], waitingOn: { kind: "office", word: "the manager", role: "manager", detail: "" } }),
+  ],
+  clocks: ITEM_CLOCKS, links: [], history: [], changed: [], pending: [],
+});
+
+/** The same step over a set with no items yet. */
+const EMPTY_STEP = itemStep({ id: "ri.decide", n: 1, of: 1, title: "Decide each request", kind: "person", state: "waiting", current: true,
+  reason: "no items in the set requests yet", items: [], waitingOn: { kind: "arrival", word: "an arrival", role: "manager", detail: "no items in the set requests yet" } });
+const EMPTY_SETS = [{ ...SUPPLY_SETS[0], count: 0 }];
+export const EMPTY_ITEMS_PAGE: RunPage = runPage({
+  run: { ...ITEM_RUN, itemSets: EMPTY_SETS, acts: { ...ITEM_RUN.acts, supplyItems: { offered: true, why: "", sets: EMPTY_SETS } } },
+  phases: [{ key: "work", title: "Work", steps: ["ri.decide"] }], steps: [EMPTY_STEP], clocks: [], links: [], history: [], changed: [], pending: [],
+});
+
+/** The same, read by someone who may not supply: the server's sentence stands in place of the form. */
+export const NO_SUPPLY_WHY = "Only the person who opened the run, or a person who holds a role a step over the items needs, may supply items.";
+export const NO_SUPPLY_PAGE: RunPage = runPage({
+  ...EMPTY_ITEMS_PAGE,
+  run: { ...EMPTY_ITEMS_PAGE.run, acts: { ...ITEM_RUN.acts, supplyItems: { offered: false, why: NO_SUPPLY_WHY, sets: [] } } },
+});
+
+/** What the dry run answers, and the act. */
+export const SUPPLY_DRY = {
+  ok: true, act: "supply-items", dryRun: true as const, set: "requests", wouldAdd: ["req:20", "req:21"], alreadyThere: ["req:01"], withDates: [],
+  text: "supplied 2 items to the set requests", record: "", n: 9,
+};
+export const SUPPLY_ANSWER: ActAnswer = {
+  ok: true, act: "supply-items", by: MANAGER,
+  event: { n: 10, kind: "note", step: "", stepTitle: "", by: MANAGER, at: "2099-10-09T10:00:00Z",
+    text: `${MANAGER} noted on the run: supplied 2 items to the set requests`, detail: { text: "supplied 2 items to the set requests" }, pending: false },
+  appended: [], run: ITEMS_PAGE,
+};
+
+/** A run with two titled step groups: the first holds the current step (expanded), the second is not yet reached (collapsed). */
+const GROUP_STEPS = [
+  step({ id: "g.1", n: 1, of: 4, title: "Collect", kind: "person", state: "needs a person", group: "intake", phase: "run", phaseTitle: "The run", current: true, yours: true,
+    acts: ["attest"], waitingOn: MANAGER_WAIT }),
+  step({ id: "g.2", n: 2, of: 4, title: "Sort", kind: "person", state: "not started", group: "intake", phase: "run", phaseTitle: "The run" }),
+  step({ id: "g.3", n: 3, of: 4, title: "Decide", kind: "person", state: "not started", group: "board", phase: "run", phaseTitle: "The run" }),
+  step({ id: "g.4", n: 4, of: 4, title: "Announce", kind: "person", state: "not started", group: "board", phase: "run", phaseTitle: "The run" }),
+];
+export const GROUPS_PAGE: RunPage = runPage({
+  run: { ...OWNER_INFO_RUN, id: "run-2200bb33cc", definition: "group-flow", definitionTitle: "Group flow", label: "Group flow, October", children: [],
+    current: { id: "g.1", title: "Collect", n: 1, of: 4 }, cancelWill: { openSteps: ["g.1"], childRuns: [] } },
+  phases: [{ key: "run", title: "The run", steps: ["g.1", "g.2", "g.3", "g.4"] }], steps: GROUP_STEPS, clocks: [], links: [], history: [], changed: [], pending: [],
+  groups: [
+    { key: "intake", title: "Intake", steps: ["g.1", "g.2"], state: "needs a person", done: 0, total: 2, expanded: true, current: "g.1" },
+    { key: "board", title: "The board", steps: ["g.3", "g.4"], state: "not started", done: 0, total: 2, expanded: false, current: "" },
+  ],
+});
+
+/** A failed check whose remedy step is open, and the remedy step. */
+export const REMEDY_PAGE: RunPage = runPage({
+  run: { ...OWNER_INFO_RUN, id: "run-3300cc44dd", definition: "remedy-flow", definitionTitle: "Remedy flow", label: "Remedy flow, October", children: [],
+    current: { id: "r.2", title: "Complete the roster", n: 2, of: 3 }, cancelWill: { openSteps: ["r.1", "r.2"], childRuns: [] } },
+  phases: [{ key: "run", title: "The run", steps: ["r.1", "r.2", "r.3"] }],
+  steps: [
+    step({ id: "r.1", n: 1, of: 3, title: "The roster is complete", kind: "check", role: "jason", state: "failed", reason: "the roster is incomplete", phase: "run",
+      phaseTitle: "The run", remedy: "r.2" }),
+    step({ id: "r.2", n: 2, of: 3, title: "Complete the roster", kind: "person", state: "needs a person", phase: "run", phaseTitle: "The run", current: true,
+      yours: true, acts: ["attest"], needsRecord: "the roster", remedyOf: "r.1", waitingOn: MANAGER_WAIT }),
+    step({ id: "r.3", n: 3, of: 3, title: "Mail the notice", kind: "person", state: "blocked", blockedBy: ["r.1"], phase: "run", phaseTitle: "The run" }),
+  ],
+  clocks: [], links: [], history: [], changed: [], pending: [],
+});
+
+/** A held run outside the private view that has items: a count, and no id. */
+export const HELD_ITEMS_PAGE: RunPage = { ...HELD_PAGE, run: { ...HELD_PAGE.run, itemTotal: 12 } };

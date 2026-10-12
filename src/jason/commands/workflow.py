@@ -13,6 +13,11 @@ A workflow is a registered definition (``jason.workflows.definitions``); a run i
   ``--by``. ``--na`` records a step as not applicable (``--reason`` and ``--record``; not a skip, so a legal step may be
   recorded this way). ``--set-date`` gives a late or optional date slot a day after the start (``--record``; a correction
   also needs ``--reason``).
+- ``--supply RUN --set NAME --item ID [--item ID ...] --by NAME [--item-date ID SLOT=YYYY-MM-DD --record REF] [--yes]``: give a
+  named item set (``--set ""``, or leaving it out, is the run's own) more items while the run goes. An item is an opaque id,
+  never a name or an address (the engine refuses one in its own words). Without ``--yes`` it checks everything and prints what
+  would be recorded; nothing is written. The person must be on the roster. ``--item-date`` gives one item the date a slot reads
+  for its own clocks (needs ``--record``; a later supply of the same id corrects it).
 
 Whether a name holds the role a step needs is read from the community's officers (``jason.access.community_officers``,
 which adds the portfolio's managers) and jason's administrators. A profile that names none leaves every role-gated act
@@ -34,7 +39,7 @@ import sys
 from datetime import date
 from typing import Any, Callable, Iterable
 
-WRITES = ("start", "open", "attest", "arrived", "skip", "na", "set_date", "pause", "resume", "reopen", "note", "cancel")
+WRITES = ("start", "open", "attest", "arrived", "skip", "na", "set_date", "supply", "pause", "resume", "reopen", "note", "cancel")
 ACTS = ("list", "definitions", "show", "verify", "reindex", "from_sop") + WRITES
 
 
@@ -163,8 +168,15 @@ def show_lines(run: dict[str, Any], *, events: bool = False) -> list[str]:
             out.append(f"{'':27}{s['reason']}")
         for c in s["changed"]:
             out.append(f"{'':27}changed since: {c.get('address', '')} was {c.get('was', '')}, now {c.get('now', '')}")
+        if s.get("remedy"):
+            out.append(f"{'':27}stays recorded as failed; the step {s['remedy']} remedies it")
+        if s.get("itemCounts"):
+            out.append(f"{'':27}items: " + ", ".join(f"{n} {state}" for state, n in s["itemCounts"].items()))
         for it in s["items"]:
             out.append(f"{'':27}item {it['item']}: {it['state']}")
+    for g in run.get("groups", ()):
+        out.append(f"  group {g['key']} ({g['title']}): {g['state']}, {g['done']} of {g['total']} done, "
+                   + ("expanded" if g["expanded"] else "collapsed"))
     open_slots = [d for d in run.get("dateSlots", ()) if d.get("settable")]
     if open_slots:
         out.append("  dates a person may set (--set-date): " + ", ".join(
@@ -358,6 +370,8 @@ def cmd_workflow(args: argparse.Namespace) -> int:
             slot, day = _slot_day(pair)
             out = api.set_date(root, run, slot, day, by, roles_of=roles_of, record=args.record or "", reason=args.reason or "",
                                readers=readers, expect=expect, today=today)
+        elif act == "supply":
+            return _supply(args, api, root, roster, by, readers, today)
         elif act == "reopen":
             run, step = args.reopen
             out = api.reopen(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, readers=readers, expect=expect, today=today)
@@ -401,9 +415,63 @@ def _roster_note(act: str, text: str, roster: Roster | None) -> str:
     return ""
 
 
+def _supply_entries(args: argparse.Namespace) -> list[Any]:
+    """The entries of a supply: each ``--item`` an id, and an id given ``--item-date`` an entry with its slot dates (the ids
+    once, in the order given). Whether an id may be one, and whether a date is a day of a declared slot, is the engine's."""
+    dates: dict[str, dict[str, str]] = {}
+    order: list[str] = []
+    for item in args.item or ():
+        if item not in order:
+            order.append(item)
+    for item, pair in getattr(args, "item_date", None) or ():
+        slot, day = _slot_day(pair)
+        if item not in order:
+            order.append(item)
+        dates.setdefault(item, {})[slot] = day
+    return [{"id": i, "dates": dates[i]} if i in dates else i for i in order]
+
+
+def _supply_lines(out: dict[str, Any], by: str) -> list[str]:
+    noun = lambda n: f"{n} item" + ("" if n == 1 else "s")  # noqa: E731
+    where = f"the set {out['set']}" if out["set"] else "the run's own items"
+    lines = [f"{out['run']}: would supply {noun(len(out['wouldAdd']))} to {where} in the name of {by}"
+             + (f" ({len(out['alreadyThere'])} already there)" if out["alreadyThere"] else "")
+             + "; nothing is written without --yes"]
+    if out["wouldAdd"]:
+        lines.append("  new: " + ", ".join(out["wouldAdd"]))
+    if out["alreadyThere"]:
+        lines.append("  already in the set: " + ", ".join(out["alreadyThere"]))
+    if out["withDates"]:
+        lines.append("  with their own dates: " + ", ".join(out["withDates"]))
+    if out["record"]:
+        lines.append(f"  record: {out['record']}")
+    return lines
+
+
+def _supply(args: argparse.Namespace, api: Any, root: Any, roster: Roster | None, by: str, readers: Any,
+            today: date | None) -> int:
+    """``--supply RUN --set NAME --item ID ...``: the engine's ``supply_items``, after the CLI's own checks (the person is on the
+    roster). Without ``--yes`` the same checks run and nothing is written."""
+    if not (roster and roster.roles_of(by)):
+        return _refuse(f"{by} is not on the roster (the community's officers and jason's administrators), so no items are "
+                       f"supplied in that name" + (f" ({roster.note()})" if roster is not None and not roster else ""))
+    entries = _supply_entries(args)
+    kw = dict(roles_of=roster.roles_of, record=args.record or "", readers=readers, expect=args.expect, today=today)
+    run, name = args.supply, (args.item_set or "").strip()
+    if not args.yes:
+        out = api.supply_items(root, run, name, entries, by, dry_run=True, **kw)
+        print(_dump(out) if args.json else "\n".join(_supply_lines(out, by)))
+        return 0
+    out = api.supply_items(root, run, name, entries, by, **kw)
+    event = out["event"]
+    print(_dump(out) if args.json else "\n".join(
+        [_summary_line(out, f"{(event.get('detail') or {}).get('text', 'items supplied')} by {by}"), _event_line(event)]))
+    return 0
+
+
 def _one_item(args: argparse.Namespace, act: str) -> str:
     items = args.item or []
-    if act == "start" or not items:
+    if act in ("start", "supply") or not items:
         return ""
     if len(items) > 1:
         raise ValueError("--item names one item for an act")
@@ -490,6 +558,14 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--set-date", dest="set_date", nargs=2, metavar=("RUN", "SLOT=YYYY-MM-DD"),
                    help="give a late or optional date slot a day after the start (with --record, --by; a correction also "
                         "--reason)")
+    p.add_argument("--supply", metavar="RUN",
+                   help="give an item set more items while the run goes (with --set, --item, --by; --item-date and --record for an "
+                        "item's own dates). An item is an opaque id, never a name or an address. Without --yes it checks and "
+                        "prints what would be recorded and writes nothing")
+    p.add_argument("--set", dest="item_set", default="", metavar="NAME",
+                   help="with --supply: the item set (omit for the run's own items)")
+    p.add_argument("--item-date", dest="item_date", action="append", nargs=2, metavar=("ITEM", "SLOT=YYYY-MM-DD"),
+                   help="with --supply: the day a date slot reads for this item's own clocks (needs --record; repeat)")
     p.add_argument("--reopen", nargs=2, metavar=("RUN", "STEP"), help="open a done, skipped, or failed step again (with --reason, --by)")
     p.add_argument("--pause", metavar="RUN", help="pause a run (with --reason, --by)")
     p.add_argument("--resume", metavar="RUN", help="lift a pause (with --by)")
@@ -499,15 +575,15 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--reindex", action="store_true", help="rebuild data/workflows/index.json from the events")
     p.add_argument("--from-sop", dest="from_sop", metavar="KEY",
                    help="print a DRAFT definition from a procedure (jason sop lists them); it is never registered")
-    p.add_argument("--record", metavar="REF", help="with --attest, --na, or --set-date: the record that shows it (minutes, a sent "
+    p.add_argument("--record", metavar="REF", help="with --attest, --na, --set-date, or --supply: the record that shows it (minutes, a sent "
                                                    "notice, a library id)")
     p.add_argument("--what", metavar="TEXT", help="with --attest or --arrived: what was done, in a few words")
     p.add_argument("--outcome", metavar="WORD", help="with --attest on a decision step: adopted, approved, denied, rejected, "
                                                      "withdrawn, tabled, or pending (only a final one finishes the step)")
     p.add_argument("--motion", metavar="TEXT", help="with --attest on a decision step: the motion (default: the step's title)")
     p.add_argument("--choice", metavar="KEY", help="with --attest on a branch step a person answers")
-    p.add_argument("--item", action="append", metavar="ITEM", help="with --start: an item of the run (repeat); with an act "
-                                                                   "on a per-item step: the item")
+    p.add_argument("--item", action="append", metavar="ITEM", help="with --start: an item of the run (repeat); with --supply: an item id to "
+                                                                   "add (repeat); with an act on a per-item step: the item")
     p.add_argument("--step", metavar="STEP", help="with --note: the step it is about")
     p.add_argument("--reason", metavar="TEXT", help="why: a skip, a not-applicable record, a pause, a reopen, a cancel, or a "
                                                     "date correction")
@@ -515,7 +591,7 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--expect", type=int, metavar="N", help="the run's n you last saw; a run that moved on is refused")
     p.add_argument("--as-of", dest="as_of", metavar="YYYY-MM-DD", help="read the clocks as of this day (default: today)")
     p.add_argument("--by", default="", metavar="NAME", help="who is acting (required for every write; kept with when)")
-    p.add_argument("--yes", action="store_true", help="confirm: --cancel always; --start and --open of a run with a legal clock")
+    p.add_argument("--yes", action="store_true", help="confirm: --cancel and --supply always; --start and --open of a run with a legal clock")
     p.add_argument("--json", action="store_true", help="print JSON")
     p.set_defaults(func=cmd_workflow)
 
