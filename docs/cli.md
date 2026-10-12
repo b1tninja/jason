@@ -977,7 +977,7 @@ What needs attention across the governance systems: clocks passed or near, quest
 
 | Option | Value | Help |
 |---|---|---|
-| `--section` | {meetings,requests,schedule,people,notices,living,conflicts,duties,intake,approvals} | one section (repeatable) |
+| `--section` | {meetings,requests,schedule,people,notices,living,conflicts,duties,intake,approvals,person-steps} | one section (repeatable) |
 | `--limit` | LIMIT | lines per section (default 8) |
 | `--past` | PAST | how far back the schedule looks for what is overdue (default 30 days) |
 | `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |
