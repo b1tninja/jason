@@ -1042,6 +1042,13 @@ Durable workflows: list and start runs, open one (the resume check), attest, ski
 | `--supply` | RUN | give an item set more items while the run goes (with --set, --item, --by; --item-date and --record for an item's own dates). An item is an opaque id, never a name or an address. Without --yes it checks and prints what would be recorded and writes nothing |
 | `--set` | NAME | with --supply: the item set (omit for the run's own items) |
 | `--item-date` | ITEM SLOT=YYYY-MM-DD | with --supply: the day a date slot reads for this item's own clocks (needs --record; repeat) |
+| `--guide` | RUN[:STEP] | print a person step's guide as plain text: do this, look at, the rule, the checklist, the command, done when, if blocked, if it does not apply, ask, learn more (RUN:STEP, a run alone for its current step, or DEFINITION.STEP for the definition's words; with --for NAME for whether they can act now). Reads only |
+| `--due` |  | list the person steps due, late, or open a while for --for NAME, and what is escalated to their office. Reads only; nothing is sent |
+| `--for` | NAME | with --due or --guide: the person (their offices come from the roster) |
+| `--within` | DAYS | with --due: keep a due-soon or open line only if its date is within this many days |
+| `--all` |  | with --due: also the person's open steps that are quiet |
+| `--claim` | RUN STEP | say you are on a step (with --by, --yes): a note on the step, not an assignment; without --yes it checks and writes nothing |
+| `--release` |  | with --claim: let the step go (only the person who claimed it) |
 | `--reopen` | RUN STEP | open a done, skipped, or failed step again (with --reason, --by) |
 | `--pause` | RUN | pause a run (with --reason, --by) |
 | `--resume` | RUN | lift a pause (with --by) |
