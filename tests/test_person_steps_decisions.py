@@ -102,6 +102,9 @@ def test_every_recited_statute_is_in_the_shelf_text():
     on disk only where it was exported, and without it this test is skipped)."""
     if not SHELF.is_dir() or not any(SHELF.rglob("*.md")):
         pytest.skip("the authorities shelf is not exported here")
+    import shelf_support
+
+    shelf_support.require(ROOT / "data")  # a partial shelf (one page fetched on demand) is not the shelf
     shelf = _fold(" ".join(p.read_text(encoding="utf-8", errors="replace") for p in SHELF.rglob("*.md")))
     blocks = [_fold(b) for b in re.findall(r"^> (.+)$", TEXT, flags=re.M)]
     assert len(blocks) >= 5
