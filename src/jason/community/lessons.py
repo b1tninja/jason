@@ -2508,6 +2508,40 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-refusal-inside-a-200-is-not-a-failure-to-the-write-helper", date(2026, 10, 12), (Area.REPOSITORY,),
+           "A pick that ended in an error (Google refused, nothing picked) answers 200 with an error field, and the shared "
+           "write helper threw on any body with one, so the result list never rendered.",
+           "postJson treats an error key as a failed request.",
+           "The pick reader takes the body from the thrown error and shows it as the result; a result endpoint that reports "
+           "a refusal inside a normal answer must be read that way.",
+           Status.FIXED, guards=("ui/src/lib/pick.ts", "ui/src/views/pick.test.tsx (the nothing-kept case)"),
+           docs=("docs/google-picker.md",)),
+    Lesson("a-browser-test-launcher-must-not-write-into-checked-in-fixtures", date(2026, 10, 12), (Area.REPOSITORY,),
+           "The test launcher pointed the spec folder at the checked-in fixtures, so a slot pin written by a test changed "
+           "tests/fixtures/spec/mystique/records.json.",
+           "A write act writes wherever the spec folder points.",
+           "The launcher copies the fixtures into its own data folder first.",
+           Status.FIXED, guards=("e2e/serve_e2e.py",), docs=("e2e/README.md",),
+           notes=("Open: a test asserting that git status of tests/fixtures is unchanged after the suite.",)),
+    Lesson("a-page-left-mid-request-counts-as-pending", date(2026, 10, 12), (Area.REPOSITORY,),
+           "The browser suite's request watcher counted a request cut off by leaving the page as pending forever, so a test "
+           "that navigated away failed for no product reason.",
+           "A cancelled request never completes.",
+           "A test that leaves a page lets its requests settle first (the settle helper).",
+           Status.FIXED, guards=("e2e/tests/pick.spec.ts (settle)",), docs=("e2e/README.md",)),
+    Lesson("a-notice-in-a-fixed-height-shell-squeezes-the-stage", date(2026, 10, 12), (Area.REPOSITORY,),
+           "A new notice region in the editor header shrank the pages area until the edge tabs covered the bottom bar and "
+           "axe reported a target-size failure.",
+           "The shell is a fixed height and the stage takes what the header leaves.",
+           "A new region in the editor header needs an axe scan at 1440 px with the notice open, or must float.",
+           Status.FIXED, guards=("e2e/tests/a11y.spec.ts",), docs=("docs/pdf-splitter-accessibility.md",)),
+    Lesson("a-seeded-test-draft-needs-its-own-bytes", date(2026, 10, 12), (Area.REPOSITORY,),
+           "A seed route that opened a draft on the same bytes as another returned the same draft, and a held-copies list "
+           "kept in the shared test data folder added buttons whose words matched the open panel's, breaking older locators.",
+           "Drafts are keyed by file hash and the test data folder is shared between specs.",
+           "Seeds use unique bytes, a spec cleans up what it seeded, and the new lists word their buttons differently.",
+           Status.FIXED, guards=("e2e/tests/split-hardening.spec.ts", "the full browser suite"),
+           docs=("e2e/README.md",)),
     Lesson("a-scratch-copy-on-the-system-drive-filled-it", date(2026, 10, 11), (Area.REPOSITORY,),
            "Four scratch copies of the tree, each with a full copy of the data folder (21.5 GB in all), filled the system "
            "drive to 98% and risked a crash.",
