@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from jason.community.forms import FormQuestion, FormTemplate, QuestionKind, ReadAs
 
@@ -343,6 +343,8 @@ class FormDefinition:
     slots: tuple[str, ...] = ()                     # the {SLOT}s the form uses
     bindable: tuple[str, ...] = ()                  # a family form: the clocks a binding must give, by name
     notes: tuple[str, ...] = ()                     # what a reader of the definition should know (the design page's open points)
+    shelf: Callable[[], Mapping[str, str]] | None = None   # {TOKEN}s the statute shelf fills when the form is resolved (a figure the
+                                                           # form states is read from the stored section, never written here)
 
     def __post_init__(self) -> None:
         if not self.key:

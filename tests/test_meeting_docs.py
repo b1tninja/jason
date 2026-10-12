@@ -68,7 +68,7 @@ def data(tmp_path, monkeypatch):
     (zoom / "hearings").mkdir()
     (zoom / "hearings" / f"{DAY}-123-main-st-12.md").write_text("# Notice of hearing\n", encoding="utf-8")
     (zoom / "hearings.json").write_text(json.dumps({"hearings": [{
-        "address": "123 Main St #12", "start": f"{DAY}T18:00", "noticeBy": "2099-10-10", "decisionByIfHeld": "2099-11-03",
+        "address": "123 Main St #12", "handle": "h-0a1b2c3d", "start": f"{DAY}T18:00", "noticeBy": "2099-10-10", "decisionByIfHeld": "2099-11-03",
         "notice": f"hearings/{DAY}-123-main-st-12.md", "noticeDoc": {"id": NOTICE_ID, "url": "", "unfilled": []}}]}),
         encoding="utf-8")
     records = [

@@ -433,7 +433,7 @@ def hearings(data, *rows):
 
 
 def test_the_saved_hearing_days_are_checked_against_the_run_and_reveal_no_name_or_address(data):
-    hearings(data, hearing_row(), hearing_row(address="9 Elm Ct", handle="h-other000", start="2031-04-09T18:30"))
+    hearings(data, hearing_row(), hearing_row(address="9 Elm Ct", handle="h-0dd0dd00", start="2031-04-09T18:30"))
     r = readers_for(data)
     ok = run(r, "hearing-dates", view({"hearing_on": "2031-03-12"}, f"hearing:{HANDLE}"))
     assert ok.ok is True
@@ -447,11 +447,11 @@ def test_the_saved_hearing_days_are_checked_against_the_run_and_reveal_no_name_o
 
 
 def test_a_notice_day_under_ten_days_or_a_decision_day_off_the_count_fails(data):
-    hearings(data, hearing_row(noticeBy="2031-03-04"), hearing_row(handle="h-late0000", decisionByIfHeld="2031-03-30"))
+    hearings(data, hearing_row(noticeBy="2031-03-04"), hearing_row(handle="h-1a7e0000", decisionByIfHeld="2031-03-30"))
     r = readers_for(data)
     short = run(r, "hearing-dates", view({}, f"hearing:{HANDLE}"))
     assert short.ok is False and "under 10 days before the hearing (CIV 5855(a))" in short.message
-    off = run(r, "hearing-dates", view({}, "hearing:h-late0000"))
+    off = run(r, "hearing-dates", view({}, "hearing:h-1a7e0000"))
     assert off.ok is False and "is not 14 days after the hearing (CIV 5855(f))" in off.message
 
 
@@ -465,6 +465,17 @@ def test_a_hearing_that_is_not_saved_or_a_store_that_cannot_be_read_fails_with_t
     broken = run(r, "hearing-dates", view({}, HANDLE))
     assert broken.ok is False and broken.message.startswith("cannot read:")
     assert hearing_decisions.HEARINGS.as_posix() == "zoom/hearings.json"
+
+
+def test_a_subject_that_is_not_a_handle_is_never_echoed_by_a_hearing_check(data):
+    hearings(data, hearing_row())
+    r = readers_for(data)
+    for subject in ("123 Main St", "hearing:123 Main St #12", "h-abcd123", "H-ABCD1234", "h-abcd12345", "h-abcd123g"):
+        for name in ("hearing-dates", "hearing-minutes-note", "hearing-delivery-read", "hearing-requirements-met"):
+            got = run(r, name, view({}, subject))
+            assert got.ok is False and got.message == "the run's subject names no hearing handle (not a handle)", (name, subject)
+            assert "Main" not in got.message and "abcd" not in got.message.lower()
+    assert hearing_decisions.is_handle(HANDLE) and not hearing_decisions.is_handle("h-xyz") and not hearing_decisions.is_handle(None)
 
 
 # --- every read, one folder ---------------------------------------------------------------------------------------------
@@ -573,7 +584,7 @@ def test_the_hearings_matter_is_noted_in_the_next_open_minutes_by_its_subject_on
     draft(data, "## Executive session\n\nThe board met in executive session to discuss personnel matters.\n", day="2031-03-12")
     off = run(r, "hearing-minutes-note", view({}, f"hearing:{HANDLE}"))
     assert off.ok is False and "member discipline" in off.message
-    assert run(r, "hearing-minutes-note", view({}, "h-none0000")).message == "no saved hearing has the handle h-none0000"
+    assert run(r, "hearing-minutes-note", view({}, "h-0e0e0e0e")).message == "no saved hearing has the handle h-0e0e0e0e"
     assert run(r, "hearing-minutes-note", view()).ok is False
 
 
@@ -747,7 +758,7 @@ def test_a_notice_with_no_copy_a_pending_outcome_or_no_one_reached_fails(data):
     assert "1 of 2 copies of the notice of hearing" in run(r, "hearing-delivery-read", handle).message
     save_attempts(data, "discipline-hearing-2031-03-12", D.BOUNCED, D.BOUNCED)
     assert "no copy of the notice of hearing" in run(r, "hearing-delivery-read", handle).message
-    assert run(r, "hearing-delivery-read", view({}, "h-none0000")).ok is False and run(r, "hearing-delivery-read", view()).ok is False
+    assert run(r, "hearing-delivery-read", view({}, "h-0e0e0e0e")).ok is False and run(r, "hearing-delivery-read", view()).ok is False
     hearings(data, hearing_row(noticeBy=None))
     assert run(r, "hearing-delivery-read", handle).message == f"hearing {HANDLE} lacks a saved day: noticeBy"
 
@@ -770,7 +781,7 @@ def test_every_requirement_the_days_can_show_is_stated_met_or_not_on_record(data
     hearings(data, hearing_row(noticeOn="2031-02-20"))
     missing = run(late, "hearing-requirements-met", handle)
     assert missing.ok is False and "not on record: board's findings recorded; decision delivered within 14 days" in missing.message
-    assert run(r, "hearing-requirements-met", view({}, "h-none0000")).ok is False
+    assert run(r, "hearing-requirements-met", view({}, "h-0e0e0e0e")).ok is False
 
 
 # --- retire-reasons ------------------------------------------------------------------------------------------------------------------

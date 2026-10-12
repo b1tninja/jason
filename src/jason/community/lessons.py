@@ -2465,6 +2465,21 @@ LESSONS: tuple[Lesson, ...] = (
            Status.OPEN, guards=("tests/test_rule_records.py (tree before equals tree after)",),
            docs=("docs/rule-records.md",),
            notes=("Extends reciting-writes-the-versions-cache: guard that cache too.",)),
+    Lesson("a-hearing-reader-minted-its-handle-and-the-tool-returned-the-whole-row", date(2026, 10, 11), (Area.ENFORCEMENT,),
+           "Reading the console's hearings (a GET) and the rule records' links rewrote the hearing store to give each row a "
+           "handle. The MCP hearings tool returned each whole row (address, violation, Zoom passcode, findings) to any "
+           "caller, and a hearing check echoed the run's subject, which a person can start with an address.",
+           "The handle was minted by a reader because it was the one place every path passed; the tool predated the "
+           "private view, and the check trusted the subject to be a handle.",
+           "A handle is minted where a hearing is saved and by `jason zoom --mint-handles --yes` (a dry run without --yes); "
+           "readers only read, and a hearing without a handle is counted as unmigrated, not listed. The MCP tool returns the "
+           "handle, the general title, and the clock unless include_confidential. The hearing checks echo a subject only "
+           "if it has a handle's shape.",
+           Status.FIXED, guards=("tests/test_hearing_privacy.py::test_a_read_writes_nothing_and_a_hearing_without_a_handle_has_no_console_row",
+                                 "tests/test_mcp_hearings.py", "tests/test_workflows_checks_board.py::test_a_subject_that_is_not_a_handle_is_never_echoed_by_a_hearing_check"),
+           docs=("docs/mcp.md",),
+           notes=("The workflow engine has no hook to refuse a subject at run start, so a definition cannot reject an "
+                  "address as its subject there; only the checks are guarded.",)),
     Lesson("a-derived-first-version-has-no-adoption-day", date(2026, 10, 10), (Area.GOVERNING, Area.DOCUMENTS),
            "Rule records derived from the working Doc have a first version with no adoption day; shown as adopted they "
            "would claim an adoption nobody recorded (45 of 77 on the real data).",
@@ -3641,12 +3656,24 @@ LESSONS: tuple[Lesson, ...] = (
            "opaque id, or for an old row a keyed handle (HMAC-SHA256 under `data/board/decisions.key`) that trying slugs "
            "cannot find; the real id opens only in the private view, logged. The 404 for an unknown id no longer echoes it. "
            "A row switched to executive session by `update` keeps its stored id, so the handle covers it outside the "
-           "private view.",
+           "private view. A second review found the opaque id guarded only the read: `POST /api/decisions[/<id>]` ran no "
+           "gate, so any roster person could post to the guessable `<meeting>--executive-1` and be answered with the whole "
+           "row (title, motion, votes, notes), and with no sign-in set up the route was open. `write_decision` is now "
+           "behind the P2 gate (`gates.check`); an executive row, a record that would replace one (the same key), and a "
+           "body that sets `session` to executive open only in the private view (logged as `board/decisions.json`), and "
+           "outside it answer the 404 a decision that does not exist gets, before the body is validated, so neither the id "
+           "nor a 400 confirms a row; where sign-in is not set up the private view cannot open, so an executive row stays "
+           "shut. The row is recorded by the signed-in account (`gates.recorded_by`), and `board/decisions*` is P3 by path "
+           "with `board/decisions.key` P4, never served.",
            Status.FIXED,
            guards=("tests/test_decisions.py::test_a_new_executive_decision_gets_an_opaque_sequential_id_per_meeting",
                    "tests/test_decisions.py::test_the_handle_is_the_id_when_opaque_else_a_keyed_hash_that_names_no_slug",
                    "tests/test_decisions.py::test_rule_links_never_carry_an_executive_decisions_id",
-                   "tests/test_meeting_room_executive.py::test_an_old_slugged_executive_row_is_served_under_a_handle_and_its_real_id_only_in_the_private_view"),
+                   "tests/test_meeting_room_executive.py::test_an_old_slugged_executive_row_is_served_under_a_handle_and_its_real_id_only_in_the_private_view",
+                   "tests/test_decisions_privacy.py::test_an_office_without_the_private_view_changes_an_open_decision_and_gets_404_for_an_executive_one",
+                   "tests/test_decisions_privacy.py::test_the_404_comes_before_the_body_is_read_so_a_bad_body_is_no_oracle",
+                   "tests/test_decisions_privacy.py::test_recording_over_an_executive_row_by_its_id_is_a_404_and_does_not_echo_it",
+                   "tests/test_decisions_privacy.py::test_the_decision_store_is_p3_by_path_and_its_key_is_never_served"),
            docs=("docs/console/screens/decisions.md",)),
     Lesson("records-fee-had-no-check", date(2026, 10, 11), (Area.DOCUMENTS,),
            "A design review of the records-request screen found that the writer accepted any non-negative fee, so nothing "

@@ -97,6 +97,20 @@ def _key(view: RunView) -> str:
     return str(view.subject).rpartition(":")[2].strip()
 
 
+def _hearing_handle(view: RunView) -> tuple[str, str]:
+    """(the run's subject as a hearing handle, why not). A subject that is not the shape of a handle (``h-`` and eight hex
+    digits) is never echoed: a person can start a run with any text as its subject, an address among it, and a message
+    reaches the results and the history."""
+    from jason.tasks.hearing_decisions import is_handle
+
+    key = _key(view)
+    if not key:
+        return "", "the run's subject names no hearing handle"
+    if not is_handle(key):
+        return "", "the run's subject names no hearing handle (not a handle)"
+    return key, ""
+
+
 def _meeting_day(view: RunView) -> date | None:
     return day_of(view.dates.get("meeting_on", "")) or day_of(_key(view))
 
@@ -443,9 +457,9 @@ def hearing_dates(readers: StoreReaders, view: RunView, item: str = "") -> Check
     from jason.tasks import hearing_decisions
     from jason.tasks.zoom import NOTICE_DAYS
 
-    handle = _key(view)
-    if not handle:
-        return _fail("the run's subject names no hearing handle")
+    handle, why = _hearing_handle(view)
+    if why:
+        return _fail(why)
     row = next((r for r in hearing_decisions.load(readers.data_dir) if r.get("handle") == handle), None)
     if row is None:
         return _fail(f"no saved hearing has the handle {handle}")
@@ -548,9 +562,9 @@ def hearing_minutes_note(readers: StoreReaders, view: RunView, item: str = "") -
     its opaque handle (the run's subject); nothing but the handle and days is read out."""
     from jason.tasks import hearing_decisions
 
-    handle = _key(view)
-    if not handle:
-        return _fail("the run's subject names no hearing handle")
+    handle, why = _hearing_handle(view)
+    if why:
+        return _fail(why)
     row = next((r for r in hearing_decisions.load(readers.data_dir) if r.get("handle") == handle), None)
     if row is None:
         return _fail(f"no saved hearing has the handle {handle}")
@@ -775,9 +789,9 @@ def _hearing(readers: StoreReaders, view: RunView) -> tuple[dict[str, Any] | Non
     """(the saved hearing the run's handle names, why not)."""
     from jason.tasks import hearing_decisions
 
-    handle = _key(view)
-    if not handle:
-        return None, "the run's subject names no hearing handle"
+    handle, why = _hearing_handle(view)
+    if why:
+        return None, why
     row = next((r for r in hearing_decisions.load(readers.data_dir) if r.get("handle") == handle), None)
     if row is None:
         return None, f"no saved hearing has the handle {handle}"

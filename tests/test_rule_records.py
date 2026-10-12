@@ -277,14 +277,24 @@ def test_a_use_is_linked_only_where_the_use_cites_the_rule(store):
     hearings = store / "zoom"
     hearings.mkdir()
     (hearings / "hearings.json").write_text(json.dumps({"hearings": [
-        {"start": "2026-02-10T18:00:00", "address": "1 Example St", "statement": "see jason://rules/rules#R-2 for the hours"},
+        {"start": "2026-02-10T18:00:00", "address": "1 Example St", "handle": "h-0a1b2c3d", "statement": "see jason://rules/rules#R-2 for the hours"},
         {"start": "2026-03-10T18:00:00", "address": "2 Example St", "statement": "no rule cited"}]}), encoding="utf-8")
     out = task.uses_detail("R-2", store, records="stored")
     assert out["count"] == 1 and out["uses"][0]["kind"] == "hearing" and out["uses"][0]["version"] == "v1"
-    handle = json.loads((hearings / "hearings.json").read_text(encoding="utf-8"))["hearings"][0]["handle"]      # given on first read
-    assert out["uses"][0]["ref"]["route"] == f"#/hearings?id={handle}" and handle.startswith("h-")
+    handle = "h-0a1b2c3d"                                                                                      # given where the hearing is saved
+    assert out["uses"][0]["ref"]["route"] == f"#/hearings?id={handle}"
     assert "example" not in json.dumps(out).lower() and "2026-02-10|" not in json.dumps(out)       # no address, no day-and-address key
     assert task.uses_detail("R-1", store, records="stored")["count"] == 0
+    # A read never gives a hearing its handle: one saved before handles has no route and is counted in the notes.
+    before = tree(store)
+    raw = json.loads((hearings / "hearings.json").read_text(encoding="utf-8"))
+    raw["hearings"][0].pop("handle")
+    (hearings / "hearings.json").write_text(json.dumps(raw), encoding="utf-8")
+    before = tree(store)
+    found, notes = task.links(store)
+    (use,) = [u for uses in found.values() for u in uses]
+    assert use.ref == {} and any("not migrated" in n for n in notes) and "Example" not in " ".join(notes)
+    assert tree(store) == before and "handle" not in json.loads((hearings / "hearings.json").read_text(encoding="utf-8"))["hearings"][0]
 
 
 def test_the_command_lists_shows_and_writes_nothing(store, monkeypatch, capsys):

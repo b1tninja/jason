@@ -233,6 +233,29 @@ def test_a_hearing_is_the_first_meeting_day_the_notice_can_reach(tmp_path) -> No
     assert (tmp_path / "zoom" / record["notice"]).is_file()
     listed = hearings(tmp_path, today=date(2026, 10, 12))["hearings"]
     assert "no delivery is recorded" in listed[0]["standing"] and not listed[0]["scheduled"]
+    # The console's opaque name is minted here, once (a reader never mints it), and a re-save keeps it.
+    assert record["handle"] == listed[0]["handle"] and len(record["handle"]) == 10 and record["handle"].startswith("h-")
+    assert save_hearing(tmp_path, plan, m.name)["handle"] == record["handle"]
+
+
+def test_a_re_saved_plan_keeps_what_a_person_recorded_on_the_row(tmp_path) -> None:
+    """The plan computes the dates; the board's decision, the handle, a delivery date, and any field a person's step added
+    stay on the row when the plan is saved again."""
+    from jason.tasks.hearing_decisions import key_for_handle, key_of, record as decide
+
+    m = mystique()
+    plan = plan_hearing(m, address="3030 Macon Dr", violation="Trash cans left in front of the garage", today=date(2026, 10, 8), notice_on=date(2026, 10, 9))
+    first = save_hearing(tmp_path, plan, m.name)
+    decide(tmp_path, key_for_handle(tmp_path, first["handle"]), findings="A warning", decided_on="2026-10-20", by="Secretary")
+    path = tmp_path / "zoom" / "hearings.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["hearings"][0]["followUp"] = "set by a person"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    again = save_hearing(tmp_path, plan_hearing(m, address="3030 Macon Dr", violation="Trash cans left in front of the garage", today=date(2026, 10, 8)), m.name)
+    assert again["handle"] == first["handle"] and again["decision"]["findings"] == "A warning" and again["decision"]["by"] == "Secretary"
+    assert again["followUp"] == "set by a person" and again["noticeOn"] == "2026-10-09"       # the second plan knew no delivery date
+    stored = json.loads(path.read_text(encoding="utf-8"))["hearings"]
+    assert len(stored) == 1 and stored[0]["decision"] == again["decision"] and key_of(stored[0]) == key_of(first)
 
 
 def test_a_late_notice_or_a_stranger_address_is_refused() -> None:

@@ -136,8 +136,8 @@ TEMPLATE = FormTemplate(
         "timeframes (Civil Code 5205(e)).",
         "**What it costs.** If you only inspect, there is no copy cost. The association may bill the direct and actual cost "
         "of copying and mailing; it will tell you the amount, and you agree to pay it, before anything is copied or sent "
-        "(Civil Code 5205(f)). For an enhanced association record it may also bill up to $10 an hour, and not more than $200 "
-        "for a written request, for the time actually and reasonably spent redacting it; it will tell you the estimate, and "
+        "(Civil Code 5205(f)). For an enhanced association record it may also bill {REDACTION_LIMITS}, "
+        "for the time actually and reasonably spent redacting it; it will tell you the estimate, and "
         "you agree to pay it, before it retrieves the documents (Civil Code 5205(g)).",
         "**Electronic copies.** You may ask to receive specifically identified records by electronic transmission or on "
         "machine-readable storage media, as long as the records can be sent in a redacted format that does not allow them to "
@@ -211,8 +211,8 @@ REQUIRED = (
              ("capacity", "member-name", "designation", "designation-signature"), "CIV 5205(b)"),
     Required("The member is told the cost of copying and mailing, and agrees to it, before copying",
              (PREAMBLE, "cost-ceiling"), "CIV 5205(f)"),
-    Required("For an enhanced association record, the estimated redaction cost is told and agreed before retrieval, at most "
-             "$10 an hour and $200 a request", (PREAMBLE,), "CIV 5205(g)"),
+    Required("For an enhanced association record, the estimated redaction cost is told and agreed before retrieval, within the "
+             "hourly rate and the total for a written request that CIV 5205(g) states", (PREAMBLE,), "CIV 5205(g)"),
     Required("The option of electronic transmission or machine-readable storage media", ("how-should-copies-be-delivered",),
              "CIV 5205(h)"),
     Required("An email address is asked for only if the member asks for delivery by email",
@@ -255,6 +255,30 @@ ACKNOWLEDGMENT = ("Reference {REFERENCE}. We received your request to inspect or
                   "membership list, a separate letter follows. If you want to change or add to your request, write to "
                   "{RETURN_BY_EMAIL} or {RETURN_BY_MAIL} and quote the reference.")
 
+def _usd(cents: int) -> str:
+    return f"${cents // 100:,}" if cents % 100 == 0 else f"${cents / 100:,.2f}"
+
+
+def _redaction_limits() -> str:
+    """5205(g)'s hourly rate and total, in the member's words, read from the stored section (``jason.tasks.records_fee``, the
+    one reader of those figures). A shelf that lacks the section, or states no figure in the form the reader knows, gives a
+    sentence that cites the section by number only: no figure is written here."""
+    try:
+        from jason.tasks.records_fee import bound
+
+        limits = bound()
+    except Exception:  # noqa: BLE001 - an unreadable shelf is a miss: the form cites the section and states no figure
+        limits = None
+    if limits is not None and limits.hourly_cents is not None and limits.cap_cents is not None:
+        return f"up to {_usd(limits.hourly_cents)} an hour, and not more than {_usd(limits.cap_cents)} for a written request"
+    return "up to the hourly rate, and not more than the total for a written request, that Civil Code 5205(g) states"
+
+
+def shelf() -> dict[str, str]:
+    """The tokens the stored statute fills when the form is resolved."""
+    return {"REDACTION_LIMITS": _redaction_limits()}
+
+
 DEFINITION = register(FormDefinition(
     key="records-request",
     tier=Tier.STATE,
@@ -273,4 +297,5 @@ DEFINITION = register(FormDefinition(
     handler="response-clock",
     channels=(Channel.PAPER, Channel.FILLABLE_PDF, Channel.EMAIL, Channel.PAYHOA, Channel.PORTAL),
     slots=("RETURN_BY_MAIL", "RETURN_BY_EMAIL", "BOARD_CONTACT"),
+    shelf=shelf,
 ))

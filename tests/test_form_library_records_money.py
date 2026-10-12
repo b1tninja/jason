@@ -327,12 +327,38 @@ def test_the_payment_plan_and_disputed_charge_forms_recite_the_sections_times_an
         assert not any(w in q.title.lower() for w in ("card number", "bank", "routing", "income", "sue"))
 
 
-def test_the_records_form_recites_the_designation_the_cost_the_electronic_option_the_timeframes_and_the_explanation():
+def _member_limits(text: str) -> str:
+    start = text.index("it may also bill ") + len("it may also bill ")
+    return text[start:text.index(", for the time actually and reasonably spent redacting")]
+
+
+def test_the_records_forms_redaction_figures_come_from_the_stored_statute_and_fall_back_to_the_section_number(monkeypatch):
+    from jason.tasks import records_fee
+
+    words = ("(g) ... an amount not in excess of ten dollars ($10) per hour, and not to exceed two hundred dollars ($200) total "
+             "per written request, for the time actually and reasonably involved in redacting an enhanced association record.")
+    monkeypatch.setattr(records_fee, "words", lambda citation: {"citation": citation, "text": words, "found": True})
+    text = words_of(form("records-request").template)
+    assert "it may also bill up to $10 an hour, and not more than $200 for a written request, for the time" in text
+    monkeypatch.setattr(records_fee, "words", lambda citation: {"citation": citation, "text": "", "found": False})
+    text = words_of(form("records-request").template)
+    assert "that Civil Code 5205(g) states, for the time" in text and "$10" not in text and "$200" not in text
+    monkeypatch.setattr(records_fee, "words", lambda citation: (_ for _ in ()).throw(OSError("no shelf")))
+    assert "that Civil Code 5205(g) states" in words_of(form("records-request").template)
+
+
+def test_the_records_form_recites_the_designation_the_cost_the_electronic_option_the_timeframes_and_the_explanation(monkeypatch):
+    from jason.tasks import records_fee
+
+    words = ("(g) ... an amount not in excess of ten dollars ($10) per hour, and not to exceed two hundred dollars ($200) total "
+             "per written request, for the time actually and reasonably involved in redacting an enhanced association record.")
+    monkeypatch.setattr(records_fee, "words", lambda citation: {"citation": citation, "text": words, "found": True})   # a checkout without the statute shelf
     t = form("records-request").template
     text = words_of(t)
     assert "the member shall make this designation in writing" in text.replace("The member", "the member")      # 5205(b)
     assert "tell you the amount, and you agree to pay it, before anything is copied or sent" in text           # 5205(f)
-    assert "up to $10 an hour, and not more than $200" in text                                                # 5205(g)
+    assert "{REDACTION_LIMITS}" not in text and "an hour" in text                                              # 5205(g): filled, never left
+    assert _member_limits(text) == records._redaction_limits()                                          # the figures are the shelf's
     assert "electronic transmission or on machine-readable storage media" in text                           # 5205(h)
     assert "within 10 business days" in text and "30 calendar days" in text                                  # 5210(b)
     assert "written explanation specifying the legal basis" in text                                          # 5215(d)
@@ -469,6 +495,7 @@ def test_every_slot_a_form_uses_is_declared_and_every_declared_slot_fills_the_fo
     t = d.template
     texts = [t.title, t.description, t.attestation, *t.preamble, d.member_clock, *(q.help for q in t.questions)]
     used = {tok for text in texts for tok in re.findall(r"\{([A-Z][A-Z0-9_]*)\}", text)}
+    used -= set(d.shelf()) if d.shelf else set()                                   # a figure the stored statute fills is no slot
     assert used <= set(d.slots), used - set(d.slots)                               # a slot the form uses is declared (so it can be missing)
     ack = {tok for tok in re.findall(r"\{([A-Z][A-Z0-9_]*)\}", d.acknowledgment)} - PER_SEND
     assert ack <= set(d.slots)

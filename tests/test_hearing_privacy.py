@@ -19,7 +19,7 @@ ROWS = webclient.ROSTER + (("Rae Roster", "", "rae@example.org", False),)
 OFFICES = ("Dana Director", "Sam Secretary", "Pat Example", "Lee President", "Vic Vice", "A Manager")
 
 
-def _seed(root, *, rows=None):
+def _seed(root, *, rows=None, migrated=True):
     (root / "zoom" / "hearings").mkdir(parents=True)
     (root / "zoom" / "hearings" / f"2026-10-20-{SLUG}.md").write_text("Notice of hearing", encoding="utf-8")
     base = {"address": ADDRESS, "building": "4", "start": "2026-10-20T18:00:00-07:00", "noticeBy": "2026-10-10", "noticeOn": "2026-10-05",
@@ -27,6 +27,8 @@ def _seed(root, *, rows=None):
             "zoom": {"id": "123456789", "joinUrl": "https://zoom.example/j/123456789", "passcode": "s3cret"},
             "notice": f"hearings/2026-10-20-{SLUG}.md", "noticeDoc": None}
     (root / "zoom" / "hearings.json").write_text(json.dumps({"hearings": rows or [base]}), encoding="utf-8")
+    if migrated:
+        hd.mint_handles(root, write=True)                  # a hearing saved today has its handle; a reader never gives one
 
 
 @pytest.fixture
@@ -147,11 +149,44 @@ def test_two_hearings_have_two_handles_and_a_decision_keeps_its_handle(root):
     other = {"address": "9 Elm St", "start": "2026-11-10T18:00:00-08:00", "noticeBy": "2026-10-31", "decisionByIfHeld": "2026-11-24"}
     rows = json.loads((root / "zoom" / "hearings.json").read_text(encoding="utf-8"))["hearings"] + [other]
     (root / "zoom" / "hearings.json").write_text(json.dumps({"hearings": rows}), encoding="utf-8")
-    got = hd.ensure_handles(root)
+    assert hd.mint_handles(root, write=True)["minted"] == 1                            # the first already has its handle
+    got = hd.load(root)
     assert len({r["handle"] for r in got}) == 2
     before = {hd.key_of(r): r["handle"] for r in got}
     hd.record(root, KEY, findings="No fine.", decided_on="2026-10-20", by="Secretary")
     assert {hd.key_of(r): r["handle"] for r in hd.load(root)} == before
+
+
+def _tree(root):
+    import hashlib
+
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def test_a_read_writes_nothing_and_a_hearing_without_a_handle_has_no_console_row(tmp_path, monkeypatch):
+    """The lesson of a read-only reader that writes: a GET must leave the data folder as it found it."""
+    monkeypatch.setattr("jason.mcp.county._data_dir", lambda d=None: tmp_path)
+    monkeypatch.setattr("jason.config.data_dir", lambda *a, **k: tmp_path)
+    _seed(tmp_path, migrated=False)
+    app = _app(tmp_path)
+    before = _tree(tmp_path)
+    for who, private in (("A Manager", False), ("Dana Director", True)):
+        c = _client(app, who)
+        if private:
+            _private(c)
+        before = _tree(tmp_path)                                                       # the sign-in and the private view's log are not the reader
+        for _ in range(2):
+            r = c.get("/api/hearings")
+            assert r.status_code == 200 and r.json["hearings"] == [] and r.json["unmigrated"] == 1
+        after = {k: v for k, v in _tree(tmp_path).items() if not k.startswith("access")}
+        assert after == {k: v for k, v in before.items() if not k.startswith("access")}
+    assert "handle" not in hd.load(tmp_path)[0] and hd.unmigrated(tmp_path) == 1
+    from jason.tasks import rule_records
+
+    rule_records.links(tmp_path)
+    assert "handle" not in hd.load(tmp_path)[0]                                        # the rule records' links read too
+    assert hd.mint_handles(tmp_path, write=True)["minted"] == 1
+    assert _client(app, "A Manager").get("/api/hearings").json["hearings"][0]["handle"].startswith("h-")
 
 
 # --- the writer ------------------------------------------------------------------------------------------------------

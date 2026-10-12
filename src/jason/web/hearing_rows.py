@@ -75,13 +75,13 @@ def open_row(h: dict[str, Any]) -> dict[str, Any]:
 
 def rows(private: bool) -> dict[str, Any]:
     from jason.mcp.county import _data_dir, hearings as tool
-    from jason.tasks.hearing_decisions import ensure_handles
 
     root = _data_dir(None)
-    ensure_handles(root)                                      # every row has its handle before it is read
-    out = tool()
-    shaped = [whole(h, root) if private else open_row(h) for h in out.get("hearings", [])]
-    return {**out, "hearings": shaped, "held": not private}
+    out = tool(include_confidential=True)                     # this loader does its own allowlisting (open_row)
+    allr = out.get("hearings", [])
+    listed = [h for h in allr if h.get("handle")]
+    shaped = [whole(h, root) if private else open_row(h) for h in listed]
+    return {**out, "hearings": shaped, "held": not private, "unmigrated": len(allr) - len(listed)}
 
 
 def hearings(args: dict[str, str]) -> dict[str, Any]:
@@ -92,15 +92,22 @@ def hearings(args: dict[str, str]) -> dict[str, Any]:
 
 def write(handle: str, body: dict[str, Any]) -> dict[str, Any]:
     """The board's decision after a hearing, onto the row ``handle`` names (P3: only in the private view, logged), and
-    the row as the private view shows it. ``KeyError`` for a handle that names none; the day-and-address key does not."""
+    the row as the private view shows it. ``KeyError`` for a handle that names none; the day-and-address key does not.
+    With no console sign-in set up the private view cannot open, so every handle is a ``KeyError`` (the 404 a missing
+    hearing gets) and nothing is echoed. Where sign-in is set up, the 401 or 403 comes before the handle is looked up and
+    is the same for every handle, and the opening is logged only for a handle that names a row. Recorded by the signed-in
+    account, never the ``by`` the body carries (``gates.recorded_by``)."""
     from jason.mcp.county import _data_dir
     from jason.tasks.hearing_decisions import key_for_handle, record
     from jason.web import gates
 
-    gates.check_private(LOG_PATH)
+    if gates.without_sign_in():
+        raise KeyError(handle)                                # the private view cannot open: the row is as one that is not there
+    gates.check_private(LOG_PATH, log=False)                  # 401, or 403 for every handle alike; the opening is logged below
     root = _data_dir(None)
-    key = key_for_handle(root, handle)
-    record(root, key, findings=str(body.get("findings", "")), decided_on=str(body.get("decidedOn", "")), by=str(body.get("by", "")))
+    key = key_for_handle(root, handle)                        # KeyError for a handle that names none: nothing is logged
+    gates.check_private(LOG_PATH)
+    record(root, key, findings=str(body.get("findings", "")), decided_on=str(body.get("decidedOn", "")), by=gates.recorded_by(body))
     return next(r for r in rows(True)["hearings"] if r.get("handle") == handle)
 
 

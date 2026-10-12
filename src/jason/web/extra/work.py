@@ -1117,7 +1117,8 @@ def held_page(root: Path, wf: Any, rid: str, who: Who, day: date, *, readers: An
             "id": rid, "handle": rid, "definition": wf.key, "definitionTitle": wf.held_title, "family": wf.family,
             "label": wf.held_title, "subject": "", "subjectKind": "", "state": row["state"], "n": 0, "updated": "",
             "opened": "", "openedBy": "", "dates": {}, "itemCount": 0,
-            "itemTotal": sum(len(v) for v in view.item_sets.values()),     # a count only: no item id leaves a held run "dateSlots": [], "openSlots": [], "parent": "",
+            # a count only: no item id leaves a held run
+            "itemTotal": sum(len(v) for v in view.item_sets.values()), "dateSlots": [], "openSlots": [], "parent": "",
             "children": [], "pausedReason": "", "cancelledReason": "", "torn": False, "corrupt": 0, "orphans": [],
             "pastLaw": ["law"] if row["pastLaw"] else [], "age": row["age"], "due": row["due"],
             "current": {"id": "", "title": cur["title"], "n": cur["n"], "of": cur["of"]} if cur["title"] else None,

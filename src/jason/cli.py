@@ -1545,6 +1545,17 @@ def cmd_zoom(args: argparse.Namespace) -> int:
     if args.meeting:
         print(json.dumps(meeting_text(data_dir, args.meeting, include_confidential=args.confidential), indent=2, default=str))
         return 0
+    if args.mint_handles:
+        from jason.tasks.hearing_decisions import mint_handles
+
+        done = mint_handles(data_dir, write=args.yes)
+        if args.json:
+            print(json.dumps(done))
+        elif args.yes:
+            print(f"gave {done['minted']} of {done['hearings']} saved hearing(s) a handle")
+        else:
+            print(f"{done['unmigrated']} of {done['hearings']} saved hearing(s) have no handle; add --yes to give them one")
+        return 0
     if args.recording or args.caption:
         if not args.meeting_id:
             print("--recording and --caption need --meeting-id (the live meeting's id)")
@@ -4108,7 +4119,9 @@ def build_parser() -> argparse.ArgumentParser:
     zoom.add_argument("--caption", default="", help="Post one line, prefixed 'jason:', into the live meeting's captions for everyone; needs --meeting-id and --yes")
     zoom.add_argument("--lang", default="en-US", help="With --caption: the caption language (default en-US)")
     zoom.add_argument("--by", default="", help="With --recording or --caption: who asked for it, for the log")
-    zoom.add_argument("--yes", action="store_true", help="Confirm --create-board-meeting, --recording, or --caption")
+    zoom.add_argument("--mint-handles", action="store_true",
+                      help="Give each saved hearing that has no handle one (a one-off migration: the console, the MCP tool, and the rule records only read; counts without --yes)")
+    zoom.add_argument("--yes", action="store_true", help="Confirm --create-board-meeting, --recording, --caption, or --mint-handles")
     zoom.add_argument("--json", action="store_true", help="Print JSON")
     zoom.set_defaults(func=cmd_zoom)
 

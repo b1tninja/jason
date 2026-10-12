@@ -472,15 +472,26 @@ def save_hearing(data_dir: Path, plan: HearingPlan, association: str, *, letter:
     notice.parent.mkdir(parents=True, exist_ok=True)
     notice.write_text(notice_text(plan, association), encoding="utf-8")
     path = root / HEARINGS
-    rows = json.loads(path.read_text(encoding="utf-8")).get("hearings", []) if path.is_file() else []
-    start = plan.start.isoformat(timespec="minutes")
-    earlier = next((r for r in rows if (r.get("address"), r.get("start")) == (plan.address, start)), {})
-    doc = {k: letter[k] for k in ("id", "url", "unfilled")} if letter else earlier.get("noticeDoc")
-    record = {**plan.record(), "notice": str(notice.relative_to(root)).replace("\\", "/"), "noticeDoc": doc,
-              "saved": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-              **({"handle": earlier["handle"]} if earlier.get("handle") else {})}   # the console's opaque name for it survives a re-save
-    rows = [r for r in rows if (r.get("address"), r.get("start")) != (record["address"], record["start"])] + [record]
-    path.write_text(json.dumps({"hearings": sorted(rows, key=lambda r: r["start"])}, indent=1), encoding="utf-8")
+    from jason.locks import Resource, hold
+    from jason.tasks.hearing_decisions import new_handle
+
+    with hold(Resource.STORE, "hearings", timeout=60, purpose="hearing plan: save_hearing"):   # the decision writer holds the same lock
+        rows = json.loads(path.read_text(encoding="utf-8")).get("hearings", []) if path.is_file() else []
+        start = plan.start.isoformat(timespec="minutes")
+        earlier = next((r for r in rows if (r.get("address"), r.get("start")) == (plan.address, start)), {})
+        doc = {k: letter[k] for k in ("id", "url", "unfilled")} if letter else earlier.get("noticeDoc")
+        planned = plan.record()
+        # What a person recorded on the row (the board's decision, the handle, any field added since) is not the plan's to
+        # erase: a re-save replaces what the plan computes and keeps the rest. A delivery date the plan does not know stays.
+        kept = {k: v for k, v in earlier.items() if k not in planned and k not in ("notice", "noticeDoc", "saved", "handle")}
+        record = {**kept, **planned, "notice": str(notice.relative_to(root)).replace("\\", "/"), "noticeDoc": doc,
+                  "saved": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                  # the console's opaque name for it: minted here, once, and kept through a re-save (a reader never mints it)
+                  "handle": earlier.get("handle") or new_handle()}
+        if planned.get("noticeOn") is None and earlier.get("noticeOn"):
+            record["noticeOn"] = earlier["noticeOn"]
+        rows = [r for r in rows if (r.get("address"), r.get("start")) != (record["address"], record["start"])] + [record]
+        path.write_text(json.dumps({"hearings": sorted(rows, key=lambda r: r["start"])}, indent=1), encoding="utf-8")
     return record
 
 

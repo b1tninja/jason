@@ -1088,18 +1088,48 @@ def write_canvas(key: str, body: dict[str, Any]) -> dict[str, Any]:
 
 def write_decision(decision_id: str, body: dict[str, Any]) -> dict[str, Any]:
     """Record a decision (``decision_id`` empty: ``meeting``, ``title``, ``motion`` and the rest) or change one in place.
-    jason's own store; the board's decision in the board's words, never jason's."""
+    jason's own store; the board's decision in the board's words, never jason's.
+
+    Behind the P2 gate (the offices that open a board matter; 401 signed out, 403 without an office), recorded by the
+    signed-in account and never the ``by`` the body carries (``gates.recorded_by``). An executive-session decision (CIV
+    4935(e)) is read, changed, or made only in the private view (``meeting_room.private_view``, logged as
+    ``board/decisions.json``): outside it, a row that is executive, a record that would replace one, and a body that
+    sets ``session`` to executive all answer ``KeyError``, as a decision that does not exist does, and that is checked
+    before the body is, so neither the row nor its id is confirmed (the counter ids are guessable). Outside a request
+    (a script) the caller is the person at the terminal."""
+    from flask import has_request_context
+
     from jason.mcp.county import _data_dir
     from jason.tasks import decisions as store
+    from jason.web import access, gates
 
+    def shut(logged: bool) -> bool:
+        """Whether this request cannot see the executive record. ``logged``: the answer touches an executive row, so an
+        opening is logged; otherwise the probe logs nothing."""
+        if not has_request_context():
+            return False
+        return not (_private_view("", "board/decisions.json") if logged else access.private_open())
+
+    gates.check(gates.P2)
     root = _data_dir(None)
     clean = {k: v for k, v in body.items() if v is not None}
+    rows = {d.id: d for d in store.load(root)}
+    by = gates.recorded_by(body)
     if not decision_id:
         meeting, title, motion = str(clean.pop("meeting", "")), str(clean.pop("title", "")), str(clean.pop("motion", ""))
-        return store.as_dict(store.record(root, meeting, title, motion, **clean))
+        taken = rows.get(store.record_key(meeting, motion, clean.get("item", ""), clean.get("kind", "")))
+        if (clean.get("session") == store.EXECUTIVE or (taken is not None and store.is_executive(taken))) and shut(True):
+            raise KeyError(decision_id)
+        return store.as_dict(store.record(root, meeting, title, motion, **({**clean, "by": by} if by or "by" in clean else clean)))
+    found = rows.get(decision_id)
+    if found is None:
+        if shut(False):
+            raise KeyError(decision_id)
+    elif (store.is_executive(found) or clean.get("session") == store.EXECUTIVE) and shut(True):
+        raise KeyError(decision_id)
     if not clean:
         raise ValueError("nothing to change")
-    return store.as_dict(store.update(root, decision_id, **clean))
+    return store.as_dict(store.update(root, decision_id, **({**clean, "by": by} if by or "by" in clean else clean)))
 
 
 def write_request(key: str, body: dict[str, Any]) -> dict[str, Any]:

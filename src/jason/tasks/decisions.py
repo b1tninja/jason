@@ -240,6 +240,13 @@ def _next_executive_id(items: list[Decision], meeting: str) -> str:
     return f"{meeting}--executive-{max(taken, default=0) + 1}"
 
 
+def record_key(meeting: str, motion: str, item: str = "", kind: str = "") -> str:
+    """The id an open-session decision recorded with these gets: ``<meeting>--<item or slug of the motion>[--<kind>]``.
+    ``record`` replaces the row that already has it, so a writer asks it to know which row a record would touch."""
+    item, kind = str(item or "").strip(), str(kind or "").strip()
+    return f"{str(meeting).strip()}--{item or slug(motion.strip())}" + (f"--{kind}" if kind else "")
+
+
 @_store_lock
 def record(data_dir: Path, meeting: str, title: str, motion: str, **fields: Any) -> Decision:
     """Record a decision, or replace one already recorded for the same meeting and item (or motion)."""
@@ -254,7 +261,7 @@ def record(data_dir: Path, meeting: str, title: str, motion: str, **fields: Any)
     _validate(fields)
     item = str(fields.get("item", "")).strip()
     kind = str(fields.get("kind", "") or "").strip()
-    key = f"{meeting}--{item or slug(motion)}" + (f"--{kind}" if kind else "")
+    key = record_key(meeting, motion, item, kind)
     items = load(data_dir)
     now = _now()
     found = next((d for d in items if d.id == key), None)

@@ -1152,14 +1152,28 @@ def meeting_records(date: str = "", file: str = "", data_dir: Path | None = None
             "scheduleGaps": catalog.get("scheduleGaps"), "unplaced": catalog.get("unplaced"), "caveats": catalog.get("caveats")}
 
 
-def hearings(data_dir: Path | None = None) -> dict[str, Any]:
-    """The disciplinary hearings saved with `jason hearing`: each one's address, date, the board's statement of the
-    alleged violation, the Civil Code 5855 dates (notice 10 days before, the decision in writing within 14 days after),
-    the Zoom meeting when one was scheduled, and where it stands. Confidential: for directors. Reads disk only; jason
-    schedules a meeting only when a person runs `jason hearing --create --yes`, and never sends the notice."""
+def hearings(include_confidential: bool = False, data_dir: Path | None = None) -> dict[str, Any]:
+    """The disciplinary hearings saved with `jason hearing`, a member's discipline (Civil Code 4935(b)). By default each
+    is a handle (an opaque name, not the day or address), the general title (Civil Code 4935(e)), the days, and the Civil
+    Code 5855 clock (notice 10 days before, the decision in writing within 14 days after), whether a Zoom meeting is
+    scheduled, and the dates of a decision when one is recorded. The address, the board's statement of the alleged
+    violation, the notice, the Zoom link and passcode, the problems the plan found, and the findings are held back unless
+    ``include_confidential`` (for directors; each is a member's discipline, so do not repeat them to anyone else). A
+    hearing saved before handles has none and is counted in ``unmigrated`` (`jason zoom --mint-handles --yes`), not
+    listed. Reads disk only and writes nothing; jason schedules a meeting only when a person runs `jason hearing --create
+    --yes`, and never sends the notice."""
+    from jason.tasks.hearing_decisions import open_row
     from jason.tasks.zoom import hearings as saved
 
-    return saved(_data_dir(data_dir))
+    out = saved(_data_dir(data_dir))
+    if include_confidential:
+        return out
+    rows = out.get("hearings", [])
+    held = {"found": out.get("found", False), "confidential": False, "unmigrated": sum(1 for r in rows if not r.get("handle")),
+            "hearings": [open_row(r) for r in rows if r.get("handle")],
+            "heldBack": "The address, violation, notice, Zoom link and passcode, and findings are a member's discipline "
+                        "(Civil Code 4935(b)); ask with include_confidential, for directors."}
+    return {**held, "note": out["note"]} if out.get("note") else held
 
 
 def mail_checks(data_dir: Path | None = None) -> dict[str, Any]:

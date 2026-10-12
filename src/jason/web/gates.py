@@ -145,10 +145,19 @@ def check(gate: str) -> None:
     access.allow(viewer, access.Level[gate.upper()])
 
 
-def check_private(path: str) -> None:
+def without_sign_in() -> bool:
+    """Whether this is a request on a console with no sign-in set up. The private view cannot open there, so what opens
+    only in it stays shut: a writer answers as for a record that does not exist."""
+    from flask import has_request_context
+
+    return has_request_context() and not _configured()
+
+
+def check_private(path: str, *, log: bool = True) -> None:
     """For a write (or a read) whose content opens only in the private view: in a request where console sign-in is set up,
     abort 401 (not signed in) or 403 (the offices do not open P3, or the private view is not open), and log the opening
-    under ``path`` in ``access/served.jsonl`` (503 when it cannot be logged). Otherwise nothing."""
+    under ``path`` in ``access/served.jsonl`` (503 when it cannot be logged). Otherwise nothing. ``log`` False judges the
+    viewer and logs nothing, for a caller that logs once a real row is involved (call again with the default)."""
     from flask import has_request_context
 
     if not has_request_context() or not _configured():
@@ -157,7 +166,31 @@ def check_private(path: str) -> None:
 
     viewer = access.signed_in()
     access.allow(viewer, access.Level.P3)
-    access.log_or_refuse(viewer, access.Level.P3, path=path)
+    if log:
+        access.log_or_refuse(viewer, access.Level.P3, path=path)
+
+
+ACTING_REFUSED = "Viewing as {who} (admin view): a decision is recorded in a person's own name. Go back to yourself first."
+
+
+def recorded_by(body: dict[str, Any]) -> str:
+    """Who a write is recorded by: in a request where console sign-in is set up, the signed-in account (never the ``by``
+    the body carries, which a caller can type as anyone; an admin viewing as someone else may not write, 403). Outside a
+    request, or where sign-in is not set up (the loopback default), the ``by`` the caller typed, as
+    ``records_requests._signer`` keeps it: the person at the machine. A caller runs ``check``/``check_private`` first."""
+    from flask import abort, has_request_context
+
+    typed = str((body or {}).get("by", "") or "")
+    if not has_request_context() or not _configured():
+        return typed
+    from jason.web import access
+
+    viewer = access.current_viewer()
+    if viewer is None:
+        abort(access.refusal(401, "Sign in with Google to record this in your own name."))
+    if viewer.acting:
+        abort(access.refusal(403, ACTING_REFUSED.format(who=viewer.label)))
+    return viewer.account
 
 
 def gated(name: str, load: Loader, gate: str) -> Loader:
@@ -180,4 +213,4 @@ def apply(loaders: dict[str, Loader]) -> dict[str, Loader]:
     return {name: gated(name, load, GATES[name]) if name in GATES else load for name, load in loaders.items()}
 
 
-__all__ = ["ADMIN", "GATES", "P0", "P2", "apply", "check", "check_private", "gated"]
+__all__ = ["ADMIN", "GATES", "P0", "P2", "apply", "check", "check_private", "gated", "recorded_by", "without_sign_in"]

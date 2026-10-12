@@ -197,6 +197,8 @@ def _apply_change(defn: FormDefinition, change: Any, template: FormTemplate, clo
 def _make(defn: FormDefinition, given: Mapping[str, str], changes: tuple[Any, ...], bind: Bind | None,
           community: Any) -> ResolvedForm:
     values = {name: given[name] for name in defn.slots if name in given}
+    if defn.shelf is not None:
+        values = {**values, **{k: str(v) for k, v in defn.shelf().items()}}     # the statute shelf's figures (the section's own words)
     missing = [f"slot {name}" for name in defn.slots if name not in given]
     if defn.tier is Tier.FAMILY:
         gaps = (bind or Bind(defn.key)).missing(defn.bindable)
@@ -237,7 +239,8 @@ def _make(defn: FormDefinition, given: Mapping[str, str], changes: tuple[Any, ..
 
 
 def resolve(community: Any, library: Library | None = None) -> Resolved:
-    """The community's forms: see the module's docstring. Reads nothing from disk; a profile's answers are in memory."""
+    """The community's forms: see the module's docstring. A profile's answers are in memory. A form whose definition names a
+    ``shelf`` reads the statute shelf for the figures it states (the shelf reader keeps its own index); nothing else is read from disk."""
     lib = library or LIBRARY
     chain = tuple(str(k) for k in (getattr(community, "jurisdictions", lambda: ("US", "CA"))() or ()))
     given = {s.name: s.value for s in (getattr(community, "form_slots", lambda: ())() or ()) if str(s.value).strip()}

@@ -160,6 +160,15 @@ def test_a_held_run_page_outside_the_private_view_is_the_reduced_page(app, world
     assert not served(world)                                                      # nothing was opened: nothing is logged
 
 
+def test_a_held_run_page_carries_the_slot_and_parent_keys_the_page_types_name_all_empty(app, world):
+    """A comment once swallowed these keys of the reduced page's dict; ``ui/src/lib/work.ts`` types them (``dateSlots``,
+    ``openSlots``, ``parent``), so the page reads them without a guard."""
+    rid = start(world)
+    run = as_(app, TREASURER).get(f"/api/work-run?definition=example-held&id={rid}").json["run"]
+    assert run["dateSlots"] == [] and run["openSlots"] == [] and run["parent"] == ""
+    assert run["itemTotal"] == 0 and run["children"] == []
+
+
 def test_a_step_title_shows_outside_the_private_view_only_where_the_definition_marks_it_public(app, world):
     rid = start(world, "example-public")
     row = rows_by(as_(app, TREASURER).get("/api/work"))[rid]

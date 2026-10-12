@@ -116,7 +116,8 @@ def test_loader_calls_its_tool(county, loader):
 def test_no_arg_loaders_ignore_query(county, loader):
     sources.default_loaders()[loader]({"anything": "1", "all": "true"})
     _, kwargs = _one(county)
-    assert kwargs == {}
+    # the query changes nothing; the hearings loader asks the tool for the whole row and does its own allowlisting
+    assert kwargs == ({"include_confidential": True} if loader == "hearings" else {})
 
 
 @pytest.mark.parametrize("value,expected", [("1", True), ("true", True), ("TRUE", True), ("yes", True),
@@ -522,9 +523,9 @@ def test_hearings_adds_titles_stages_and_decisions(county, tmp_path, monkeypatch
     from jason.web import sources
 
     fake = sys.modules["jason.mcp.county"]
-    monkeypatch.setattr(fake, "hearings", lambda: {"found": True, "hearings": [
-        {"address": "123 Main St #12", "start": "2026-10-20T18:00:00", "noticeBy": "2026-10-10", "noticeOn": "2026-10-05", "decisionByIfHeld": "2026-11-03", "standing": "s", "scheduled": True},
-        {"address": "123 Main St #7", "start": "2026-09-01T18:00:00", "noticeBy": "2026-08-22", "decisionByIfHeld": "2026-09-15", "standing": "s", "scheduled": False,
+    monkeypatch.setattr(fake, "hearings", lambda **kw: {"found": True, "hearings": [
+        {"handle": "h-aaaa", "address": "123 Main St #12", "start": "2026-10-20T18:00:00", "noticeBy": "2026-10-10", "noticeOn": "2026-10-05", "decisionByIfHeld": "2026-11-03", "standing": "s", "scheduled": True},
+        {"handle": "h-bbbb", "address": "123 Main St #7", "start": "2026-09-01T18:00:00", "noticeBy": "2026-08-22", "decisionByIfHeld": "2026-09-15", "standing": "s", "scheduled": False,
          "decision": {"findings": "A $50 fine", "decidedOn": "2026-09-01", "noticeDueBy": "2026-09-15", "by": "Secretary", "recorded": "x", "history": []}},
     ]}, raising=False)
     out = sources.hearings({})

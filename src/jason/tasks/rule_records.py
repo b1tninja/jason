@@ -179,11 +179,13 @@ def links(data_dir: Path) -> tuple[dict[str, list[rr.Use]], list[str]]:
 
     out: dict[str, list[rr.Use]] = {}
     notes: list[str] = []
+    unlinked = 0
     try:
-        for h in ensure_handles(data_dir):
+        for h in ensure_handles(data_dir):                         # a read: it mints nothing (`jason zoom --mint-handles --yes` does)
             ids = _scan(json.dumps(h, default=str))
             if not ids:
                 continue
+            unlinked += 0 if h.get("handle") else 1
             decided = h.get("decision") or {}
             on = str(h.get("start", ""))[:10]
             use = rr.Use("hearing", date.fromisoformat(on) if on else None,
@@ -193,6 +195,8 @@ def links(data_dir: Path) -> tuple[dict[str, list[rr.Use]], list[str]]:
                 out.setdefault(i, []).append(use)
     except Exception as exc:                                       # noqa: BLE001
         notes.append(f"the hearings could not be read ({type(exc).__name__}: {exc})")
+    if unlinked:
+        notes.append(f"{unlinked} hearing(s) cite a rule and are not migrated (no handle), so they have no link")
     held = 0
     try:
         for d in load_decisions(data_dir):

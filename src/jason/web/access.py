@@ -492,6 +492,8 @@ PATH_RULES: tuple[PathRule, ...] = (
     PathRule("insurance-pdfs/*", Level.P2),    # policies and bills, with account and policy numbers
     PathRule("photos/*", Level.P1),
     PathRule("drafts/*", Level.P1),
+    PathRule("board/decisions.key", Level.P4),  # the secret behind the executive decisions' open handles: never served (tasks.decisions.handle)
+    PathRule("board/decisions*", Level.P3),    # the board's decisions: an executive-session row (CIV 4935(e)) holds the motion and votes; the open view reads it through the decisions loader, which holds those back
     PathRule("board/minutes*", Level.P1, _executive_minutes),
     PathRule("board/agenda*", Level.P1),
     PathRule("board/packet*", Level.P1),
