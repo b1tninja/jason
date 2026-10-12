@@ -191,7 +191,7 @@ def _bill_attach_rows() -> tuple[_Row, ...]:
              clock=_policy("each source's stale-after in jason cadence"),
              why="One item a source (a sign-in at a terminal is a person's). Skipped when the source is current." + _job("bill-sources-read")),
         _row("dry", "Dry-run the attach", P, M, "srcs", command="jason sync-bills --dry-run", evidence=("file:bills/last-dry-run.json",),
-             record="the dry run is current with the snapshot", clock=_policy("a plan expires after 6 hours: the kind's max_age_hours"),
+             record="the dry run is current with the snapshot", clock=_policy("a plan expires after 6 hours"),
              why="Reads PayHOA and uploads nothing; each row is matched, ambiguous, or no match, with which date matched. A same-amount "
                  "match is a lead until a person attaches it." + _job("bill-dry-run"),
              support=Support(
@@ -206,7 +206,7 @@ def _bill_attach_rows() -> tuple[_Row, ...]:
                      blocked="If the dry run will not run or does not match the snapshot, add a note naming what it said and who can fix it.",
                      ask=(Role.MANAGER, Role.TREASURER)))),
         _row("plan", "Plan the attaches", PL, TR, "dry", plan_kind=ATTACH, command="jason approvals plan payhoa-attach-bills --by NAME",
-             clock=_policy("a plan's max age is 6 hours: the kind's max_age_hours"),
+             clock=_policy("a plan is good for 6 hours at most"),
              why="One item a matched row; the applier re-reads each transaction and bill. A rejected or held item is recorded, not "
                  "retried. A payment-signer control may govern this step later."),
         _row("work", "Open an investigation for each row that needs one", P, M, "queue", repeat=Repeat.PER_ITEM, skip=SKIP_M,
@@ -257,7 +257,7 @@ def _payment_investigation_rows() -> tuple[_Row, ...]:
              record="the row is now matched", why="Skipped if no source owns the payee." + _job("bill-dry-run")),
         _row("attach", "Attach the matched bill", PL, TR, "redry", plan_kind=ATTACH, skip=SKIP_TR,
              command="jason approvals plan payhoa-attach-bills --by NAME",
-             clock=_policy("a plan's max age is 6 hours: the kind's max_age_hours"),
+             clock=_policy("a plan is good for 6 hours at most"),
              why="Skipped when the outcome is not an attached bill. A person decides and applies the approval."),
         _row("policy", "May a payment's receipt stand in for its bill", D, SE, "out", record="the board's decision, date, vote, and instrument",
              why="The law is silent, so the board decides a written policy once for the association, not for each payment; its "
@@ -380,7 +380,7 @@ def _delinquency_rows() -> tuple[_Row, ...]:
         _row("det", "The ledger shows a past-due balance", P, TR, command="jason sync-catalog; jason who-owes",
              record="the standing, the past due in cents, and the ledger's sync day",
              clock=_law("CIV 5650(b)", label="delinquent 15 days after they become due unless the declaration provides longer"),
-             why="Standing words are CollectionStanding: OWED_NO_LIEN, LIEN_SECURES_DEBT, RELEASE_DUE, CREDIT."
+             why="The ledger puts the account in one of four standings: owed with no lien, a lien that secures the debt, due for release, or in credit."
                  + _check("delinquency-ledger-read")),
         _row("chg", "Late charge and interest within the caps", P, TR, "det", record="the charges against the caps and the declaration",
              clock=_law("CIV 5650(b)", label="late charge and interest within the statute's caps"),
@@ -403,7 +403,7 @@ def _delinquency_rows() -> tuple[_Row, ...]:
         _row("meet", "Meet the owner in executive session on a payment plan", D, SE, "plan", skip=SKIP_ANY_OFFICER,
              command="POST /api/write/delinquency/<apn>", record="the step 'payment plan offered': decided on, vote, by",
              why="CIV 5665(b) (the board meets the owner in executive session within 45 days of the request's postmark) and 4935(c); the "
-                 "45-day clock is on the run (request_postmarked). Skipped when no request arrived."),
+                 "45-day clock runs from the day the request was postmarked. Skipped when no request arrived."),
         _row("mc", "Offer meet and confer before recording", P, M, "notice", record="the date of the offer and the owner's reply",
              clock=_law("CIV 5670", label="offer dispute resolution before recording a lien"),
              why="Skip never. No store holds the offer yet."),
@@ -429,7 +429,7 @@ def _delinquency_rows() -> tuple[_Row, ...]:
              why="Skip never."),
         _row("pay", "Payment received; lien paid", B, M, "rec", choices=(("paid", "rel"), ("unpaid", "enf adr fclose alt hand off")),
              command="jason sync-catalog", record="the ledger balance at or below zero while a lien stands",
-             why="Decided by the ledger's fact (the standing RELEASE_DUE). Choose paid to go to the release, unpaid to go on to "
+             why="Decided by the ledger's fact (a lien due for release). Choose paid to go to the release, unpaid to go on to "
                  "enforcement." + _check("delinquency-closed")),
         _row("rel", "Record the release and give the owner a copy", P, M, "pay", record="the county index shows the release",
              clock=_law("CIV 5685(a)", "paid_on", 21, "within 21 days of the payment, record a lien release or notice of rescission"),
@@ -664,7 +664,7 @@ IR = "insurance-renewal"
 def _insurance_renewal_rows() -> tuple[_Row, ...]:
     return (
         _row("due", "The term end is near", C, JA, command="jason insurance", record="the policy, the days to its term end, and its standing",
-             clock=_policy("90 days before the term end: WINDOW_DAYS; the profile's schedule may set its own", "term_end", -90),
+             clock=_policy("90 days before the term ends; the association's schedule may set its own", "term_end", -90),
              check=named_check("insurance-due"),
              why="The read says the days left and whether that is inside the window; it passes when a term end is read, so an early "
                  "renewal is not blocked."),
@@ -693,7 +693,7 @@ def _insurance_renewal_rows() -> tuple[_Row, ...]:
              clock=_law("CIV 5810", label="individual notice as soon as reasonably practicable (no number: a held question); for a nonrenewal where replacement will not be in effect, immediately"),
              why="Only when coverage changed or lapsed."),
         _row("sum", "Feed the summary", C, JA, "bind", repeat=Repeat.PER_PERIOD, command="jason packet annual-disclosures --year Y",
-             record="insurance_rows for the fiscal year", check=named_check("insurance-summary"),
+             record="the insurance sheet's rows for the fiscal year", check=named_check("insurance-summary"),
              clock=_law("CIV 5300(b)(9)", label="the insurance summary in the annual budget report"),
              why="Links into the fiscal-year run (D4). The read fails and lists the gaps when the policy has no term in force on the "
                  "first day of the fiscal year."),
@@ -756,7 +756,7 @@ def _county_tax_rows() -> tuple[_Row, ...]:
              why="A receipt is proof of payment, not the bill."),
         _row("att", "Attach the bill to the payment", PL, TR, "rcpt sync", plan_kind=ATTACH, repeat=Repeat.PER_ITEM,
              command="jason sync-bills --dry-run --source county-tax; jason approvals plan payhoa-attach-bills --by NAME",
-             clock=_policy("a plan's max age is 6 hours: the kind's max_age_hours"),
+             clock=_policy("a plan is good for 6 hours at most"),
              why="The county-tax source must match one receipt, one bill, and one PDF; a receipt that paid several bills is no match and a "
                  "person decides." + _job("bill-dry-run")),
         _row("cls", "Close the year's installments", C, JA, "att", record="balances zero per parcel", check=named_check("tax-years-closed"),

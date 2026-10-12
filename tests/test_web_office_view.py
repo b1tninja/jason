@@ -540,3 +540,41 @@ def test_the_person_steps_band_reads_and_writes_nothing_and_a_failed_band_says_s
     monkeypatch.setattr("jason.tasks.step_guide.step_rows", boom)
     got = read(app, "Sam Secretary", "manager")
     assert "OSError" in got["bandErrors"]["personSteps"] and got["bands"]["personSteps"] == []
+
+
+# --- a plan waiting for a second signature (D17) -------------------------------------------------------------------------------
+
+def test_a_plan_waiting_for_a_second_signature_is_on_the_page_of_each_office_that_has_a_holder_who_may_give_it(app, world):
+    """A two-person Mailroom plan signed first by the president: the treasurer and secretary (each with a holder other than the first
+    signer) have it waiting; the president, whose only holder signed first, does not; nobody sees the first signer's name."""
+    a = signed_plan(world, "apr-20990101T000000-0021", "payhoa-mailroom-send", title="A sample letter")
+    assert a.second is None
+    for office in ("treasurer", "secretary"):
+        got = read(app, "Pat Example", office)
+        (row,) = [r for r in got["bands"]["waitingOnOffice"] if r["type"] == "plan-to-second"]
+        assert row["office"] == office and row["id"] == a.id and row["kind"] == "payhoa-mailroom-send"
+        assert row["text"] == "A sample letter: waiting for a second signature, from someone other than the first signer"
+        assert "Lee President" not in json.dumps(got)
+    assert not [r for r in read(app, "Pat Example", "president")["bands"]["waitingOnOffice"] if r["type"] == "plan-to-second"]
+    assert not [r for r in read(app, "Pat Example", "vice president")["bands"]["waitingOnOffice"] if r["type"] == "plan-to-second"]
+
+
+def test_a_plan_signed_by_the_only_holder_of_an_office_is_not_that_offices_to_second(app, world):
+    """Tess Two holds the secretary and (with Pat Example) the treasurer: she signed first, so the secretary has no one to second and the
+    treasurer still has Pat."""
+    a = signed_plan(world, "apr-20990101T000000-0022", "payhoa-mailroom-send")
+    from jason.approvals import model, store
+
+    stored = store.load(a.id, world)
+    stored.first = model.Signature("Tess Two", stored.first.at, "fp")
+    stored.requested_by = "Tess Two"
+    store.save(stored, world)
+    assert [r["office"] for r in read(app, "Pat Example", "secretary")["bands"]["waitingOnOffice"] if r["type"] == "plan-to-second"] == []
+    assert [r["office"] for r in read(app, "Pat Example", "treasurer")["bands"]["waitingOnOffice"] if r["type"] == "plan-to-second"] == ["treasurer"]
+
+
+def test_a_plan_that_is_fully_signed_or_needs_no_second_is_not_waiting_for_one(app, world):
+    signed_plan(world, "apr-20990101T000000-0023", "payhoa-mailroom-send", with_second=True)
+    signed_plan(world, "apr-20990101T000000-0024", "owner-info-tags")                # a one-person kind
+    for office in ("treasurer", "secretary", "manager"):
+        assert not [r for r in read(app, "Pat Example", office)["bands"]["waitingOnOffice"] if r["type"] == "plan-to-second"]

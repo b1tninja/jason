@@ -348,7 +348,7 @@ def onboard() -> Workflow:
         g("ST", "4", "Confirm only its own facts are read", C, JASON, ("ST-2",), why="Only the profile's own private facts and its topic folder are read. "
           "The read counts the topic files and fails when one is read from the old shared layout; it names no path and reads no value.",
           command="jason spec", sop=f"{OB}#3", check=named_check("profile-own-facts")),
-        g("ST", "5", "Set up the community's Google Workspace", P, A, ("ST-1",), why="The client in this community's vault path and one sign-in for each token needed; never asked for consent again while a token covers the scopes; an invalid_grant is never retried.",
+        g("ST", "5", "Set up the community's Google Workspace", P, A, ("ST-1",), why="The client in this community's vault path and one sign-in for each token needed; never asked for consent again while a token covers the scopes; an 'invalid grant' error is never retried.",
           command="jason google status; jason google setup --from-file F --yes; jason google sign-in --name drive --interactive", sop=f"{OB}#6",
           record="the sign-ins made, by token name"),
         g("ST", "6", "Connect the integrations", P, A, ("ST-1",), why="Each credential under its vault path; connected only after a read succeeds, checked by a person at a console.",
@@ -378,7 +378,7 @@ def onboard() -> Workflow:
           command="jason intake --scan", record="the intake runs opened", spawns=DI),
         g("ES", "3", "Run the session: answer", P, ANY, ("ST-7", "ES-3b"), why="Each question is answered, ranked by what it unblocks; a secret is refused and nothing is stored, and the Keeper record's name is answered instead. The answer is shown to the one who gave it or is confirming it.",
           command="jason onboard --answer ID TEXT --by NAME", sop=f"{OB}#8", record="the questions answered (ids)"),
-        g("ES", "3b", "Or answer by conversation", B, ANY, ("ST-7",), why="By person: the same tools through the onboarding tool set (onboarding_status, next_questions, answer_intake_question), and a second person runs onboard_review. Chosen, it skips step ES-3.",
+        g("ES", "3b", "Or answer by conversation", B, ANY, ("ST-7",), why="By person: the same tools through the onboarding tool set (its status, the next questions, and answering an intake question), and a second person runs the onboarding review. Chosen, it skips step ES-3.",
           command="jason-mcp --profile onboarding", sop=f"{OB}#9", choices=(Choice("terminal", ("onboard.ES-3",)), Choice("conversation"))),
         g("ES", "4", "A second person confirms a high-stakes answer", P, ANY, ("ES-3",), why="Which text is in force, whether an instrument was recorded, bank signers; the answerer cannot confirm, in any case or spacing.",
           command="jason onboard --confirm ID --by OTHER", sop=f"{OB}#8", record="the answers confirmed, and the confirmer"),

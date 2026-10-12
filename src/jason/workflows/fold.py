@@ -30,7 +30,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from jason.workflows.types import (
     ClockBasis, ClockDef, ClockView, DateView, Elapsed, Event, EventKind, FINAL_OUTCOMES, GroupView, Link, OnWithdrawn, Repeat,
-    RunState, RunView, StepDef, StepKind, StepState, StepView, Workflow, is_system,
+    RunState, RunView, StepDef, StepKind, StepState, StepView, Workflow, is_system, role_words,
 )
 
 NA_STATUS = "not applicable, recorded"
@@ -425,7 +425,7 @@ def state(events: Sequence[Event], workflow: Workflow, today: date, children: Ma
                 return StepState.DONE, f"the date {due.isoformat()} passed", a.waited
             note = f"until {due.isoformat()}" if due else "for an arrival"
             if sd.ends_by_note:
-                note = f"for the {sd.role.value} to record a note that it arrived" + (f" (due {due.isoformat()})" if due else "")
+                note = f"for {role_words(sd.role)} to record a note that it arrived" + (f" (due {due.isoformat()})" if due else "")
             if due and due < today:
                 note += f" (past {due.isoformat()})"
             return StepState.WAITING, note, None

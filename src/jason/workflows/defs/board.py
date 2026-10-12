@@ -251,7 +251,7 @@ def rule_change() -> Workflow:
              why="The grant of authority, the conflicts, any duplicate of the declaration. A flag is acknowledged by a person and "
                  "does not block."),
         step("3", "Draft the proposed words, the reason, and the purpose and effect", P, ANYONE, ("1",), sop="rule-change#2",
-             command="a RuleChange row in the profile; #/rules", record="the RuleChange key, with the words and the bracketed choices",
+             command="a RuleChange row in the profile; #/rules", record="the rule change's key, with the words and the bracketed choices",
              why="jason never fills a bracket; the board's choices stay in brackets."),
         step("4", "Compute the timeline: notice day, decision meeting, comment deadline", P, M, ("3",), sop="rule-change#2",
              command="jason rule-change KEY --notice-date DATE", clock=_policy("comment deadline: the day before the decision", "decision_on", -1),

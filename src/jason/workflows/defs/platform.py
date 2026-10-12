@@ -419,7 +419,7 @@ def integration_connect() -> Workflow:
               "installation the secret goes to that installation's own store."),
         s("7", "Consent once", P, A, ("6",), repeat=ITEM, command="jason google sign-in --name drive --interactive", sop="onboard#6",
           record="the token name saved to the store (no value)",
-          clock=ClockDef(ClockBasis.COUNTERPARTY, label="provider: a refresh token is given once, at consent; never retry invalid_grant"),
+          clock=ClockDef(ClockBasis.COUNTERPARTY, label="provider: a refresh token is given once, at consent; never retry an 'invalid grant' error"),
           why="One sign-in per token name, in a browser; the token is saved at once (lesson "
               "a-consent-gives-the-refresh-token-once-save-it-first)."),
         s("8", "A read that proves it", P, A, ("7",), command="jason integrations check KEY --live --by NAME", sop="onboard#13",

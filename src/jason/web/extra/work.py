@@ -50,6 +50,7 @@ from typing import Any, Iterable
 
 from jason.web.extra.work_scope import STEP_WORDS
 from jason.workflows import guide, nudge
+from jason.workflows.types import role_words
 
 Args = dict[str, str]
 
@@ -75,8 +76,8 @@ TEXTS = frozenset({"what", "reason", "record", "outcome", "motion", "message", "
 CAVEATS = (
     "Read from the stores on disk. jason decides nothing: a date is the law's, the documents', a counterparty's, jason's "
     "proposal, or a person's, and says which; an act on a plan, a job, or a decision happens on the screen that owns it.",
-    "The run page shows the run as opening it now would find it (a dry resume, written nowhere); the list shows each run as "
-    "of its last write.",
+    "The list, the run page, and Today show each run as opening it now would find it (a dry resume, written nowhere), so they "
+    "name the same step and the same holder.",
 )
 
 
@@ -130,13 +131,18 @@ class Who:
 
     account: str = ""
     roles: frozenset[str] = frozenset()
+    office_lens: bool = False
+    """A page read for an office rather than for a signed-in person (Today's office view): the office's roles alone decide, with no
+    account to name (so no ``anyone`` step, and no draft, is the office's)."""
 
     def holds(self, role: Any) -> bool:
         """Whether the viewer's offices hold a step's role (``anyone``: any named person; the engine's own names: nobody)."""
         word = role.value if hasattr(role, "value") else str(role)
         if word in ("jason", "scheduler"):
             return False
-        return bool(self.account) and (word == "anyone" or word in self.roles)
+        if word == "anyone":
+            return bool(self.account)
+        return (bool(self.account) or self.office_lens) and word in self.roles
 
     def holds_step(self, sd: Any) -> bool:
         """Whether the viewer holds any role that may act on the step (its primary role or one of the others)."""
@@ -204,10 +210,9 @@ def _mask(text: Any) -> str:
 
 
 def _day_of(value: Any) -> date | None:
-    try:
-        return date.fromisoformat(str(value or "")[:10])
-    except ValueError:
-        return None
+    """The calendar day of a stored time on the day basis of ``_today()`` (``jason.workflows.nudge.day_of``): a run's UTC stamp
+    is brought to the local day, so a run opened in the evening Pacific is not dated the next day."""
+    return nudge.day_of(value)
 
 
 def _safe_address(address: Any) -> str:
@@ -249,13 +254,12 @@ def _due(view: Any, step_id: str = "") -> dict[str, Any] | None:
 
 def _age(view: Any, day: date) -> dict[str, Any]:
     opened, updated = _day_of(view.opened_at), _day_of(view.updated)
-    return {"days": (day - opened).days if opened else None, "opened": opened.isoformat() if opened else None,
-            "idleDays": (day - updated).days if updated else None, "updated": view.updated}
+    return {"days": nudge.days_between(day, opened), "opened": opened.isoformat() if opened else None,
+            "idleDays": nudge.days_between(day, updated), "updated": view.updated}
 
 
 def _words(role: Any) -> str:
-    word = role.value if hasattr(role, "value") else str(role)
-    return word if word in ("jason", "scheduler", "anyone") else f"the {word}"
+    return role_words(role)
 
 
 def _step_words(sd: Any) -> str:
@@ -373,6 +377,7 @@ def _row(wf: Any, run: Any, view: Any, who: Who, day: date) -> dict[str, Any]:
                      "state": sv.state.value, "role": sv.role.value} if sv is not None
                     else {"id": "", "title": "", "n": 0, "of": len(wf.steps), "kind": "", "state": "", "role": ""}),
         "owner": sd.role.value if sd is not None else "",
+        "roles": [r.value for r in sd.acting_roles] if sd is not None else [],
         "waitingOn": _waiting_on(wf, view, sv) if open_run else None,
         "mine": bool(sd is not None and who.holds_step(sd) and open_run and view.state.value != "paused"),
         "due": due, "pastLaw": bool(view.past_law), "age": _age(view, day), "paused": view.state.value == "paused",
@@ -422,7 +427,7 @@ def _held_row(wf: Any, row: dict[str, Any]) -> dict[str, Any]:
         "subjectKind": "", "label": wf.held_title, "state": row["state"], "group": row["group"],
         "current": {"id": "", "title": _public_title(wf, cur["id"]), "n": cur["n"] if public else 0, "of": cur["of"] if public else 0,
                     "kind": "", "state": cur["state"], "role": cur["role"]},
-        "owner": row["owner"],
+        "owner": row["owner"], "roles": row["roles"],
         "waitingOn": ({"kind": wait["kind"], "word": wait["word"], "role": wait.get("role", ""), "detail": ""} if wait else None),
         "mine": row["mine"], "due": _held_due(row["due"]), "pastLaw": row["pastLaw"],
         "age": {"days": row["age"]["days"], "opened": None, "idleDays": row["age"]["idleDays"], "updated": ""},
@@ -440,7 +445,8 @@ def _order(row: dict[str, Any]) -> tuple[int, str, str]:
 def _rows(root: Path, who: Who, day: date, readers: Any, problems: list[dict[str, str]], scope: Any = None) -> list[dict[str, Any]]:
     """Every run the viewer's scope reads, each once. A run of a definition the scope does not read is not here at all (not
     listed, not counted, not a problem); a held run outside the private view is its reduced row (``_held_row``)."""
-    from jason.workflows import definitions, fold, resume, store
+    from jason.tasks import step_guide
+    from jason.workflows import definitions, store
 
     out = []
     for definition, rid in store.list_runs(root):
@@ -458,8 +464,7 @@ def _rows(root: Path, who: Who, day: date, readers: Any, problems: list[dict[str
             problems.append({"what": f"Run {rid}", "why": f"its definition {definition} is not registered, so it is not listed"})
             continue
         try:
-            events = list(run.events)
-            view = fold.state(events, wf, day, resume.children_of(events, readers), run_id=rid)
+            _, view = step_guide.folded(root, wf, rid, day, readers, run)
         except Exception as exc:  # noqa: BLE001
             problems.append({"what": f"Run {rid}", "why": "could not be read" if quiet else f"could not be read: {exc}"})
             continue
@@ -679,6 +684,23 @@ def _evidence_rows(wf: Any, sv: Any, sd: Any, readers: Any) -> list[dict[str, An
     return out
 
 
+def _not_open_words(sd: Any, sv: Any, view: Any) -> str:
+    """Why a person step is not open to a person now, in one sentence. A step that has not started says which step it waits on (the
+    first of those it needs that is not over), rather than "not started, not waiting on a person"."""
+    from jason.workflows.types import StepState
+
+    if sv.state in (StepState.NOT_STARTED, StepState.BLOCKED):
+        for need in (*sv.blocked_by, *sd.needs):
+            other = view.step(need)
+            if other is not None and other.state not in (StepState.DONE, StepState.SKIPPED, StepState.SUPERSEDED):
+                n = next((i for i, s in enumerate(view.steps, 1) if s.id == need), 0)
+                return f"Not ready yet: it waits on step {n}, {other.title}."
+        return "Not ready yet."
+    if sv.state in (StepState.DONE, StepState.SKIPPED, StepState.SUPERSEDED):
+        return f"This step is {sv.state.value}."
+    return f"This step is {sv.state.value}; there is nothing for a person to do on it now."
+
+
 def _notice(sd: Any, ctx: Who, view: Any) -> dict[str, Any]:
     """What the viewer may do with one step, from the engine's own rules, and the sentence for each act not offered. Nothing is
     written; the engine decides again when a person acts."""
@@ -697,7 +719,7 @@ def _notice(sd: Any, ctx: Who, view: Any) -> dict[str, Any]:
         if not acting:
             refuse("attest", f"The run is {view.state.value}; steps are acted on when it is active.")
         elif sv.state is not StepState.NEEDS_PERSON:
-            refuse("attest", f"This step is {sv.state.value}, not waiting on a person.")
+            refuse("attest", _not_open_words(sd, sv, view))
         elif not holds:
             refuse("attest", f"Waiting on {_step_words(sd)}.")
         else:

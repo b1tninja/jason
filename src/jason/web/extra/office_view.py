@@ -16,7 +16,9 @@ administrator who holds no office. Where console sign-in is not set up it answer
 **What is composed, from what exists** (each band stands or fails alone; the reason a band failed is in ``bandErrors``):
 
 - ``waitingOnOffice``: the letters requested of an approver the office stands for (``Officer.approves``, ``the <office>``,
-  and ``the board`` for the two offices that record its vote), by kind and count; the board items the board gave the office
+  and ``the board`` for the two offices that record its vote), by kind and count; the engine's plans waiting for a second
+  signature that a holder of the office may give (``may_second``: not the first signer, not the one who asked, an office the
+  controls allow); the board items the board gave the office
   (or the board) to act on; and, for the secretary, the board's open votes to record.
 - ``signedWaiting``: the engine's plans signed and not yet applied (``jason.approvals.engine.waiting_to_apply``;
   docs/console/approval-clarity.md, section 4), by kind title and how long each has waited from the last signature, with
@@ -34,7 +36,8 @@ administrator who holds no office. Where console sign-in is not set up it answer
 - ``needsAttention`` and ``comingUp``: the schedule's occurrences (``jason.tasks.schedule.agenda``) for the duties the
   profile's assignments give the office, or the board, or name it as the backup: overdue and due soon, then the next weeks;
   and a count of the dock's open tasks the office owns.
-- ``work``: the workflow runs whose current step's ``role`` is the office (``jason.workflows``). The Work screens' rules hold
+- ``work``: the workflow runs that are the office's move, read the way the Work list reads them (``jason.web.extra.work``: one dry
+  fold, one pressing step, one rule for whose move it is), so Today and Work show the same step and the same holder. The Work screens' rules hold
   here (``jason.web.extra.work_scope``): a run of an administrator's definition is listed for an administrator only, and a
   held run (a hearing, a delinquent account, a records request) outside the private view is its general title and state
   with no label or step; inside it the run is named in full and the reading is logged in ``access/served.jsonl``.
@@ -236,9 +239,53 @@ def _decisions(root: Path, reading: list[str]) -> list[dict[str, Any]]:
     return out
 
 
+def may_second(root: Path, a: Any, office: str, officers: tuple[Any, ...]) -> bool:
+    """Whether a holder of ``office`` may give the second signature a plan waits for: the engine's own rule
+    (``jason.approvals.engine.confirm``), asked of each holder the profile names. The second person is not the one who signed first,
+    not the one who asked for the plan, and holds an office the controls the board adopted allow (``signer_refusals``). An office with
+    no named holder is unknown, not eligible."""
+    from jason.approvals.engine import signer_refusals
+    from jason.approvals.model import same_person
+
+    for name in _names_of(officers, office):
+        if same_person(name, a.first.name) or same_person(name, a.requested_by):
+            continue
+        if not signer_refusals(a, [a.first.name, name], final=True, data_dir=root):
+            return True
+    return False
+
+
+def _plans_to_second(root: Path, reading: list[str], officers: tuple[Any, ...]) -> list[dict[str, Any]]:
+    """The engine's plans that are submitted and wait for a second, distinct signature, for each office in ``reading`` with a holder who
+    may give it (see ``may_second``). Kind and title only: the first signer's name is not shown, and the office is told only that it is
+    not the person who signed first."""
+    from jason.approvals import store
+    from jason.approvals.engine import needs_second
+    from jason.approvals.evidence import mask_text
+    from jason.approvals.model import ApprovalStatus as S
+
+    out = []
+    for a in store.load_all(root):
+        if a.status not in (S.APPROVED, S.PARTIALLY_APPROVED) or a.first is None or a.second is not None:
+            continue
+        try:
+            if not needs_second(a, data_dir=root):
+                continue
+        except KeyError:                                   # a kind this checkout no longer has: Approvals shows it
+            continue
+        title = mask_text(str(a.title))[0]
+        for office in reading:
+            if may_second(root, a, office, officers):
+                out.append({"type": "plan-to-second", "office": office, "id": a.id, "kind": a.kind, "title": title,
+                            "screen": "approvals",
+                            "text": f"{title}: waiting for a second signature, from someone other than the first signer"})
+    return out
+
+
 def waiting_on_office(root: Path, reading: list[str], officers: tuple[Any, ...]) -> list[dict[str, Any]]:
-    """What waits on the office: letters, board items, and open votes."""
-    return _letters(root, reading, officers) + _board_items(root, reading, officers) + _decisions(root, reading)
+    """What waits on the office: letters, plans waiting for a second signature, board items, and open votes."""
+    return (_letters(root, reading, officers) + _plans_to_second(root, reading, officers) + _board_items(root, reading, officers)
+            + _decisions(root, reading))
 
 
 def _occurrences(root: Path, today: date) -> list[Any]:
@@ -309,35 +356,37 @@ def _tasks(root: Path, reading: list[str], officers: tuple[Any, ...], today: dat
     return out
 
 
-def runs_for(root: Path, reading: list[str], scope: Any = None) -> list[dict[str, Any]]:
-    """The open workflow runs whose current step's role is one of ``reading``. A run is its id, definition, label, step,
-    state, and next date; the label is the run's own words (never an owner's name). With a ``scope``
-    (``jason.web.extra.work_scope``): a run of a definition the viewer may not know of (``Visibility.ADMIN`` for a
-    non-administrator) is not here, and a held run outside the private view is its general title, its state, and its date,
-    with no label, no step id, and a step title only where the definition marks it public (``held`` is true)."""
-    from jason.workflows import api, definitions
+def runs_for(root: Path, reading: list[str], scope: Any = None, *, account: str = "", day: date | None = None,
+             readers: Any = None) -> list[dict[str, Any]]:
+    """The open workflow runs that are the move of one of ``reading``. Whose move a run is, the step it is at, and its date are the
+    Work list's own (``jason.web.extra.work``: the same dry fold, ``_pressing`` step, and ``_group``), so Today and Work cannot
+    disagree: a run is here when Work lists it under *Yours* for the offices read, or under *The board* with its decision step
+    held by one of them (the secretary records it). A run waiting on jason's check, a clock, an arrival, a child run, or another
+    office is not. ``account`` names the signed-in person whose offices these are (their own draft run is theirs, and a step
+    anyone may do is theirs); empty for another office's lens. A run is its id, definition, label, step, state, and next date; the
+    label is the run's own words (never an owner's name). With a ``scope`` (``jason.web.extra.work_scope``): a run of a definition
+    the viewer may not know of (``Visibility.ADMIN`` for a non-administrator) is not here, and a held run outside the private view
+    is its general title, its state, and its date, with no label, no step id, and a step title only where the definition marks it
+    public (``held`` is true)."""
+    from jason.web.extra import work
+    from jason.workflows import api
 
+    work._register(root, [])
+    day = day or _today()
+    who = work.Who(account, frozenset(reading), office_lens=True)
     out = []
-    for r in api.runs(root, state="open"):
-        wf = definitions.find(str(r.get("definition") or ""))
-        if wf is not None and scope is not None and not scope.reads(wf):
+    for r in work._rows(root, who, day, readers or work._readers(root, day), [], scope):
+        if r["state"] not in api.OPEN_STATES or not (r["group"] == "yours" or (r["group"] == "board" and r["mine"])):
             continue
-        step = wf.step(str(r.get("current") or "")) if wf is not None else None
-        held = [role.value for role in step.acting_roles if role.value in reading] if step is not None else []
-        if not held:                    # a step several roles may act on is the dock of each of them
-            continue
-        row = {"type": "run", "office": held[0], "id": str(r.get("id") or ""),
-               "definition": str(r.get("definition") or ""), "title": wf.title if wf is not None else "",
-               "label": str(r.get("label") or ""), "step": step.id, "stepTitle": step.title,
-               "state": str(r.get("state") or ""), "due": str(r.get("due") or "") or None, "screen": "",
-               "text": f"{r.get('label') or r.get('id')}: {step.title}",
-               "visibility": wf.visibility.value, "held": False}
-        if scope is not None and scope.holds_back(wf):
-            title = step.title if step.public_title else "a step"
-            row.update(title=wf.held_title, label=wf.held_title, step="", stepTitle=title, text=f"{wf.held_title}: {title}",
-                       held=True)
-        out.append(row)
-    out.sort(key=lambda r: (r["due"] or "9999", r["id"]))
+        cur = r["current"]
+        office = next((w for w in r["roles"] if w in reading), reading[0])
+        label = r["label"] or r["id"]
+        title = cur["title"] or ("not opened yet" if r["state"] == "draft" else "")
+        out.append({"type": "run", "office": office, "id": r["id"], "definition": r["definition"], "title": r["definitionTitle"],
+                    "label": r["label"], "step": cur["id"], "stepTitle": title, "state": r["state"],
+                    "due": r["due"]["date"] if r["due"] else None, "screen": "", "text": f"{label}: {title}",
+                    "visibility": r["visibility"], "held": r["held"], "group": r["group"], "n": cur["n"]})
+    out.sort(key=lambda row: (row["due"] or "9999", row["id"]))
     return out
 
 
@@ -427,9 +476,10 @@ def not_composed(errors: dict[str, str], reading: list[str]) -> list[dict[str, s
     waiting = _plans_waiting()
     out.append({"band": "waitingOnOffice", "what": "Plans in the approvals engine still to be decided or signed"
                 + (f" ({waiting} waiting on a person)" if waiting else ""),
-                "why": "An engine plan waits on a named person, or a second one; no office is attached to it unless a "
-                       "control names the offices that may sign. Read them in Approvals. A plan already signed and "
-                       "waiting to be applied is in the signed-waiting band."})
+                "why": "A plan waiting for a second signature is listed for each office with a holder who may give it (not the "
+                       "person who signed first or asked for it, and an office the controls allow). A plan waiting for a first "
+                       "decision names no office. Read them all in Approvals. A plan already signed and waiting to be applied "
+                       "is in the signed-waiting band."})
     out.append({"band": "needsAttention", "what": "The digest's requests, intake, notices, living documents, conflicts, and "
                                                  "people's tasks",
                 "why": "The governance digest attaches no office to those lines; only the schedule's duties carry a role. "
@@ -444,7 +494,8 @@ def not_composed(errors: dict[str, str], reading: list[str]) -> list[dict[str, s
     return out
 
 
-def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today: date, scope: Any = None) -> dict[str, Any]:
+def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today: date, scope: Any = None,
+            account: str = "") -> dict[str, Any]:
     """The bands for the offices in ``reading``, each built alone, with what could not be built. ``scope`` is the viewer's
     (``jason.web.extra.work_scope``): what the Work band may name of a held or administrator run."""
     errors: dict[str, str] = {}
@@ -462,7 +513,7 @@ def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today:
         errors["comingUp"] = errors["needsAttention"]
     needs = needs + _band("needsAttention", lambda: _tasks(root, reading, officers, today), errors)
     needs.sort(key=lambda r: (r["rank"], r.get("due") or "9999", r.get("title") or r["text"]))
-    work = _band("work", lambda: runs_for(root, reading, scope), errors)
+    work = _band("work", lambda: runs_for(root, reading, scope, account=account, day=today), errors)
     signed = _band("signedWaiting", lambda: signed_waiting(root), errors)
     steps = _band("personSteps", lambda: person_steps(root, reading, today, scope), errors)
     counts = {"waitingOnOffice": len(waiting), "signedWaiting": len(signed), "personSteps": len(steps),
@@ -496,7 +547,9 @@ def office_view(args: Args) -> dict[str, Any]:
     from jason.web.extra import work_scope
 
     scope = work_scope.scope_of(viewer)
-    out.update(compose(reading, root=_root(), officers=officers, today=_today(), scope=scope))
+    own = viewer is not None and (not asked or asked in mine)       # another office's lens names no person: no draft or anyone-step is its
+    account = str(getattr(viewer, "account", "") or "") if own else ""
+    out.update(compose(reading, root=_root(), officers=officers, today=_today(), scope=scope, account=account))
     opened_held = sum(1 for r in out["bands"]["work"] if r.get("visibility") == "held" and not r.get("held"))
     if opened_held:                      # held runs named in full (the private view): the reading is logged
         work_scope.log_opening(scope, "api/office-view", runs=opened_held)

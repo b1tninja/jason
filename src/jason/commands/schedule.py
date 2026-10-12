@@ -25,6 +25,11 @@ def _data_dir(args: argparse.Namespace):
     return Settings.load(getattr(args, "env", None)).ownership_db.parent
 
 
+def _today() -> date:
+    """The day the Google sync plans from: the real date. A test moves it here, so a count of open occurrences does not change with the day."""
+    return date.today()
+
+
 def cmd_schedule(args: argparse.Namespace) -> int:
     from jason.community import community
     from jason.community.schedule import Role, assignments
@@ -129,7 +134,7 @@ def _sync(args: argparse.Namespace, c: Any, data_dir: Any) -> int:
     prints the plan from disk with no Google call. Tasks run first, so a task checked off shows done on the calendar."""
     from jason.tasks import schedule_sync as sync
 
-    today = date.today()
+    today = _today()
     months, past = args.months, args.past
     if args.plan_only:
         if args.tasks:

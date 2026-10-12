@@ -123,6 +123,13 @@ class Role(Enum):
             return None
 
 
+def role_words(role: "Role | str") -> str:
+    """A role as a sentence names it: "the manager" for an office, but "jason", "scheduler" and "anyone" bare (the engine's own names
+    and "any signed-in person" take no article: "waiting on jason", never "the jason")."""
+    word = role.value if isinstance(role, Role) else str(role)
+    return word if word in ("jason", "scheduler", "anyone") else f"the {word}"
+
+
 OFFICES = frozenset(r for r in Role if r not in (Role.JASON, Role.SCHEDULER, Role.ANYONE, Role.ADMINISTRATOR, Role.DEVELOPER,
                                                  Role.REVIEWER))
 SYSTEM_NAMES = frozenset({"jason", "scheduler"})

@@ -3699,6 +3699,17 @@ LESSONS: tuple[Lesson, ...] = (
                    "tests/test_records_fee.py::test_a_decision_is_the_signed_in_persons_even_when_the_body_carries_no_by",
                    "tests/test_records_fee.py::test_a_decision_needs_a_sign_in_and_the_offices_that_open_p2_where_sign_in_is_set_up"),
            docs=("docs/workflows/documents-records.md", "docs/console/design-brief-records-and-reading.md")),
+    Lesson("work-today-and-due-read-different-folds", date(2026, 10, 12), (Area.GOVERNING,),
+           "Today read the run index (a cache whose current is the fold's first open step), the Work list ranked failed, "
+           "needs-person, ready, and work-due used the dry resume: a manager's step 1 beside a failed jason check at step 4 "
+           "was waiting on others in Work and the manager's move in Today.",
+           "Each surface folded a run's events its own way, so each named its own current step and holder; nothing "
+           "compared them.",
+           "The Work list, Today and work-due fold through step_guide.folded and work._pressing: one dry fold, one "
+           "pressing step, one rule for whose move it is. Ages are counted on the local day and never below 0.",
+           Status.FIXED,
+           guards=("tests/test_web_work_agreement.py",),
+           docs=("docs/console/screens/office-views.md",)),
 )
 
 

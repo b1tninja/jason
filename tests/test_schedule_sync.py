@@ -210,6 +210,7 @@ def test_the_command_plans_from_disk_and_fails_fast_without_google(tmp_path, mon
     parser = build_parser()                     # before the fake: the parser reads the profile's vendor portals
     monkeypatch.setattr(community_module, "community", _community)
     monkeypatch.setattr(command, "_data_dir", lambda args: tmp_path)
+    monkeypatch.setattr(command, "_today", lambda: TODAY)               # the count of open occurrences depends on the day
     monkeypatch.setattr(sync, "calendar_plan", lambda data_dir, c, **kw: {
         "from": date(2026, 9, 2), "until": date(2027, 1, 2), "events": [], "notes": []})
     args = parser.parse_args(["schedule", "--tasks", "--calendar", "--plan-only"])

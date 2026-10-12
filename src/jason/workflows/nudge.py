@@ -21,7 +21,7 @@ Imports only the engine's types, so it loads no profile and no client.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, tzinfo
 from enum import Enum
 from typing import Any, Iterable, Mapping
 
@@ -149,11 +149,34 @@ BASIS_LABELS = {"law": "LEGAL", "documents": "DOCUMENTS", "counterparty": "COUNT
                 "proposed policy": "PROPOSED", "person": "PERSON"}
 
 
-def _day(value: str) -> date | None:
+LOCAL_ZONE: tzinfo | None = None
+"""The zone whose calendar day a stored time falls on. None is the machine's own zone, the one ``date.today()`` reads, so a time and
+"today" are compared on the same day basis. A test may set a fixed zone."""
+
+
+def day_of(value: Any) -> date | None:
+    """The calendar day of a stored time or date, on the day basis of ``today``. A run's events are stamped in UTC (``2026-10-12T06:30:00Z``)
+    while "today" is the local date, so a run opened at 23:30 Pacific has a UTC stamp on the next day; the stamp is brought to the local
+    day before it is compared. A bare ``YYYY-MM-DD`` is a day already. None when it is neither."""
+    text = str(value or "").strip()
+    if len(text) > 10 and text[10] in "T ":
+        try:
+            moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            moment = None
+        if moment is not None:
+            if moment.tzinfo is not None:
+                moment = moment.astimezone(LOCAL_ZONE)
+            return moment.date()
     try:
-        return date.fromisoformat(str(value or "")[:10])
+        return date.fromisoformat(text[:10])
     except ValueError:
         return None
+
+
+def days_between(later: date, earlier: date | None) -> int | None:
+    """Whole days from ``earlier`` to ``later``, never below 0 (a time just before midnight cannot make a run older than it is)."""
+    return None if earlier is None else max(0, (later - earlier).days)
 
 
 def is_person_step(sd: StepDef) -> bool:
@@ -171,8 +194,8 @@ def open_for_person(sd: StepDef, sv: StepView) -> bool:
 def ready_since(sd: StepDef, view: RunView) -> date | None:
     """The day the step could first be acted on, as far as the run's events show: the latest of the days its ``needs`` finished, and the
     day the run opened. Day-grained, so the same view and day give the same answer."""
-    days = [d for n in sd.needs for d in [_day(getattr(view.step(n), "at", ""))] if d is not None]
-    opened = _day(view.opened_at)
+    days = [d for n in sd.needs for d in [day_of(getattr(view.step(n), "at", ""))] if d is not None]
+    opened = day_of(view.opened_at)
     if opened is not None:
         days.append(opened)
     return max(days) if days else None
@@ -198,15 +221,15 @@ def step_nudge(wf: Workflow, sd: StepDef, view: RunView, today: date, *, prefs: 
     claim = (claims or {}).get(sd.id)
     claim_stale = False
     since = ready_since(sd, view)
-    open_days = (today - since).days if since is not None else None
+    open_days = days_between(today, since)
     if claim is not None:
-        said = _day(claim.at)
-        claim_stale = said is not None and (today - said).days * 24 >= after
+        said = day_of(claim.at)
+        claim_stale = said is not None and (days_between(today, said) or 0) * 24 >= after
     live = [c for c in _clocks_of(view, sd.id) if c.due and c.status in LIVE]
     pick = min(live, key=lambda c: (c.days if c.days is not None else 10 ** 6, c.key)) if live else None
     band, extra = Band.QUIET, {}
     if pick is not None:
-        days = pick.days if pick.days is not None else (_day(pick.due) - today).days if _day(pick.due) else None
+        days = pick.days if pick.days is not None else (day_of(pick.due) - today).days if day_of(pick.due) else None
         extra = dict(due=pick.due, days=days, basis=pick.basis.value, basis_label=BASIS_LABELS.get(pick.basis.value, pick.basis.value.upper()),
                      legal=pick.basis is ClockBasis.LAW, proposed=pick.basis is ClockBasis.PROPOSED_POLICY, label=pick.label, cite=pick.cite)
         if days is not None:

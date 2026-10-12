@@ -21,7 +21,7 @@ from typing import Any, Callable, Iterable, Mapping
 from jason.workflows import guide as guide_mod, guide_reads, nudge as nudge_mod
 from jason.workflows.nudge import PROPOSED_NOTE, Nudge, Prefs
 from jason.workflows.nudge import BOARD
-from jason.workflows.types import Role, RunState, RunView, StepDef, StepState, StepView, Visibility, Workflow
+from jason.workflows.types import Role, RunState, RunView, StepDef, StepState, StepView, Visibility, Workflow, role_words
 
 BOARD_OFFICES = frozenset({"president", "vice president", "secretary", "treasurer", "director"})
 READING_LABEL = "jason's reading"
@@ -84,8 +84,7 @@ class Person:
 
 
 def words_of(role: Any) -> str:
-    word = role.value if hasattr(role, "value") else str(role)
-    return word if word in ("jason", "scheduler", "anyone") else f"the {word}"
+    return role_words(role)
 
 
 def _office_row(office: str, roster: Holders, who: Any, backup_for: Callable[[str], str] | None) -> dict[str, Any]:
@@ -359,15 +358,17 @@ def guide_dict(root: Path, wf: Workflow, sd: StepDef, view: RunView | None, sv: 
 
 # --- what is due for a person ---------------------------------------------------------------------------------------------------
 
-def folded(root: Path, wf: Workflow, rid: str, day: date, readers: Any = None) -> tuple[list[Any], RunView]:
+def folded(root: Path, wf: Workflow, rid: str, day: date, readers: Any = None, run: Any = None) -> tuple[list[Any], RunView]:
     """A run's events with what opening it now would append (a dry resume: the checks, the approvals and jobs the stores now show), and
-    the view of those. Reads only: nothing is written, so a ``--due`` or a ``--guide`` never opens a run."""
+    the view of those. Reads only: nothing is written, so a ``--due`` or a ``--guide`` never opens a run. This is the one fold every
+    surface reads a run through (the Work list and its run page, the Today bands, the due report, the digest), so the step, the holder,
+    and the day agree on all of them. ``run`` is the run already read from the store, when the caller has it."""
     from jason.workflows import fold, resume, store
     from jason.workflows.resume import Readers
     from jason.workflows.types import Event
 
     readers = readers or Readers()
-    run = store.read(root, wf.key, rid)
+    run = run if run is not None else store.read(root, wf.key, rid)
     events = list(run.events)
     for _ in range(len(wf.steps) * 3 + 5):
         view = fold.state(events, wf, day, resume.children_of(events, readers), run_id=rid)
@@ -375,7 +376,8 @@ def folded(root: Path, wf: Workflow, rid: str, day: date, readers: Any = None) -
         if not acts:
             break
         for act in acts:
-            events.append(Event(n=events[-1].n + 1, kind=act.kind, by="jason", at=day.isoformat() + "T00:00:00Z", step=act.step,
+            # noon UTC: the same calendar day in every zone from Honolulu to Sydney, so the day basis of "today" holds after a local conversion
+            events.append(Event(n=events[-1].n + 1, kind=act.kind, by="jason", at=day.isoformat() + "T12:00:00Z", step=act.step,
                                 detail=act.detail))
     return events, fold.state(events, wf, day, resume.children_of(events, readers), run_id=rid)
 
