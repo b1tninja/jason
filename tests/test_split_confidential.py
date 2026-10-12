@@ -308,7 +308,7 @@ def test_the_cache_paths_and_the_logs_of_a_confidential_session_carry_no_file_na
     for needle in needles:
         assert needle not in logged, needle
     # the folders the splitter wrote are named by hash, page, size, and session id only
-    hexish = re.compile(r"^[0-9a-f]{2,64}(\.pdf|\.json|\.webp|\.jpg)?$|^\d+(\.webp|\.jpg)?$|^_incoming$|^(sources|facts|sessions|thumbs|\d+)$")
+    hexish = re.compile(r"^[0-9a-f]{2,64}(\.pdf|\.json|\.json\.bak|\.jsonl|\.webp|\.jpg)?$|^\d+(\.webp|\.jpg)?$|^_incoming$|^(sources|facts|sessions|journal|thumbs|\d+)$")
     for path in (world.root / "split").rglob("*"):
         assert hexish.match(path.name), path.name
     for path in (world.root / "thumbs").rglob("*") if (world.root / "thumbs").exists() else ():

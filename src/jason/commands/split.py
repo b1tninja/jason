@@ -11,6 +11,10 @@
     jason split SESSION --decline --yes --by NAME
     jason split --purge [SESSION | --all-drafts] --yes --by NAME     drop drafts with their copy and page pictures (never an original)
     jason split --sweep [--yes]                           the retention sweep (split.draft_days)
+    jason split SESSION --apply --yes --by NAME --expect FINGERPRINT     write only the plan the review printed (a moved draft writes nothing)
+    jason split SESSION --finish|--rollback --yes --by NAME              finish or roll back an apply that did not finish
+    jason split --doctor [SESSION] [--json]               list inconsistent states (read only; exit 1 with findings)
+    jason split --doctor --fix IDS|safe --yes --by NAME   repair the scratch, cache, facts, and job findings (class A and B)
 
 **A dry run is the default**: without ``--yes`` a draft change is made on a copy and shown, and an apply writes nothing. ``--by NAME``
 names the person (a claim on a terminal; never jason). The command opens no browser, calls no network, and only a person's ``--apply
@@ -56,6 +60,44 @@ def _print_review(r: dict[str, Any]) -> None:
     for problem in r["problems"]:
         print(f"  problem: {problem}")
     print(f"  {r['result']}")
+    if r.get("planFingerprint"):
+        print(f"  plan fingerprint {r['planFingerprint']}  (apply with --expect {r['planFingerprint']} to write only this plan)")
+
+
+def _doctor(args: argparse.Namespace, root: Path, community: Any, yes: bool, by: str, out: Callable[[Any], None]) -> int:
+    """``--doctor``: list the inconsistent states (read-only); ``--fix IDS|safe --yes --by NAME`` repairs class A and B. Exit 0 clean, 1 findings."""
+    from jason.tasks import split_doctor
+
+    if args.fix:
+        which: Any = "safe" if args.fix.strip().lower() == "safe" else [w.strip() for w in args.fix.split(",") if w.strip()]
+        res = split_doctor.fix(which, by=by or "a person (dry run)", confirm=yes, root=root, community=community)
+        if args.json:
+            out(res)
+        elif res["dryRun"]:
+            for f in res["would"]["findings"]:
+                print(f"would repair {f['id']} (class {f['class']}): {f['what']}")
+            for f in res["refused"]:
+                print(f"not repaired {f}: a person's act or not fixable here; see the finding's own fix")
+            print(res["note"])
+        else:
+            for d in res["fixed"]:
+                print(f"repaired {d['id']}: {d['repaired']}")
+            for f in res["refused"]:
+                print(f"not repaired {f}: a person's act or not fixable here")
+        return 0
+    report = split_doctor.diagnose(root, community=community)
+    findings = [f for f in report["findings"] if not args.target or f["session"] in ("", args.target)]
+    if args.json:
+        out({**report, "findings": findings})
+    elif not findings:
+        print("the splitter's stores are consistent")
+    else:
+        for f in findings:
+            print(f"{f['id']}  class {f['class']}  {f['what']}")
+            print(f"    why: {f['why']}")
+            print(f"    fix: {f['fix']}")
+        print("read only: nothing was changed")
+    return 1 if findings else 0
 
 
 def _print_flags(f: dict[str, Any]) -> None:
@@ -140,13 +182,20 @@ def cmd_split(args: argparse.Namespace) -> int:
                 if not rows:
                     print("no splits yet")
             return 0
+        if args.doctor:
+            return _doctor(args, root, community, yes, by, out)
         if args.sweep:
             res = ss.sweep(dry_run=not yes, community=community, root=root)
             if args.json:
                 out(res)
+            elif res.get("refused"):
+                print(f"jason split: {res['refused']}", file=sys.stderr)
+                return 1
             else:
                 gone = (res.get("would") or {}).get("sessions") if res["dryRun"] else res["removed"]
                 print(f"{'would remove' if res['dryRun'] else 'removed'} {len(gone or [])} drafts older than {res.get('days') or res['would']['days']} days")
+                for k in res.get("kept") or ():
+                    print(f"  kept {k['id']}: {k['why']}")
             return 0
         if args.purge:
             res = ss.purge(sid=args.target or "", all_drafts=args.all_drafts, dry_run=not yes, by=by, root=root, community=community)
@@ -214,6 +263,11 @@ def cmd_split(args: argparse.Namespace) -> int:
                 limits.check("split.suggest_enabled", True, community=community, record=False)
         if args.decline:
             final["decline"] = ss.decline(sid, by=who, dry_run=not yes, root=root, community=community)
+        if args.finish or args.rollback:
+            if args.finish and args.rollback:
+                print("jason split: finish the unfinished apply or roll it back, not both", file=sys.stderr)
+                return 2
+            final["recover"] = ss.recover(sid, "finish" if args.finish else "rollback", by=who, confirm=yes, community=community, root=root)
         parts = list(args.part or ())
         drop = _numbers(args.drop)
         if args.review or (args.apply and not yes):
@@ -226,7 +280,8 @@ def cmd_split(args: argparse.Namespace) -> int:
             final["flags"] = split_flags.flags(sid, community=community, root=root)
         if args.apply:
             res = ss.apply(sid, by=who, parts=parts, drop=drop, keep_copies=args.keep_copies, confirm=yes, community=community, root=root,
-                           filing=args.filing or '', rotate=args.rotate or None, ocr=not getattr(args, "no_ocr", False))
+                           filing=args.filing or '', rotate=args.rotate or None, ocr=not getattr(args, "no_ocr", False),
+                           expect=args.expect or "")
             final["apply"] = split_mask.apply_result(res, ss.hides_text(root, ss.load(root, sid)))
         if args.json:
             from jason.tasks import split_session as _s
@@ -241,6 +296,14 @@ def cmd_split(args: argparse.Namespace) -> int:
             _print_flags(final["flags"])
         if "review" in final:
             _print_review(final["review"])
+        if "recover" in final:
+            r = final["recover"]
+            if r.get("dryRun"):
+                print(r["note"])
+            elif r.get("rolledBack"):
+                print(f"rolled back apply {r['apply']}: {len(r['unpinned'])} pins unpinned; the files it wrote stay where they are, held")
+            else:
+                final["apply"] = r
         if "apply" in final:
             a = final["apply"]
             if a.get("dryRun"):
@@ -263,6 +326,12 @@ def cmd_split(args: argparse.Namespace) -> int:
         return 0
     except SplitConflict as exc:
         print(f"jason split: {exc}", file=sys.stderr)
+        return 1
+    except ss.PlanChanged as exc:
+        print(f"jason split: {exc}", file=sys.stderr)
+        if exc.review.get("planFingerprint"):
+            print(f"  the plan now has fingerprint {exc.review['planFingerprint']} (jason split ID --review shows it; --expect FINGERPRINT confirms it)",
+                  file=sys.stderr)
         return 1
     except KeyError as exc:
         print(f"jason split: no split {exc.args[0] if exc.args else ''}", file=sys.stderr)
@@ -316,6 +385,14 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
     p.add_argument("--purge", action="store_true", help="drop a draft (or --all-drafts) with its copy and page pictures; never an original")
     p.add_argument("--all-drafts", action="store_true", help="with --purge: every draft")
     p.add_argument("--sweep", action="store_true", help="the retention sweep: drafts older than split.draft_days")
+    p.add_argument("--expect", metavar="FINGERPRINT", help="with --apply: the plan fingerprint the review printed; an apply whose plan differs "
+                   "(the draft moved, a slot filled) writes nothing and shows the new review")
+    p.add_argument("--finish", action="store_true", help="finish the split's unfinished apply with the choices it began with (--yes --by NAME)")
+    p.add_argument("--rollback", action="store_true", help="roll back the split's unfinished apply: unpin what it pinned, put the draft back "
+                   "(--yes --by NAME); the files it wrote stay held")
+    p.add_argument("--doctor", action="store_true", help="list the splitter's inconsistent states (read only; exit 1 when there are findings)")
+    p.add_argument("--fix", metavar="IDS|safe", help="with --doctor: repair findings of class A and B (scratch files, caches, facts and jobs) "
+                   "by id, or `safe` for all of them (--yes --by NAME)")
     p.add_argument("--by", help="who is doing this (a claim on a terminal; never jason)")
     p.add_argument("--yes", action="store_true", help="make the change (without it, a dry run)")
     p.add_argument("--json", action="store_true", help="print JSON")

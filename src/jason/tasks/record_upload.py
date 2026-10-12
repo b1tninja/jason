@@ -23,7 +23,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
-import os
 import secrets
 from pathlib import Path
 from typing import Any, Callable
@@ -106,10 +105,9 @@ def _keep(root: Path, profile: str, name: str, data: bytes) -> tuple[str, str]:
             raise ValueError("a different file is already kept under that address; nothing was written")
     else:
         storage.require_room(Path(root), len(data))
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(target.name + ".part")
-        tmp.write_bytes(data)
-        os.replace(tmp, target)
+        from jason.durable import durable_write
+
+        durable_write(target, data)                    # temp file in the same folder, flushed to disk, then renamed
     return target.relative_to(Path(root)).as_posix(), digest
 
 
@@ -312,11 +310,30 @@ def plan_parts(community: Any, computed: list[Any], items: list[dict[str, Any]])
     return plan
 
 
+def _store_busy(pins: list[dict[str, Any]], dest: Any, row: dict[str, Any]) -> str:
+    """Whether the slot store's own pins, read under the store's lock, already fill the slot this part is planned for (the plan's
+    collision rule: a slot that holds one file, or a series' period, is busy; a set that grows never is). Empty when free."""
+    if dest.cardinality is Cardinality.SEVERAL:
+        return ""
+    for p in pins:
+        if p.get("slot") != dest.key or p.get("unpinned") or p.get("kind") == PinKind.FOLDER.value:
+            continue
+        if dest.cardinality is Cardinality.SERIES and str(p.get("period") or "") != str(row.get("period") or ""):
+            continue
+        return f"{dest.key} now holds a file"
+    return ""
+
+
 def write_part(root: Path, profile: str, community: Any, row: dict[str, Any], data: bytes, *, by: str, why: str, source_pin: str,
-               extra: dict[str, Any] | None = None, label: str = "") -> dict[str, Any]:
+               extra: dict[str, Any] | None = None, label: str = "", pin_id: str = "") -> dict[str, Any]:
     """Keep one part's bytes and pin them to the slot ``row`` plans (a key document's slot takes them through the key documents' one
     writer). Sets ``row["pin"]`` and returns ``{"segment", "slot", "pin"}``. ``extra`` is provenance written on the pin (the PDF
-    splitter's session, page range, and confirming person). The one writer behind ``split`` and the PDF splitter's apply."""
+    splitter's session, page range, and confirming person). The one writer behind ``split`` and the PDF splitter's apply.
+
+    The pin is a **compare-and-append** under the slot store's lock. ``pin_id`` (the apply's journal allocates it before anything is
+    written) already in the store is success and adds nothing, so a resume never pins twice. A slot that holds a file when the pin is
+    about to be written is a collision, never a second pin: the file is kept (held, by its hash) and the answer is ``{"collided":
+    True, "why", "ref", "sha256", "size"}`` with no ``pin``."""
     name = label or f"part-pages-{row['pages'][0]}-{row['pages'][1]}.pdf"
     dest = rs._slot(community, row["slot"])[0]
     if dest.key_document:
@@ -326,13 +343,28 @@ def write_part(root: Path, profile: str, community: Any, row: dict[str, Any], da
         row["pin"] = "k-" + str(link["id"])
         return {"segment": row["segment"], "slot": row["slot"], "pin": row["pin"]}
     rel, digest = _keep(root, profile, name, data)
-    pin_id = "p-" + secrets.token_hex(4)
+    pin_id = pin_id or "p-" + secrets.token_hex(4)
     pin_row = {"id": pin_id, "slot": row["slot"], "kind": PinKind.FILE.value, "ref": rel, "name": name, "period": row["period"], "by": by,
                "at": rs._now(), "note": why, "unpinned": None, "sha256": digest, "size": len(data), "splitFrom": source_pin,
                **(extra or {})}
-    rs._write_store(profile, lambda d, r=pin_row: d["pins"].append(r), purpose="record slots: split")
+    state: dict[str, Any] = {}
+
+    def append(d: dict[str, Any], r: dict[str, Any] = pin_row) -> None:
+        if any(p.get("id") == pin_id for p in d["pins"]):
+            state["already"] = True                      # this apply's own pin, from a run that was cut short: nothing to add
+            return
+        busy = _store_busy(d["pins"], dest, row)
+        if busy:
+            state["busy"] = busy
+            return
+        d["pins"].append(r)
+
+    rs._write_store(profile, append, purpose="record slots: split")
+    if state.get("busy"):
+        return {"segment": row["segment"], "slot": row["slot"], "pin": "", "collided": True, "ref": rel, "sha256": digest, "size": len(data),
+                "why": state["busy"] + " while this was being written; the part was kept as a held file instead"}
     row["pin"] = pin_id
-    return {"segment": row["segment"], "slot": row["slot"], "pin": pin_id}
+    return {"segment": row["segment"], "slot": row["slot"], "pin": pin_id, **({"adopted": True} if state.get("already") else {})}
 
 
 def keep_held(root: Path, profile: str, data: bytes, name: str) -> dict[str, Any]:
@@ -441,7 +473,11 @@ def split(slot_key: str, *, pin: str = "", parts: list[Any] | tuple[Any, ...] = 
     for r in fills:
         data = _cut(source, r["pages"][0], r["pages"][1])
         why = text or f"pages {r['pages'][0]}-{r['pages'][1]} of a combined scan, confirmed"
-        made.append(write_part(root, profile, community, r, data, by=person, why=why, source_pin=pin))
+        got = write_part(root, profile, community, r, data, by=person, why=why, source_pin=pin)
+        if got.get("collided"):                          # the slot was filled while this was written: the file is kept, nothing is pinned
+            r.update({"action": "collision", "why": got["why"], "kept": "the file already there; this part was kept held"})
+            continue
+        made.append(got)
     auto = bool(limits.value("split.auto_read", community=community))
     queued = _queue_reads(root, made, person) if auto else {
         "reading": "the new files are not read yet (the split.auto_read limit is off): jason records --read SLOT for each"}

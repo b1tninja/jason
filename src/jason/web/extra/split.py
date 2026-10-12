@@ -185,8 +185,12 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             if act == "review":
                 return {"ok": True, "act": act, "review": split_mask.review(ss.review(sid, **kw), hide)}
             dry = body.get("dryRun", True) is not False
-            out = ss.apply(sid, by=by, confirm=bool(body.get("confirm")) and not dry, dry_run=dry,
-                          ocr=body.get("ocr") is not False, **kw)
+            try:
+                out = ss.apply(sid, by=by, confirm=bool(body.get("confirm")) and not dry, dry_run=dry,
+                               ocr=body.get("ocr") is not False, expect=str(body.get("expect") or ""), **kw)
+            except ss.PlanChanged as exc:        # the draft moved since the review: nothing was written; the new review comes back
+                abort(make_response(jsonify(error=str(exc), conflict=True, planChanged=True,
+                                            review=split_mask.review(exc.review, hide)), 409))
             return {"ok": True, "act": act, **split_mask.apply_result(out, hide)}
         if act == "suggest":
             return {"act": act, **ss.suggest(sid, by=by, community=community, root=root)}

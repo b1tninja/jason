@@ -211,7 +211,9 @@ class Source:
 
 
 def new_id() -> str:
-    return secrets.token_hex(4)
+    """A session id: 16 hex digits (64 bits). Older sessions have 8; both are read. A new session is created with an exclusive open, so a
+    collision is retried and never overwrites a draft (``tasks.split_session.create``)."""
+    return secrets.token_hex(8)
 
 
 # --- the session -----------------------------------------------------------------------------------------------------------

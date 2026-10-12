@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import logging
@@ -34,13 +35,14 @@ from jason import limits, storage
 from jason.community import split_suggest
 from jason.community.split_session import PageFact, Source, SplitConflict, SplitSession, new_id, now
 from jason.tasks import record_slots as rs
+from jason.tasks import split_journal as sj
 from jason.tasks import split_mask
 
 log = logging.getLogger(__name__)
 
 FOLDER = "split"
 INLINE_PAGES = 60                    # a file this short has its facts and first suggestions made as it opens; a longer one is a job
-ID_FORM = re.compile(r"^[0-9a-f]{8}$")
+ID_FORM = re.compile(r"^[0-9a-f]{8}([0-9a-f]{8})?$")          # 16 hex now; the 8 hex of earlier sessions are still read
 CAVEATS = (
     "A suggestion is jason's guess from the pages' shapes, with the reasons shown; it is not a boundary until a person accepts it.",
     "A split writes new files of just the pages a person marked, through the record intake's own writer. The original is never changed.",
@@ -71,30 +73,74 @@ def facts_file(root: Path, sha256: str) -> Path:
     return split_dir(root) / "facts" / sha256[:2] / f"{sha256}.json"
 
 
-def _write_json(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+def _write_json(path: Path, data: Any, *, backup: bool = False) -> None:
+    """One JSON file, written whole and durably (``jason.durable.durable_write``: temp file, flush, fsync, replace)."""
+    from jason.durable import durable_write
+
+    durable_write(path, json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n", backup=backup)
+
+
+RESTORED_NOTE = "This draft was restored from the previous save; your last change may be missing."
+
+
+def _bak(path: Path) -> Path:
+    return path.with_name(path.name + ".bak")
+
+
+def _read_session_file(path: Path) -> SplitSession:
+    """A session file read; one that is missing is ``KeyError``, one that is damaged is read from its ``.bak`` (the previous save) with
+    a note saying so, and ``KeyError`` when that is damaged too. Nothing is written here."""
+    try:
+        return SplitSession.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        raise KeyError(path.stem) from None
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        got = SplitSession.from_dict(json.loads(_bak(path).read_text(encoding="utf-8")))
+    except (OSError, ValueError, KeyError, TypeError):
+        raise KeyError(path.stem) from None
+    if RESTORED_NOTE not in got.notes:
+        got.notes.append(RESTORED_NOTE)
+    return got
 
 
 def load(root: Path, sid: str) -> SplitSession:
-    try:
-        raw = json.loads(session_file(root, sid).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raise KeyError(sid) from None
-    return SplitSession.from_dict(raw)
+    return _read_session_file(session_file(root, sid))
 
 
 def save(root: Path, session: SplitSession) -> None:
-    _write_json(session_file(root, session.id), session.to_dict())
+    """Write the session whole and durably, keeping the previous save as ``<id>.json.bak`` (only when that file reads: a damaged file
+    never replaces a good backup)."""
+    path = session_file(root, session.id)
+    good = False
+    if path.is_file():
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+            good = True
+        except (OSError, ValueError):
+            good = False
+    _write_json(path, session.to_dict(), backup=good)
+
+
+def create(root: Path, session: SplitSession) -> SplitSession:
+    """Make a new session's file with an exclusive create: a name already taken is never overwritten. A collision gets a new id (the
+    session is not known to anyone yet) and tries again."""
+    from jason.durable import durable_create
+
+    for _ in range(8):
+        body = json.dumps(session.to_dict(), ensure_ascii=False, separators=(",", ":")) + "\n"
+        if durable_create(session_file(root, session.id), body):
+            return session
+        session.id = new_id()
+    raise OSError("jason could not make a new split draft (no free name); nothing was opened")
 
 
 def sessions(root: Path) -> list[SplitSession]:
     out = []
     for path in sorted((split_dir(root) / "sessions").glob("*.json")) if (split_dir(root) / "sessions").is_dir() else ():
         try:
-            out.append(SplitSession.from_dict(json.loads(path.read_text(encoding="utf-8"))))
+            out.append(_read_session_file(path))
         except (OSError, ValueError, KeyError):
             continue
     return sorted(out, key=lambda s: s.updated, reverse=True)
@@ -104,6 +150,13 @@ def _locked(root: Path, sid: str):
     from jason.locks import Resource, hold
 
     return hold(Resource.STORE, f"split-{sid}", timeout=60, purpose="pdf splitter")
+
+
+def _open_locked(sha256: str):
+    """The lock of opening (and purging) one file's bytes: ``split-open-<sha>``. It comes before a session's own lock, never after."""
+    from jason.locks import Resource, hold
+
+    return hold(Resource.STORE, f"split-open-{sha256[:32]}", timeout=120, purpose="pdf splitter open")
 
 
 # --- the file --------------------------------------------------------------------------------------------------------------
@@ -240,13 +293,18 @@ def _ingest(root: Path, found: dict[str, Any]) -> tuple[str, int]:
                     for chunk in iter(lambda: fh.read(1 << 20), b""):
                         h.update(chunk)
                         out.write(chunk)
+            out.flush()
+            os.fsync(out.fileno())
         sha = h.hexdigest()
         target = source_file(root, sha)
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.is_file():
             os.unlink(tmp_name)
+            os.utime(target)                  # a copy that was just asked for is young again: a purge leaves it for an open to use
         else:
-            os.replace(tmp_name, target)
+            from jason.durable import _replace
+
+            _replace(Path(tmp_name), target)
     except BaseException:
         try:
             os.unlink(tmp_name)
@@ -581,30 +639,35 @@ def open_session(ref: dict[str, Any], *, by: str, dry_run: bool = False, suggest
                 "note": "A dry run: nothing was kept. Add --yes to open the file.", "caveats": list(CAVEATS)}
     sha, size = _ingest(root, found)
     found["data"] = None                     # the bytes are in the store now; hold no second copy while the facts are read
-    existing = find_resumable(root, sha)
-    if existing is not None:
-        return {"ok": True, "resumed": True, "session": view_of(root, existing), "caveats": list(CAVEATS)}
-    stamp = now()
-    session = SplitSession(new_id(), Source(sha, size, pages, found["kind"], found["ref"] or ("upload:" + sha[:12] if found["kind"] == "upload" else ""),
-                                            found["confidential"], found["stamp"]), "draft", stamp, stamp, person, 1)
-    session.mark(1, level=0, by=person, at=stamp)
-    session.undo, session.version = [], 1
-    save(root, session)
-    out: dict[str, Any] = {"ok": True, "resumed": False}
-    inline = (pages <= INLINE_PAGES) if facts is None else facts
-    if inline:
-        ensure_facts(root, sha)
-        if suggest and _suggestions_on(community):
-            _suggest(root, session, person, community)
-    else:
-        session.notes.append("Page facts are not measured yet; they fill in as the background job runs.")
-        save(root, session)
-        out["factsPending"] = True
-    _history(root, {"profile": profile, "act": "split-open", "session": session.id, "by": person, "pages": pages,
-                     "from": found["kind"]})
-    out["session"] = view_of(root, session)
-    out["caveats"] = list(CAVEATS)
-    return out
+    with _open_locked(sha):                  # two opens of the same bytes meet here: the second finds the first's draft and resumes it
+        existing = find_resumable(root, sha)
+        if existing is not None:
+            out = {"ok": True, "resumed": True, "session": view_of(root, existing), "caveats": list(CAVEATS)}
+            unfinished = pending_apply(root, existing)
+            if unfinished is not None:
+                out["unfinishedApply"] = sj.describe(unfinished)
+            return out
+        stamp = now()
+        session = SplitSession(new_id(), Source(sha, size, pages, found["kind"], found["ref"] or ("upload:" + sha[:12] if found["kind"] == "upload" else ""),
+                                                found["confidential"], found["stamp"]), "draft", stamp, stamp, person, 1)
+        session.mark(1, level=0, by=person, at=stamp)
+        session.undo, session.version = [], 1
+        create(root, session)                # exclusive: a name already taken is never overwritten
+        out = {"ok": True, "resumed": False}
+        inline = (pages <= INLINE_PAGES) if facts is None else facts
+        if inline:
+            ensure_facts(root, sha)
+            if suggest and _suggestions_on(community):
+                _suggest(root, session, person, community)
+        else:
+            session.notes.append("Page facts are not measured yet; they fill in as the background job runs.")
+            save(root, session)
+            out["factsPending"] = True
+        _history(root, {"profile": profile, "act": "split-open", "session": session.id, "by": person, "pages": pages,
+                         "from": found["kind"]})
+        out["session"] = view_of(root, session)
+        out["caveats"] = list(CAVEATS)
+        return out
 
 
 def queue_facts(root: Path, sid: str, by: str) -> dict[str, Any]:
@@ -1018,7 +1081,7 @@ def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop
     if not totals_ok:
         problems.append(f"the pages do not add up: {in_files} in files + {len(dropped)} left out is not {session.pages}")
     limits.check("split.max_parts", len(rows), community=community, record=False)
-    return {"id": sid, "status": session.status, "version": session.version, "sourcePages": session.pages, "files": len(rows),
+    result = {"id": sid, "status": session.status, "version": session.version, "sourcePages": session.pages, "files": len(rows),
             "parts": rows, "dropped": dropped, "pagesInFiles": in_files, "totalsOk": totals_ok, "problems": problems,
             "collisions": [r["slot"] for r in rows if r["action"] == "collision"],
             "duplicates": [r["segment"] for r in rows if r["action"] == "duplicate"],
@@ -1030,21 +1093,50 @@ def review(sid: str, *, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop
             "sidewaysLeft": sum(len(r["sideways"]) for r in rows if r["level"] == 0),
             "duplicateCheck": duplicate_check,
             "result": f"{len(rows)} new files; the original is kept untouched", "caveats": list(CAVEATS)}
+    # The plan's fingerprint: what a person reviewed is what an apply must still find (docs/pdf-splitter.md 6.5). ``planInputs`` is the
+    # same without what the world answered (a slot taken, a duplicate), which is how an unfinished apply recognises its own choices.
+    result["planFingerprint"] = sj.input_hash(session, result, keep_copies, full=True)
+    result["planInputs"] = sj.input_hash(session, result, keep_copies, full=False)
+    return result
+
+
+class PlanChanged(ValueError):
+    """The plan an apply was asked to write is not the plan that is true now (the draft moved, or a slot, a duplicate, or the choices
+    changed since the review). Nothing was written. ``review`` is the new review, with its new fingerprint."""
+
+    def __init__(self, message: str, review: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.review = review or {}
+
+
+def _matches(expect: str, fingerprint: str) -> bool:
+    given = str(expect or "").strip().lower()
+    return bool(given) and len(given) >= 12 and fingerprint.startswith(given)
+
+
+def _changed_words(plan: dict[str, Any]) -> str:
+    return ("The draft or the way it would be filed changed after you reviewed it (the draft was edited, a slot filled, or a choice "
+            "differs). Nothing was written. Review again: the new review is attached, and its fingerprint is the one to confirm.")
 
 
 def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = (), drop: list[int] | None = None, keep_copies: bool = False,
           confirm: bool = False, dry_run: bool | None = None, community: Any = None, root: Path | None = None,
           profile: str | None = None, filing: str = "", rotate: Any = None,
-          library_filer: Callable[..., dict[str, dict[str, Any]]] | None = None, ocr: bool = True) -> dict[str, Any]:
+          library_filer: Callable[..., dict[str, dict[str, Any]]] | None = None, ocr: bool = True, expect: str = "") -> dict[str, Any]:
     """Write the new files. ``filing`` (held, library, or slots; see ``review``) and ``rotate`` (pages turned in the new files only) are
-    the person's choices and are shown in the dry run; ``library_filer`` is the library intake (a test passes a fake). A **dry run unless a person confirms** (``confirm=True``): it returns the review and writes nothing. On
-    confirm the session becomes ``confirmed`` (who, when, the final boundary list), each part is written through the record
-    intake's writer in page order, and the session becomes ``applied``. A part that fails leaves the session ``confirmed`` with the
-    parts already written recorded, and the apply can be run again for the rest. Nothing is deleted; the original is not touched.
+    the person's choices and are shown in the dry run; ``library_filer`` is the library intake (a test passes a fake). A **dry run unless a person confirms** (``confirm=True``): it returns the review (with its
+    ``planFingerprint``) and writes nothing.
+
+    On confirm the apply is a **two-phase journal** (docs/pdf-splitter.md 6.5). It takes the session's lock first and builds the plan
+    inside it. ``expect`` is the fingerprint the person reviewed: a plan that differs is refused in words with the new review
+    (``PlanChanged``), and nothing is written. Then an ``intent`` is written (the fingerprint, the choices, each part's pin id chosen
+    in advance) before any file; each part is kept, then pinned by compare-and-append (a slot that now holds a file is a collision, never
+    a second pin), then recorded; a ``commit`` is written last, and the jobs are queued after it. The session becomes ``confirmed`` and,
+    at the commit, ``applied``. A part that fails leaves the apply **unfinished**: the same choices run again resume it (each part
+    already written is skipped, each pin id is recognised), ``recover`` finishes or rolls it back, and ``jason split --doctor`` lists
+    it. Different choices are refused while an apply is unfinished. Nothing is deleted; the original is not touched.
     ``ocr`` (default on; ``--no-ocr`` turns it off) queues one background OCR job for each part filed to the library that has no text
     layer, in the person's name, up to ``split.ocr_queue_max``; the result carries ``ocrQueued``, ``ocrSkipped``, and ``notQueued``."""
-    from jason.tasks import record_upload
-
     root = _root(root)
     profile = rs._profile(profile, community)
     person = rs._who(by)
@@ -1052,119 +1144,386 @@ def apply(sid: str, *, by: str, parts: list[dict[str, Any]] | tuple[Any, ...] = 
         dry_run = True
     elif dry_run is None:
         dry_run = False
-    plan = review(sid, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root, profile=profile, filing=filing,
-                  rotate=rotate, strict_duplicates=not dry_run)
+    choices = {"parts": [{k: v for k, v in p.items() if k != "title"} if isinstance(p, dict) else p for p in parts], "drop": list(drop or ()), "keep_copies": bool(keep_copies),
+               "filing": filing or "", "rotate": rotate, "ocr": bool(ocr)}
     if dry_run:
-        would: dict[str, Any] = {"act": "apply", "id": sid, "by": person, "files": plan["files"]}
+        plan = review(sid, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root, profile=profile, filing=filing,
+                      rotate=rotate)
+        would: dict[str, Any] = {"act": "apply", "id": sid, "by": person, "files": plan["files"], "planFingerprint": plan["planFingerprint"]}
         if ocr:
             n_lib = sum(1 for r in plan["parts"] if r["action"] == "library")
             cap = int(limits.value("split.ocr_queue_max", community=community))
             would["ocr"] = {"jobsAtMost": min(n_lib, cap), "notQueuedAtMost": max(0, n_lib - cap), "limit": cap,
                             "note": "a part with a text layer, or already read, is skipped when the jobs are queued"}
-        return {"dryRun": True, "would": would, "review": plan,
+        unfinished = pending_apply(root, sid)
+        extra = {"unfinishedApply": sj.describe(unfinished)} if unfinished is not None else {}
+        return {"dryRun": True, "would": would, "review": plan, "planFingerprint": plan["planFingerprint"], **extra,
                 "note": "A dry run: nothing was written. Confirm as a person (--yes) to write the files."}
+    with _locked(root, sid):                 # the lock first; the plan is built inside it, so no one can move the draft under it
+        return _apply_locked(sid, person=person, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root,
+                             profile=profile, filing=filing, rotate=rotate, library_filer=library_filer, ocr=ocr, expect=expect,
+                             choices=choices)
+
+
+def _part_entry(row: dict[str, Any]) -> dict[str, Any]:
+    """A part of the plan as the journal's intent keeps it: ids, hashes, and slot keys, never a name or a page's text."""
+    return {"ordinal": row["ordinal"], "segment": row["segment"], "level": row["level"], "action": row["action"], "slot": row.get("slot", ""),
+            "pages": [list(r) for r in row["pages"]], "sha256": row.get("sha256", ""), "pin": row.get("pinId", "")}
+
+
+def _apply_locked(sid: str, *, person: str, parts: Any, drop: Any, keep_copies: bool, community: Any, root: Path, profile: str, filing: str,
+                  rotate: Any, library_filer: Any, ocr: bool, expect: str, choices: dict[str, Any]) -> dict[str, Any]:
+    from jason.tasks import record_upload
+
+    plan = review(sid, parts=parts, drop=drop, keep_copies=keep_copies, community=community, root=root, profile=profile, filing=filing,
+                  rotate=rotate, strict_duplicates=True)          # a duplicate check skipped under a busy library refuses the apply
     if not plan["totalsOk"]:
         raise ValueError("; ".join(plan["problems"]))
-    with _locked(root, sid):
-        session = load(root, sid)
-        if session.status == "applied":
-            raise ValueError("this split was applied already; nothing was written again")
-        if session.status not in ("draft", "confirmed"):
-            raise ValueError(f"this split is {session.status}; open the file again to split it")
-        source = source_file(root, session.source.sha256)
-        if sha256_of(source) != session.source.sha256:
-            session.status = "stale"
-            save(root, session)
-            raise ValueError("the splitter's copy of the file changed since it was opened; open the file again")
-        _check_not_stale(root, session, strict=True)
-        if session.status != "confirmed":
-            session.status = "confirmed"
-            session.confirmed = {"by": person, "at": now(), "boundaries": ",".join(str(b.page) for b in session.ordered())}
+    session = load(root, sid)
+    if session.status == "applied":
+        raise ValueError("this split was applied already; nothing was written again")
+    if session.status not in ("draft", "confirmed"):
+        raise ValueError(f"this split is {session.status}; open the file again to split it")
+    unfinished = sj.pending(root, sid)
+    if unfinished is not None and not unfinished["visible"]:
+        # An apply that began and wrote nothing visible (cut short after its intent): housekeeping, not a person's decision.
+        sj.append(root, sid, "abort", unfinished["apply"], person, {"reason": "the earlier apply wrote nothing"})
+        if session.status == "confirmed" and not session.applied:
+            session.status = str((unfinished["intent"].get("before") or {}).get("status") or "draft")
+            session.confirmed = {}
             session.version += 1
             save(root, session)
-        done = {p["segment"]: p for p in (session.applied.get("parts") or ())}
-        made: list[dict[str, Any]] = list(done.values())
-        failed: list[dict[str, Any]] = []
-        for_library: list[tuple[dict[str, Any], bytes]] = []
-        turns = {r["page"]: r["degrees"] for r in plan["rotated"]}
-        source_ref = f"session:{session.id}"
-        for row in plan["parts"]:
-            if row["segment"] in done:
-                continue
-            if row["action"] in ("collision", "duplicate"):
-                made.append({"segment": row["segment"], "action": row["action"], "slot": row.get("slot", ""), "why": row.get("why", ""),
-                             "of": row.get("of", "")})
-                continue
-            try:
-                data = record_upload.cut_pages(source, [tuple(r) for r in row["pages"]],
-                                               {p: d for p, d in turns.items() if row["start"] <= p <= row["end"]})
-                prov = {"splitSession": session.id, "splitSource": session.source.sha256, "pages": {"ranges": row["pages"], "of": session.pages},
-                        "segment": {"key": row["segment"], "level": row["level"], "title": row["title"], "kind": row["kind"],
-                                    "kindIsGuess": True}, "confirmedBy": {"name": person, "at": session.confirmed.get("at", "")},
-                        "ordinal": row["ordinal"], "rotated": row.get("rotated") or []}
-                label = f"Part-{row['ordinal']}-pages-{row['start']}-{row['end']}.pdf"
-                if row["action"] == "library":
-                    for_library.append((row, data))
-                    continue
-                if row["action"] == "fill":
-                    why = f"pages {row['start']}-{row['end']} of a scan split in the PDF splitter, confirmed"
-                    got = record_upload.write_part(root, profile, community, {**row, "pages": (row["start"], row["end"])}, data, by=person,
-                                                   why=why, source_pin=source_ref, extra=prov, label=label)
-                    made.append({**got, "action": "filled", "sha256": row.get("sha256", ""), "ordinal": row["ordinal"]})
-                else:
-                    kept = record_upload.keep_held(root, profile, data, label)
-                    made.append({"segment": row["segment"], "action": "held", "ordinal": row["ordinal"], **kept})
-            except Exception as exc:  # noqa: BLE001 - one part that cannot be written stops the rest and is reported
-                failed.append({"segment": row["segment"], "why": f"{type(exc).__name__}: {str(exc)[:200]}"})
-                break
-            session.applied = {"parts": made, "partial": True, "by": person}
-            save(root, session)
-        if for_library:
-            made.extend(_into_library(root, profile, community, for_library, person, library_filer))
-            session.applied = {"parts": made, "partial": True, "by": person}
-            save(root, session)
-        out: dict[str, Any] = {"dryRun": False, "ok": not failed, "id": sid, "filled": [m for m in made if m.get("action") == "filled"],
-                               "held": [m for m in made if m.get("action") == "held"],
-                               "library": [m for m in made if m.get("action") == "library"],
-                               "rotated": plan["rotated"],
-                               "skipped": [m for m in made if m.get("action") in ("collision", "duplicate")], "failed": failed,
-                               "dropped": plan["dropped"], "caveats": list(CAVEATS)}
-        if failed:
-            session.applied = {"parts": made, "partial": True, "by": person, "failed": failed}
-            save(root, session)
-            out["note"] = "Some parts were written; the apply can be run again for the rest. Nothing was deleted."
-            return out
-        auto = bool(limits.value("split.auto_read", community=community))
-        slotted = [m for m in out["filled"] if m.get("pin")]
-        if auto and slotted:
-            out.update(record_upload.queue_reads(root, slotted, person))
-        elif slotted:
-            out["reading"] = "the new files are not read yet (the split.auto_read limit is off): jason records --read SLOT for each"
-        out["autoRead"] = auto
-        out["ocr"] = bool(ocr)
-        out.setdefault("ocrQueued", [])
-        out.setdefault("ocrSkipped", [])
-        if ocr and out["library"]:
-            from jason.tasks import library_ocr
-
-            got = library_ocr.queue(root, [m.get("libraryId", "") for m in out["library"]], person, community=community)
-            out["ocrQueued"], out["ocrSkipped"] = got["ocrQueued"], got["ocrSkipped"]
-            out["notQueued"] = list(out.get("notQueued") or []) + got["notQueued"]
-        elif out["library"]:
-            out["notQueued"] = list(out.get("notQueued") or []) + [
-                {"libraryId": m.get("libraryId", ""), "why": "OCR was turned off for this split (--no-ocr)"} for m in out["library"]]
-        if out["held"]:
-            out["notQueued"] = [{"segment": m["segment"], "why": "held with no slot yet; read it when it is filed"} for m in out["held"]]
-        session.status = "applied"
-        session.applied = {"parts": made, "partial": False, "by": person, "at": now(), "dropped": plan["dropped"]}
-        session.version += 1
-        session.updated = now()
+        unfinished = None
+    resuming = unfinished is not None
+    if resuming:
+        if plan["planInputs"] != unfinished["intent"].get("inputs"):
+            note = sj.describe(unfinished)
+            raise PlanChanged(note["words"] + " These choices differ from that apply's, so nothing was written.", plan)
+        apply_id = unfinished["apply"]
+    else:
+        if expect and not _matches(expect, plan["planFingerprint"]):
+            raise PlanChanged(_changed_words(plan), plan)
+        apply_id = "a-" + secrets.token_hex(6)
+    source = source_file(root, session.source.sha256)
+    if sha256_of(source) != session.source.sha256:
+        session.status = "stale"
         save(root, session)
+        raise ValueError("the splitter's copy of the file changed since it was opened; open the file again")
+    _check_not_stale(root, session, strict=True)
+    planned_actions: dict[str, dict[str, Any]] = {}
+    if resuming:                             # the plan now sees this apply's own pins as collisions; the intent's reading is the one it keeps
+        planned_actions = {p["segment"]: p for p in unfinished["intent"].get("parts") or ()}
+        for row in plan["parts"]:
+            was = planned_actions.get(row["segment"])
+            if was:
+                row["action"], row["pinId"] = was["action"], was.get("pin", "")
+                if was["action"] in ("collision", "duplicate") and was.get("why"):
+                    row["why"] = was["why"]
+    else:
+        total = sum(int(r.get("size") or 0) for r in plan["parts"] if r["action"] not in ("collision", "duplicate"))
+        if total:
+            storage.require_room(Path(root), total)         # room for all the parts first, not part-way through
+        for row in plan["parts"]:
+            row["pinId"] = ("p-" + secrets.token_hex(4)) if row["action"] == "fill" else ""
+        before = {"status": session.status}
+        sj.append(root, sid, "intent", apply_id, person, {
+            "fingerprint": plan["planFingerprint"], "inputs": plan["planInputs"], "sessionVersion": int(session.version),
+            "source": session.source.sha256, "before": before, "args": choices, "filing": plan["filing"]["asked"],
+            "parts": [{**_part_entry(r), **({"why": r["why"]} if r.get("why") else {})} for r in plan["parts"]]})
+        sj.fault("after_intent")
+        if session.status != "confirmed":
+            session.status = "confirmed"
+            session.confirmed = {"by": person, "at": now(), "boundaries": ",".join(str(b.page) for b in session.ordered()),
+                                 "draftVersion": str(session.version), "apply": apply_id}
+            session.version += 1
+            save(root, session)
+    done = {p["segment"]: p for p in (session.applied.get("parts") or ())}
+    if resuming:
+        for p in unfinished["parts"]:
+            done.setdefault(p["segment"], p)
+    made: list[dict[str, Any]] = list(done.values())
+    failed: list[dict[str, Any]] = []
+    for_library: list[tuple[dict[str, Any], bytes]] = []
+    turns = {r["page"]: r["degrees"] for r in plan["rotated"]}
+    source_ref = f"session:{session.id}"
+    for row in plan["parts"]:
+        if row["segment"] in done:
+            continue
+        if row["action"] in ("collision", "duplicate"):
+            entry = {"segment": row["segment"], "action": row["action"], "slot": row.get("slot", ""), "why": row.get("why", ""),
+                     "of": row.get("of", "")}
+            made.append(entry)
+            sj.append(root, sid, "part", apply_id, person, entry)
+            continue
+        try:
+            data = record_upload.cut_pages(source, [tuple(r) for r in row["pages"]],
+                                           {p: d for p, d in turns.items() if row["start"] <= p <= row["end"]})
+            prov = {"splitSession": session.id, "splitSource": session.source.sha256, "pages": {"ranges": row["pages"], "of": session.pages},
+                    "segment": {"key": row["segment"], "level": row["level"], "title": row["title"], "kind": row["kind"],
+                                "kindIsGuess": True}, "confirmedBy": {"name": person, "at": session.confirmed.get("at", "")},
+                    "ordinal": row["ordinal"], "rotated": row.get("rotated") or [], "splitApply": apply_id}
+            label = f"Part-{row['ordinal']}-pages-{row['start']}-{row['end']}.pdf"
+            if row["action"] == "library":
+                for_library.append((row, data))
+                continue
+            sj.append(root, sid, "placing", apply_id, person, {"ordinal": row["ordinal"], "segment": row["segment"], "pin": row.get("pinId", "")})
+            sj.fault(f"before_place:{row['ordinal']}")
+            if row["action"] == "fill":
+                why = f"pages {row['start']}-{row['end']} of a scan split in the PDF splitter, confirmed"
+                got = record_upload.write_part(root, profile, community, {**row, "pages": (row["start"], row["end"])}, data, by=person,
+                                               why=why, source_pin=source_ref, extra=prov, label=label, pin_id=row.get("pinId", ""))
+                sj.fault(f"after_place:{row['ordinal']}")
+                if got.get("collided"):
+                    entry = {"segment": row["segment"], "action": "held", "ordinal": row["ordinal"], "ref": got["ref"],
+                             "sha256": got["sha256"], "size": got["size"], "slot": row["slot"], "why": got["why"]}
+                else:
+                    entry = {**got, "action": "filled", "sha256": row.get("sha256", ""), "ordinal": row["ordinal"]}
+            else:
+                kept = record_upload.keep_held(root, profile, data, label)
+                sj.fault(f"after_place:{row['ordinal']}")
+                entry = {"segment": row["segment"], "action": "held", "ordinal": row["ordinal"], **kept}
+            made.append(entry)
+            sj.append(root, sid, "part", apply_id, person, entry)
+            sj.fault(f"after_part:{row['ordinal']}")
+        except Exception as exc:  # noqa: BLE001 - one part that cannot be written stops the rest and is reported
+            failed.append({"segment": row["segment"], "why": f"{type(exc).__name__}: {str(exc)[:200]}"})
+            sj.append(root, sid, "failed", apply_id, person, failed[-1])
+            break
+        session.applied = {"parts": made, "partial": True, "by": person}
+        save(root, session)
+    if for_library and not failed:
+        sj.append(root, sid, "placing", apply_id, person, {"library": len(for_library)})     # the intake may file some before it is cut short
+        entries = _library_entries(root, profile, community, for_library, person, library_filer, resuming=resuming)
+        made.extend(entries)
+        sj.append(root, sid, "library", apply_id, person, {"parts": entries})
+        sj.fault("after_library")
+        session.applied = {"parts": made, "partial": True, "by": person}
+        save(root, session)
+    out: dict[str, Any] = {"dryRun": False, "ok": not failed, "id": sid, "filled": [m for m in made if m.get("action") == "filled"],
+                           "held": [m for m in made if m.get("action") == "held"],
+                           "library": [m for m in made if m.get("action") == "library"],
+                           "rotated": plan["rotated"],
+                           "skipped": [m for m in made if m.get("action") in ("collision", "duplicate")], "failed": failed,
+                           "dropped": plan["dropped"], "caveats": list(CAVEATS), "applyId": apply_id,
+                           "planFingerprint": (unfinished["intent"].get("fingerprint") if resuming else plan["planFingerprint"]),
+                           "resumed": resuming}
+    if failed:
+        session.applied = {"parts": made, "partial": True, "by": person, "failed": failed}
+        save(root, session)
+        out["note"] = ("Some parts were written; the apply is unfinished. Run it again with the same choices to resume it "
+                       "(nothing already written is written twice), or roll it back (jason split ID --rollback). Nothing was deleted.")
+        out["unfinishedApply"] = sj.describe(sj.pending(root, sid) or {"apply": apply_id, "intent": {}, "parts": made, "failed": failed})
+        return out
+    collided = [m for m in out["held"] if m.get("slot") and "while this was being written" in str(m.get("why", ""))]
+    if collided:
+        out["collided"] = [{"segment": m["segment"], "slot": m["slot"], "why": m["why"]} for m in collided]
+    if out["held"]:
+        out["notQueued"] = [{"segment": m["segment"], "why": "held with no slot yet; read it when it is filed"} for m in out["held"]]
+    session.status = "applied"
+    session.applied = {"parts": made, "partial": False, "by": person, "at": now(), "dropped": plan["dropped"]}
+    session.version += 1
+    session.updated = now()
+    sj.fault("before_session_save")
+    save(root, session)
+    sj.fault("after_session_save")
+    sj.append(root, sid, "commit", apply_id, person, {"files": len(made), "version": session.version})
+    sj.fault("after_commit")
+    # Jobs are queued only after the commit, so no job ever refers to a part a roll back could remove.
+    auto = bool(limits.value("split.auto_read", community=community))
+    slotted = [m for m in out["filled"] if m.get("pin")]
+    if auto and slotted:
+        out.update(record_upload.queue_reads(root, slotted, person))
+    elif slotted:
+        out["reading"] = "the new files are not read yet (the split.auto_read limit is off): jason records --read SLOT for each"
+    out["autoRead"] = auto
+    out["ocr"] = bool(ocr)
+    out.setdefault("ocrQueued", [])
+    out.setdefault("ocrSkipped", [])
+    if ocr and out["library"]:
+        from jason.tasks import library_ocr
+
+        got = library_ocr.queue(root, [m.get("libraryId", "") for m in out["library"]], person, community=community)
+        out["ocrQueued"], out["ocrSkipped"] = got["ocrQueued"], got["ocrSkipped"]
+        out["notQueued"] = list(out.get("notQueued") or []) + got["notQueued"]
+    elif out["library"]:
+        out["notQueued"] = list(out.get("notQueued") or []) + [
+            {"libraryId": m.get("libraryId", ""), "why": "OCR was turned off for this split (--no-ocr)"} for m in out["library"]]
+    sj.fault("after_queue")
+    sj.append(root, sid, "queued", apply_id, person, {"read": len(out.get("queued") or ()), "ocr": len(out["ocrQueued"])})
     _history(root, {"profile": profile, "act": "split-apply", "session": sid, "by": person, "files": len(made), "dropped": len(plan["dropped"]),
                     "slots": sorted({m["slot"] for m in made if m.get("slot")}), "pins": [m["pin"] for m in made if m.get("pin")],
                     "filing": _filing_word(filing) or "as labelled", "library": len(out["library"]), "ocrQueued": len(out["ocrQueued"]), "rotatedPages": len(plan["rotated"]),
-                    "boundaries": session.confirmed.get("boundaries", "")})
+                    "boundaries": session.confirmed.get("boundaries", ""), "apply": apply_id, "resumed": resuming})
+    sj.fault("after_history")
     return out
+
+
+def _library_entries(root: Path, profile: str, community: Any, parts: list[tuple[dict[str, Any], bytes]], person: str,
+                     filer: Callable[..., dict[str, dict[str, Any]]] | None, *, resuming: bool) -> list[dict[str, Any]]:
+    """The library parts' results. On a resume, a part whose bytes the library already holds (the intake finished it before the cut
+    short) is adopted under its library id instead of being reported as held; the rest go to the intake as before."""
+    adopted: list[dict[str, Any]] = []
+    rest = parts
+    if resuming:
+        known = _library_ids_by_hash(root, {hashlib.sha256(data).hexdigest() for _r, data in parts})
+        rest = []
+        for row, data in parts:
+            sha = hashlib.sha256(data).hexdigest()
+            if sha in known:
+                adopted.append({"segment": row["segment"], "action": "library", "ordinal": row["ordinal"], "sha256": sha,
+                                "libraryId": known[sha], "kind": "", "size": len(data), "adopted": True})
+            else:
+                rest.append((row, data))
+    return adopted + (_into_library(root, profile, community, rest, person, filer) if rest else [])
+
+
+def _library_ids_by_hash(root: Path, hashes: set[str]) -> dict[str, str]:
+    db = Path(root) / "library" / "library.db"
+    found: dict[str, str] = {}
+    if not hashes or not db.is_file():
+        return found
+    try:
+        conn = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            for (sha, doc_id) in conn.execute("SELECT sha256, id FROM documents WHERE sha256 IS NOT NULL AND sha256 != ''"):
+                if sha in hashes:
+                    found.setdefault(str(sha), str(doc_id))
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        pass
+    return found
+
+
+# --- an unfinished apply: finish it or roll it back -------------------------------------------------------------------------
+
+def pending_apply(root: Path, which: Any) -> dict[str, Any] | None:
+    """The unfinished apply of a session (given by id or as a session), or None. A journal with no commit whose session was written as
+    applied is an apply that finished except for the journal's last line (a kill between them): it is not unfinished, and
+    ``recover`` writes the missing line."""
+    sid = which.id if hasattr(which, "id") else str(which)
+    st = sj.pending(root, sid)
+    if st is None:
+        return None
+    try:
+        session = which if hasattr(which, "id") else load(root, sid)
+    except KeyError:
+        return st
+    return None if session.status == "applied" and not session.applied.get("partial", True) else st
+
+
+def requeue_after_commit(root: Path, sid: str, by: str, *, community: Any = None) -> dict[str, Any]:
+    """After a commit, queue what a kill kept from being queued: the read-back of each file pinned to a slot and the OCR of each part the
+    library took in. Writes the journal's missing ``commit`` line first. Nothing already queued is queued twice. A person's act (the
+    jobs are queued in their name); a split with no journal, or whose jobs were queued, does nothing."""
+    from jason import jobs
+    from jason.tasks import record_upload
+
+    root = _root(root)
+    person = rs._who(by)
+    with _locked(root, sid):
+        session = load(root, sid)
+        st = sj.state(root, sid)
+        if session.status != "applied" or st["state"] == "none" or st.get("queued"):
+            return {"ok": True, "requeued": False, "id": sid}
+        if not st.get("committed") and st["state"] == "pending":
+            sj.append(root, sid, "commit", st["apply"], person, {"files": len(session.applied.get("parts") or ()), "version": session.version,
+                                                                "settled": True})
+        parts = session.applied.get("parts") or ()
+        have = {j.argv[j.argv.index("--pin") + 1] for j in jobs.jobs(root, limit=1000)
+                if "--pin" in j.argv and j.argv[:2] == ["records", "--read"]}
+        slotted = [m for m in parts if m.get("action") == "filled" and m.get("pin") and m["pin"] not in have]
+        out: dict[str, Any] = {"ok": True, "requeued": True, "id": sid}
+        if slotted and bool(limits.value("split.auto_read", community=community)):
+            out.update(record_upload.queue_reads(root, slotted, person))
+        lib = [m.get("libraryId", "") for m in parts if m.get("action") == "library"]
+        if lib:
+            from jason.tasks import library_ocr
+
+            got = library_ocr.queue(root, lib, person, community=community)
+            out["ocrQueued"], out["ocrSkipped"] = got["ocrQueued"], got["ocrSkipped"]
+        sj.append(root, sid, "queued", st["apply"], person, {"read": len(out.get("queued") or ()), "ocr": len(out.get("ocrQueued") or ()),
+                                                              "requeued": True})
+        return out
+
+
+def unfinished(root: Path | None, sid: str) -> dict[str, Any] | None:
+    """What a screen or command says of this session's unfinished apply (who, when, how far, the two ways out), or None."""
+    st = pending_apply(_root(root), sid)
+    return None if st is None else sj.describe(st)
+
+
+def recover(sid: str, choice: str, *, by: str, confirm: bool = False, community: Any = None, root: Path | None = None,
+            profile: str | None = None, library_filer: Callable[..., dict[str, dict[str, Any]]] | None = None) -> dict[str, Any]:
+    """Finish or roll back the session's unfinished apply. **A person's act**: nothing runs from a background job, and without
+    ``confirm`` it is a dry run that says what it would do.
+
+    - ``finish``: runs the apply again with the choices the intent kept, resuming it (each part written is skipped, each pin id is
+      recognised, a slot filled since is a collision kept as a held file).
+    - ``rollback``: unpins the pins this apply made (who and when are kept; the files stay where they are, held), puts the session back
+      as it was before the apply (a draft), and writes ``abort``. A part the library took in stays in the library and is named: the
+      library's intake has no undo here."""
+    root = _root(root)
+    profile = rs._profile(profile, community)
+    person = rs._who(by)
+    word = str(choice or "").strip().lower()
+    if word not in ("finish", "rollback"):
+        raise ValueError("an unfinished apply is finished (finish) or rolled back (rollback)")
+    with _locked(root, sid):
+        st = sj.pending(root, sid)
+        cur = st or sj.state(root, sid)
+        written = load(root, sid).status == "applied"          # the session says applied: what is left is the journal's end and the jobs
+        if written and cur["state"] != "none" and not cur.get("queued"):
+            if not confirm:
+                return {"dryRun": True, "would": {"act": "settle", "id": sid, "by": person},
+                        "note": "A dry run: this apply finished except for its last journal line and its queued jobs. Add --yes "
+                                "(with --by NAME) to write the line and queue what is missing, once."}
+            return {**requeue_after_commit(root, sid, person, community=community), "settled": True, "dryRun": False}
+        if st is None:
+            raise ValueError("this split has no unfinished apply")
+        said = sj.describe(st)
+        if not confirm:
+            return {"dryRun": True, "would": {"act": word, "id": sid, "by": person, "apply": st["apply"], "written": said["written"],
+                                              "of": said["of"]}, "unfinishedApply": said,
+                    "note": f"A dry run: nothing was changed. Add --yes (with --by NAME) to {word} it."}
+        if word == "finish":
+            args = dict(st["intent"].get("args") or {})
+            return _apply_locked(sid, person=person, parts=args.get("parts") or (), drop=args.get("drop") or None,
+                                 keep_copies=bool(args.get("keep_copies")), community=community, root=root, profile=profile,
+                                 filing=args.get("filing") or "", rotate=args.get("rotate"), library_filer=library_filer,
+                                 ocr=args.get("ocr") is not False, expect="", choices=args)
+        return _rollback_locked(root, profile, sid, st, person)
+
+
+def _rollback_locked(root: Path, profile: str, sid: str, st: dict[str, Any], person: str) -> dict[str, Any]:
+    ids = {p.get("pin") for p in st["intent"].get("parts") or () if p.get("pin")} | {p["pin"] for p in st["parts"] if p.get("pin")}
+    undone: list[str] = []
+
+    def change(data: dict[str, Any]) -> None:
+        for row in data["pins"]:
+            if row.get("id") in ids and not row.get("unpinned"):
+                row["unpinned"] = {"by": person, "at": rs._now(), "note": "the split apply was rolled back"}
+                undone.append(row["id"])
+
+    if ids:
+        rs._write_store(profile, change, purpose="record slots: split rollback")
+    kept_in_library = [p.get("libraryId", "") for p in st["parts"] if p.get("action") == "library"]
+    session = load(root, sid)
+    session.status = str((st["intent"].get("before") or {}).get("status") or "draft")
+    session.confirmed, session.applied = {}, {}
+    session.notes.append("An apply of this draft was rolled back; the draft is as it was before it.")
+    session.version += 1
+    session.updated = now()
+    save(root, session)
+    sj.append(root, sid, "abort", st["apply"], person, {"reason": "rolled back by a person", "unpinned": len(undone),
+                                                       "keptInLibrary": len(kept_in_library)})
+    _history(root, {"profile": profile, "act": "split-rollback", "session": sid, "by": person, "apply": st["apply"], "unpinned": undone,
+                    "keptInLibrary": len(kept_in_library)})
+    return {"dryRun": False, "ok": True, "rolledBack": True, "id": sid, "apply": st["apply"], "unpinned": undone,
+            "keptInLibrary": kept_in_library, "heldFilesKept": True,
+            "note": "The apply was rolled back: its pins are unpinned and the draft is as it was. The files it wrote stay where they are, "
+                    "held; nothing was deleted. A new apply of the same split will show those files as duplicates of the held copies; use --keep-copies "
+                    "to write them again." + (" Parts the library took in stay in the library." if kept_in_library else "")}
 
 
 def _into_library(root: Path, profile: str, community: Any, parts: list[tuple[dict[str, Any], bytes]], person: str,
@@ -1218,7 +1577,8 @@ def _file_to_library(root: Path, community: Any, files: list[tuple[str, bytes]],
 
 def listing(root: Path | None = None, *, mask_confidential: bool = True) -> list[dict[str, Any]]:
     """The sessions, newest first: id, status, pages, counts, updated. No file name, ever. A library file's flag is read again here
-    (one read for all of them) and fails closed: when the library cannot be read, a library file is listed as confidential."""
+    (one read for all of them) and fails closed: when the library cannot be read, a library file is listed as confidential. A session
+    whose apply did not finish says so (``unfinishedApply``: who, when, how far, and the two ways out)."""
     root = _root(root)
     rows = sessions(root)
     refs = {s.source.ref for s in rows if s.source.kind == "library" and s.source.ref}
@@ -1231,14 +1591,25 @@ def listing(root: Path | None = None, *, mask_confidential: bool = True) -> list
         c = s.counts()
         library = s.source.kind == "library" and bool(s.source.ref)
         conf = True if (library and busy) else bool(flags[s.source.ref]) if (library and s.source.ref in flags) else bool(s.source.confidential)
-        out.append({"id": s.id, "status": s.status, "pages": s.pages, "segments": c["segments"], "suggestionsOpen": c["suggestionsOpen"],
-                    "updated": s.updated, "by": s.by, "confidential": conf, "kind": s.source.kind,
-                    "label": "a confidential file" if (mask_confidential and conf) else f"{s.pages} pages, {s.source.sha256[:8]}"})
+        row = {"id": s.id, "status": s.status, "pages": s.pages, "segments": c["segments"], "suggestionsOpen": c["suggestionsOpen"],
+               "updated": s.updated, "by": s.by, "confidential": conf, "kind": s.source.kind,
+               "label": "a confidential file" if (mask_confidential and conf) else f"{s.pages} pages, {s.source.sha256[:8]}"}
+        pend = pending_apply(root, s)
+        if pend is not None:
+            row["unfinishedApply"] = sj.describe(pend)
+        out.append(row)
     return out
 
 
-def _unreferenced(root: Path, keep: set[str]) -> int:
-    """Remove the copy, facts, and pictures of every hash no remaining session needs. Returns the bytes freed."""
+COPY_MIN_AGE = 3600                  # seconds: a copy younger than this is never removed as unneeded (an open may be about to use it)
+
+
+def _unreferenced(root: Path, keep: set[str], *, force: frozenset[str] | set[str] = frozenset(), min_age: float = COPY_MIN_AGE) -> int:
+    """Remove the copy, facts, and pictures of every hash no remaining session needs. Returns the bytes freed. A copy younger than
+    ``min_age`` seconds is left (an open that has just made it has not saved its session yet), unless its hash is in ``force`` (the
+    sessions this very purge or sweep removed, under their open locks)."""
+    import time
+
     from jason.tasks import split_thumbs
 
     needed = {s.source.sha256 for s in sessions(root) if s.status in ("draft", "confirmed")} | keep
@@ -1250,6 +1621,8 @@ def _unreferenced(root: Path, keep: set[str]) -> int:
         for f in shard.glob("*.pdf"):
             if f.stem not in needed:
                 try:
+                    if f.stem not in force and time.time() - f.stat().st_mtime < min_age:
+                        continue
                     freed += f.stat().st_size
                     f.unlink()
                 except OSError:
@@ -1261,43 +1634,136 @@ def _unreferenced(root: Path, keep: set[str]) -> int:
     return freed
 
 
+def _why_kept(root: Path, s: SplitSession) -> str:
+    """Why a session may not be removed now, in words ('' when it may). An applied split's record is never removed; a draft whose apply
+    did not finish, or that is confirmed with no commit, is a record of work half done and waits for a person (finish or roll back)."""
+    if s.status == "applied":
+        return "it was applied; an applied split's record is kept"
+    if pending_apply(root, s) is not None:
+        return "an apply of it did not finish; finish it or roll it back first"
+    if s.status == "confirmed":
+        return "it is confirmed but has no commit (an apply began); finish it or roll it back first"
+    return ""
+
+
+def _remove_session_files(root: Path, sid: str) -> None:
+    session_file(root, sid).unlink(missing_ok=True)
+    _bak(session_file(root, sid)).unlink(missing_ok=True)
+    try:
+        sj.journal_file(root, sid).unlink(missing_ok=True)
+    except KeyError:
+        pass
+
+
+def _remove_locked(root: Path, s: SplitSession, allowed: Callable[[SplitSession], bool]) -> str:
+    """Remove one session under its locks (the open lock of its bytes, then its own), judged again once they are held. Returns '' when it
+    was removed, else why not."""
+    with _open_locked(s.source.sha256), _locked(root, s.id):
+        try:
+            now_s = load(root, s.id)
+        except KeyError:
+            return ""                                         # already gone
+        why = _why_kept(root, now_s)
+        if why:
+            return why
+        if not allowed(now_s):
+            return "it changed while this ran"
+        _remove_session_files(root, s.id)
+    return ""
+
+
 def purge(*, sid: str = "", all_drafts: bool = False, dry_run: bool = True, by: str = "", root: Path | None = None,
           community: Any = None, profile: str | None = None) -> dict[str, Any]:
-    """Drop a draft (or every draft) with its copy, facts, and page pictures. Never an original, and never an applied session's record."""
+    """Drop a draft (or every draft) with its copy, facts, and page pictures. Never an original, and never an applied session's record.
+    It takes each session's locks, and refuses a session whose apply did not finish (or that is confirmed with no commit): a person
+    finishes it or rolls it back first (``recover``)."""
     root = _root(root)
     profile = rs._profile(profile, community)
-    chosen = [s for s in sessions(root) if (s.id == sid if sid else all_drafts) and s.status != "applied"]
-    if sid and not chosen:
+    pool = [s for s in sessions(root) if (s.id == sid if sid else all_drafts) and s.status != "applied"]
+    if sid and not pool:
         raise KeyError(sid)
+    refused = [{"id": s.id, "why": _why_kept(root, s)} for s in pool if _why_kept(root, s)]
+    if sid and refused:
+        raise ValueError(f"split {sid} was not removed: {refused[0]['why']}.")
+    chosen = [s for s in pool if not _why_kept(root, s)]
     if dry_run:
-        return {"dryRun": True, "would": {"act": "purge", "sessions": [s.id for s in chosen]},
+        return {"dryRun": True, "would": {"act": "purge", "sessions": [s.id for s in chosen]}, **({"refused": refused} if refused else {}),
                 "note": "A dry run: nothing was removed. Add --yes. Originals and applied splits are never removed."}
     person = rs._who(by)
+    removed: list[SplitSession] = []
     for s in chosen:
-        session_file(root, s.id).unlink(missing_ok=True)
-    freed = _unreferenced(root, set())
-    _history(root, {"profile": profile, "act": "split-purge", "by": person, "sessions": [s.id for s in chosen], "freed": freed})
-    return {"dryRun": False, "ok": True, "removed": [s.id for s in chosen], "freed": freed}
+        why = _remove_locked(root, s, lambda _now: True)
+        if why:
+            refused.append({"id": s.id, "why": why})
+        else:
+            removed.append(s)
+    freed = _unreferenced(root, set(), force={s.source.sha256 for s in removed})
+    _history(root, {"profile": profile, "act": "split-purge", "by": person, "sessions": [s.id for s in removed], "freed": freed})
+    return {"dryRun": False, "ok": True, "removed": [s.id for s in removed], "freed": freed, **({"refused": refused} if refused else {})}
+
+
+SWEEP_FILE = "sweep.json"
+SWEEP_CLOCK_SLACK = timedelta(days=1)    # the clock may not be earlier than the last sweep's by more than this
+SWEEP_MAX_SHARE = 0.5                    # a sweep that would remove more than this share of the drafts is held for a person ...
+SWEEP_MIN_COUNT = 5                      # ... once it would remove at least this many (a few old drafts are an ordinary sweep)
+
+
+def _sweep_clock(root: Path) -> datetime | None:
+    try:
+        raw = json.loads((split_dir(root) / SWEEP_FILE).read_text(encoding="utf-8"))
+        last = datetime.fromisoformat(str(raw.get("last") or ""))
+    except (OSError, ValueError, AttributeError):
+        return None
+    return last if last.tzinfo else last.replace(tzinfo=timezone.utc)
 
 
 def sweep(*, dry_run: bool = True, community: Any = None, root: Path | None = None, today: datetime | None = None,
           profile: str | None = None) -> dict[str, Any]:
     """The retention sweep: a draft (or a declined or stale one) not changed for ``split.draft_days`` days is removed with its copy and
-    pictures. An applied split's record stays; only its leftover copy and pictures go once no draft needs them."""
+    pictures. An applied split's record stays; only its leftover copy and pictures go once no draft needs them.
+
+    Two guards keep a wrong clock or a mistake from emptying the store. The sweep **refuses** (removes nothing, says why) when the clock
+    reads more than a day earlier than the time the last sweep recorded, and when it would remove more than half of the drafts at once
+    (from five up). It takes each session's locks and skips one whose apply did not finish."""
     root = _root(root)
     days = int(limits.value("split.draft_days", community=community))
-    cutoff = (today or datetime.now(timezone.utc)) - timedelta(days=days)
-    old = []
-    for s in sessions(root):
+    clock = today or datetime.now(timezone.utc)
+    clock = clock if clock.tzinfo else clock.replace(tzinfo=timezone.utc)
+    cutoff = clock - timedelta(days=days)
+    every = sessions(root)
+    old, kept = [], []
+    for s in every:
         try:
             changed = datetime.fromisoformat(s.updated)
         except ValueError:
             continue
+        changed = changed if changed.tzinfo else changed.replace(tzinfo=timezone.utc)
         if changed < cutoff and s.status in ("draft", "stale", "declined"):
-            old.append(s.id)
+            if pending_apply(root, s) is not None:
+                kept.append({"id": s.id, "why": "an apply of it did not finish"})
+            else:
+                old.append(s)
+    refused = ""
+    last = _sweep_clock(root)
+    if last is not None and clock < last - SWEEP_CLOCK_SLACK:
+        refused = (f"The clock looks wrong: it reads {last - clock} earlier than the last sweep recorded. Nothing was removed. "
+                   "Set the clock right, or look at the last sweep's record, before sweeping.")
+    elif len(old) >= SWEEP_MIN_COUNT and len(old) > SWEEP_MAX_SHARE * len(every):
+        refused = (f"This sweep would remove {len(old)} of {len(every)} drafts, more than half. That is more likely a wrong clock than "
+                   "forty abandoned drafts. Nothing was removed. Purge the ones you mean by hand (jason split --purge ID).")
+    ids = [s.id for s in old]
+    if refused:
+        return {"dryRun": dry_run, "ok": False, "refused": refused, "removed": [], "days": days,
+                "would": {"act": "sweep", "sessions": [], "days": days}, "kept": kept}
     if dry_run:
-        return {"dryRun": True, "would": {"act": "sweep", "sessions": old, "days": days}}
-    for sid in old:
-        session_file(root, sid).unlink(missing_ok=True)
-    return {"dryRun": False, "ok": True, "removed": old, "freed": _unreferenced(root, set()), "days": days}
-
+        return {"dryRun": True, "would": {"act": "sweep", "sessions": ids, "days": days}, **({"kept": kept} if kept else {})}
+    removed: list[SplitSession] = []
+    for s in old:
+        why = _remove_locked(root, s, lambda now_s: now_s.updated == s.updated and now_s.status in ("draft", "stale", "declined"))
+        if why:
+            kept.append({"id": s.id, "why": why})
+        else:
+            removed.append(s)
+    _write_json(split_dir(root) / SWEEP_FILE, {"last": clock.isoformat(timespec="seconds")})
+    return {"dryRun": False, "ok": True, "removed": [s.id for s in removed],
+            "freed": _unreferenced(root, set(), force={s.source.sha256 for s in removed}), "days": days, **({"kept": kept} if kept else {})}

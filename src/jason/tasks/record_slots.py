@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import secrets
-import shutil
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -813,14 +811,9 @@ def read_history(root: Path) -> list[dict[str, Any]]:
 
 def _append_history(root: Path, row: dict[str, Any]) -> None:
     """One write of one line (a reader never sees half of one); nothing already there is changed."""
-    path = history_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_BINARY", 0), 0o600)
-    try:
-        os.write(fd, line)
-    finally:
-        os.close(fd)
+    from jason.durable import durable_append
+
+    durable_append(history_path(root), (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8"))
 
 
 # The writes ---------------------------------------------------------------------------------------------------------------
@@ -890,12 +883,9 @@ def _write_store(profile: str, change, *, purpose: str) -> Path:
         data.setdefault("pins", [])
         data.setdefault("answers", [])
         change(data)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.is_file():
-            shutil.copyfile(path, path.with_name(path.name + ".bak"))
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
+        from jason.durable import durable_write
+
+        durable_write(path, json.dumps(data, indent=1, ensure_ascii=False) + "\n", backup=True)
     return path
 
 
