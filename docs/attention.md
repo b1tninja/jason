@@ -26,6 +26,7 @@ jason attention --on 2026-11-01       # read a given day as today
 | Living documents | each one's last build, `data/living/KEY/report.json` | a rule row the current text no longer bears out, a source held, the working copy's drift, the findings, a build over 30 days old, a document never built | `jason living KEY` |
 | Timed duties | `data/duties/*.json` | the association's duties with a deadline or recurrence that no recurring deadline, calendar event, notice rule, or assignment carries; owners' duties as a count | `jason duties --documents KEY --timed --untracked` |
 | Signed plans | `data/approvals/*.json` | each plan of writes outside jason that is signed by everyone it needs and not yet applied, with how long since its last signature, and whether it is older than its kind allows (it is planned again before apply); counts, times, and the plan's title only | `jason approvals list`, `jason approvals show ID` |
+| Person steps | `data/workflows/*` (the runs), read as of the day | the workflows' person steps by band, one line a band with a count and no run, step, owner, or item named: on a legal clock (LEGAL), overdue, need a date (open), due soon, open a while (open); the lead time and the open-a-while threshold are proposals the board has not adopted, said on the line; a held run and the administrator's own are not counted; nothing is sent | `jason workflow --due --for NAME` |
 
 Every line names the command that gives its detail; each section names its MCP tool.
 
@@ -38,6 +39,8 @@ Each line has one urgency, and the digest orders by it, then by what sets the cl
 3. **due soon**: within the schedule's two weeks or a request's five days; a failed rule check on a living document.
 4. **open**: waiting on a person, with no clock.
 5. **noted**: for the record.
+
+A person step takes its urgency from its band ([workflows/person-steps.md](workflows/person-steps.md), section 6.2): a law clock due today or past is LEGAL, any other clock past is OVERDUE, a clock within the lead is due soon, and a step that needs a date or has sat open a while is open.
 
 Sections are ordered by their most urgent line. The packet's report prints five lines a section (`{REPORT:attention limit=8}` sets it; `section=requests` narrows it).
 

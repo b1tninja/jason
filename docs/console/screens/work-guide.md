@@ -1,6 +1,6 @@
 # Work: the step guide (enable, remind, guide)
 
-The step panel of the run page, extended · `#/work/<definition>/<id>` · phase 2, after the Work screens; **the panel's guide, enable strip, and nudge line are built** (see "As built, phase 1" below), the away dialog and the list marks are not · CLI: `jason workflow --guide`, `--due`, `--snooze`, `--claim`, `--away` · model: [../../workflows/person-steps.md](../../workflows/person-steps.md) · every person step: [../../workflows/person-steps-inventory.md](../../workflows/person-steps-inventory.md)
+The step panel of the run page, extended · `#/work/<definition>/<id>` · phase 2, after the Work screens; **the panel's guide, enable strip, and nudge line are built** (see "As built, phase 1" below), and so are the list marks and the `work-due` loader (see "As built, phase 2 read side"); the away dialog is not · CLI: `jason workflow --guide`, `--due`, `--snooze`, `--claim`, `--away` · model: [../../workflows/person-steps.md](../../workflows/person-steps.md) · every person step: [../../workflows/person-steps-inventory.md](../../workflows/person-steps-inventory.md)
 
 The design brief for the design agent is [../design-brief-person-steps.md](../design-brief-person-steps.md).
 
@@ -31,7 +31,7 @@ A person opens a step and needs, in this order: *can I do this, when is it due, 
 | `enable` | the roster (`Community.officers()`), the away log, the claims (notes), `controls.effective.step_gates`, the integrations' status (names only), the step's `needs` | `GET /api/work-run` (step `enable`: `state`, `holders[]` as `{office, vacant, away?, cover?}`, `missing[]`, `secondPerson`, `terminalOnly`) |
 | `nudge` | `jason.workflows.nudge`, a pure function of the folded run, the roster, the away log, the board's reminder preferences, and the day | `GET /api/work-run` (step `nudge`: `band`, `word`, `due`, `basis`, `days`, `escalatedTo`, `snoozedUntil`, `covering`, `claim`) |
 | `guide` | the step's `Support.guides`, with the SOP step's `do`, `check`, `refs`, `lessons` where the field is empty; each `look_at` read; each `cite` recited from the authorities shelf at the run's date | `GET /api/work-run` (step `guide`: `instruction`, `why`, `lookAt[]` as `{label, count, rows[], refs[], asOf, unavailable}`, `rule[]` as `{key, words, version, source, reading, missing}`, `checklist[]`, `commands[]` as `{text, filled, note, terminalOnly}`, `lessons[]` as `{key, status}`, `doneWhen`, `record`, `blocked`, `notApplicable`, `ask[]` as `{office, holder, vacant, away}`, `sop`) |
-| Lines for a person | the nudges for an office, grouped: `mine`, `escalated`, `covering`; counts only for `quiet` | `GET /api/work-due?office=&within=&asOf=` (new; the same as `jason workflow --due`) |
+| Lines for a person | the nudges for the viewer, grouped: `mine`, `escalated` (`covering` waits on the away log); counts only for `quiet` | `GET /api/work-due?within=` (**built**; the same rows as `jason workflow --due`; the answer is for the signed-in viewer, with no `office` or `asOf` yet) |
 | Away | `data/workflows/away.jsonl` | `office-view` gains `away[]` (`{office, from, until, cover}`); `POST /api/write/work-away` with `{act: "away"/"end", office, from, until, cover?}` |
 | The small acts | `snooze`, `claim` (and release), `blocked` (a note with `blocked: true`), `away` | `POST /api/write/work/<definition>/<id>` with `{act, step, ...}`; the signer's name is enforced; a `by` naming someone else is a 403 |
 
@@ -165,7 +165,7 @@ A step with no `Support` still shows: the enable strip (always derivable), the n
 
 ## Components
 
-Built: `RunStepPanel`, `WorkflowRail`, `RunRow`, `Command`, `Confirm`, `Doc`, `DueDate`, `Recitation`, `ReadingLabel`, `Pill`, `Glyph`, `StepStateWord`, `BasisPill`, `ControlStepNotice`, `OfficeLens`. Specified, not yet built: `TerminalStep`, `AgeStamp`. **Built in phase 1** (all in `ui/src/components/StepGuide.tsx`, styled in `ui/src/styles/work-guide.css`): `StepEnable` (as `StepEnableStrip`), `StepNudge` (as `StepNudgeLine`), `GuideSection`, `LookAtList`, `RuleBlock`, `GuideChecklist` (with `useChecklist`), `CommandList`, `AskOffices`, `NudgeWord`, and `ClaimButton`. **Not built:** `AwayDialog`, `AwayBanner`, `DueList`. The table lists the whole set:
+Built: `RunStepPanel`, `WorkflowRail`, `RunRow`, `Command`, `Confirm`, `Doc`, `DueDate`, `Recitation`, `ReadingLabel`, `Pill`, `Glyph`, `StepStateWord`, `BasisPill`, `ControlStepNotice`, `OfficeLens`. Specified, not yet built: `TerminalStep`, `AgeStamp`. **Built in phase 1** (all in `ui/src/components/StepGuide.tsx`, styled in `ui/src/styles/work-guide.css`): `StepEnable` (as `StepEnableStrip`), `StepNudge` (as `StepNudgeLine`), `GuideSection`, `LookAtList`, `RuleBlock`, `GuideChecklist` (with `useChecklist`), `CommandList`, `AskOffices`, `NudgeWord`, and `ClaimButton`. **Built in phase 2 (read side):** `RowNudgeMark` in `RunRow.tsx` (the mark on a Work row, using `NudgeWord`), and the `personSteps` rows of `OfficeLens.tsx` (`OfficeRowItem` draws a `person-step` row). **Not built:** `AwayDialog`, `AwayBanner`, `DueList`. The table lists the whole set:
 
 | Component | What it is | States |
 |---|---|---|
@@ -293,7 +293,17 @@ Built: the three objects on each person step of `GET /api/work-run` (`enable`, `
 - **A terminal-only step** says "A person does this at a terminal." and still shows Mark done with its required record, since the page cannot know the record exists.
 - **A step that is done, skipped, or superseded** opens with Do this only; the other sections are collapsed to their headings.
 - **A long recited section** scrolls inside its own bordered region (keyboard focusable), not clamped; the whole text is in the region.
-- **The lists** (Work, Today, the office bands), the digest section, snooze, the blocked note, the away dialog and cover, and the `work-due` loader are not built: they are phase 2. The CLI has `jason workflow --due --for NAME` meanwhile.
+- **Snooze, the blocked note, the away dialog and the cover** are not built: they wait on the board's decisions ([../../workflows/person-steps-decisions.md](../../workflows/person-steps-decisions.md)). The lists, the digest section, and the `work-due` loader are built (below).
+
+## As built, phase 2 read side
+
+Reading only: nothing is sent, snoozed, or stored, and no cover is applied. The bands use the proposed defaults (`jason.workflows.nudge.DEFAULTS`), and the lines that rest on them say "proposed, not the law's".
+
+- **The `work-due` loader** (`GET /api/work-due`, `jason.web.extra.work_due`) lists the steps waiting on the signed-in viewer by band (`legal`, `late`, `date`, `soon`, `stale`), with counts, the digest's words, and what is escalated to their office. Rows hold general titles, the run's own label, the step, the holder in words, the date and its basis word, and a per-item step's count. Never an item, an address, a name, or an answer. A held run is its general title and the band. Gated as the Work loaders are.
+- **The mark on a Work row** (`RowNudgeMark`): the digest's word with its glyph (LEGAL, OVERDUE, due soon, needs a date, open), how far off the date is, "step N", and a per-item count. A due-soon or open mark carries the note that its numbers are proposed. A run with no step due, late, or open a while has no mark.
+- **Today** (`personSteps` band, [office-views.md](office-views.md)): "Steps waiting on a person", the same rows for every office lens (escalation is visibility), not drawn when empty; the heading counts them with the bands in words.
+- **The digest** carries a `person-steps` section: one line a band with a count ([../../attention.md](../../attention.md)).
+- **Not built:** the dock's "your steps past due" count, "Covering for the OFFICE" and "Escalated to you" as separate headings under "Your work", snooze, the blocked note, the away dialog and the cover.
 
 ## Decisions for the user
 

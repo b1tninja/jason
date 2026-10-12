@@ -123,6 +123,17 @@ export interface WorkRow {
   group: GroupKey | "closed" | string; current: RowCurrent; owner: string; waitingOn: WaitingOn | null; mine: boolean;
   due: WorkDue | null; pastLaw: boolean; age: RunAge; paused: boolean; pausedReason: string; torn?: boolean; corrupt?: number | null;
   held?: boolean; handle?: string; visibility?: "board" | "admin" | "held" | string;
+  /** The run's most urgent person step by band, or null when none is due, late, in need of a date, or open a while. */
+  nudge?: RowNudge | null;
+}
+
+/** A run's most urgent person step as the list shows it (`_nudge_of`): the band, the digest's word, the date and its basis, how far
+ * off, a per-item step's count, and which step. The same fields the run page's step carries as `nudge`; a held run outside the
+ * private view carries the band and the date only. A reading: nothing is sent; the numbers behind soon and open are proposals. */
+export interface RowNudge {
+  band: Exclude<NudgeBand, "quiet">; word: string; due: string | null; days: number | null; basis: string; basisLabel: string;
+  legal: boolean; proposed: boolean; items: { total: number; notDone: number; earliest: string } | null;
+  step: string; n: number; title: string;
 }
 
 export interface WorkCounts {
@@ -130,6 +141,25 @@ export interface WorkCounts {
 }
 
 export interface Problem { what: string; why: string }
+
+/** One step in `GET /api/work-due` (`jason.web.extra.work_due`): the run's own words, the step, its band, and its date. No item, address,
+ * subject, or name; a held run is its general title. */
+export interface WorkDueRow {
+  run: string; definition: string; label: string; held: boolean; step: string; n: number; title: string; holder: string;
+  band: Exclude<NudgeBand, "quiet">; word: string; due: string | null; days: number | null; basis: string; basisLabel: string;
+  legal: boolean; proposed: boolean; dueLabel: string; cite: string; openDays: number | null; escalatedTo: string | null;
+  escalatedWhy: string; items: { total: number; notDone: number; earliest: string | null } | null;
+  claim: { mine: boolean; stale: boolean } | null;
+}
+
+/** `GET /api/work-due`: the steps waiting on the viewer by band, and what is escalated to their office (visibility, not a message). */
+export interface WorkDuePage {
+  found: boolean; asOf: string; viewer: { roles: string[] }; mine: WorkDueRow[]; escalated: WorkDueRow[];
+  counts: Record<"legal" | "late" | "date" | "soon" | "stale" | "total" | "escalated", number>;
+  bands: { key: string; word: string; count: number }[];
+  numbers: { leadDays: number; afterHours: number; escalateAfterHours: number; adopted: boolean; note: string };
+  empty: string; caveats: string[]; problems: Problem[];
+}
 
 /** `GET /api/work`. `counts` are the viewer's whole picture before the filters; `shown` is after them. */
 export interface WorkPage {

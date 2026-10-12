@@ -453,3 +453,90 @@ def test_a_band_that_cannot_be_read_says_so_and_the_others_stand(app, world, mon
     got = read(app, "Sam Secretary", "treasurer")
     assert "OSError" in got["bandErrors"]["signedWaiting"] and got["bands"]["signedWaiting"] == []
     assert got["bands"]["waitingOnOffice"]
+
+
+# --- the personSteps band (docs/workflows/person-steps.md, section 6) -----------------------------------------------------------
+
+
+def person_step_runs(world):
+    """Two runs of a definition whose person step is on the law's clock: one due in 11 days, one due today."""
+    from dataclasses import replace
+
+    from jason.workflows import api, definitions
+    from jason.workflows.types import ClockBasis, ClockDef
+    from test_workflows_support import C2, example_cycle
+
+    base = example_cycle()
+    c2 = replace(base.step(C2), clock=ClockDef(ClockBasis.LAW, "answers_by", 0, cite="EX 123.4"), legal=True, skip=None)
+    definitions.register(example_cycle(steps=tuple(c2 if s.id == C2 else s for s in base.steps)),
+                         plan_kinds={"example-plan"}, jobs={"example-report"})
+    ids = {}
+    for name, answers in (("soon", "2099-10-01"), ("legal", "2099-09-20")):
+        rid = api.start(world, "example-cycle", f"campaign:{name}", f"Example cycle {name}", {"answers_by": answers, "closes_on": "2099-11-01"},
+                        OWNER, yes=True, today=TODAY, at="2099-09-15T09:00:00Z")["run"]["id"]
+        api.open_run(world, rid, OWNER, readers=FakeReaders(), yes=True, today=TODAY, at="2099-09-15T09:01:00Z")
+        ids[name] = rid
+    return ids
+
+
+def test_the_person_steps_band_has_the_same_rows_for_every_office_and_puts_the_offices_own_first(app, world, example):
+    ids = person_step_runs(world)
+    mgr = read(app, "Sam Secretary", "manager")
+    tre = read(app, "Sam Secretary", "treasurer")
+    assert [r["id"] for r in mgr["bands"]["personSteps"]] == [ids["legal"], ids["soon"]]            # legal first
+    assert [(r["band"], r["urgency"]) for r in mgr["bands"]["personSteps"]] == [("legal", "LEGAL"), ("soon", "due soon")]
+    assert sorted(r["id"] for r in tre["bands"]["personSteps"]) == sorted(r["id"] for r in mgr["bands"]["personSteps"])   # escalation is visibility
+    assert all(r["forOffice"] for r in mgr["bands"]["personSteps"]) and not any(r["forOffice"] for r in tre["bands"]["personSteps"])
+    assert mgr["counts"]["personSteps"] == 2 and mgr["stepBands"] == {"legal": 1, "late": 0, "date": 0, "soon": 1, "stale": 0}
+    assert mgr["stepNumbers"]["note"] == "proposed, not the law's" and mgr["stepNumbers"]["adopted"] is False
+
+
+def test_a_person_step_row_names_the_run_and_step_by_their_own_words_and_no_person(app, world, example):
+    person_step_runs(world)
+    got = read(app, "Sam Secretary", "manager")
+    row = got["bands"]["personSteps"][0]
+    assert row["type"] == "person-step" and row["definition"] == "example-cycle" and row["n"] == 2 and row["holder"] == "the manager"
+    assert row["text"] == f"Example cycle legal: {row['title']}" and row["due"] == "2099-09-20" and row["days"] == 0 and row["basis"] == "LEGAL"
+    assert "A. Manager" not in json.dumps(got["bands"]["personSteps"])
+
+
+def test_a_held_run_in_the_person_steps_band_is_its_general_title(app, world, example):
+    from dataclasses import replace
+
+    from jason.workflows import api, definitions
+    from jason.workflows.types import Visibility
+
+    person_step_runs(world)
+    wf = definitions.find("example-cycle")
+    definitions.register(replace(wf, key="example-held", title="Example hearing", visibility=Visibility.HELD, held_title="A member's matter"),
+                         plan_kinds={"example-plan"}, jobs={"example-report"})
+    rid = api.start(world, "example-held", "unit:77 Sample Row", "Hearing for 77 Sample Row", {"answers_by": "2099-09-20", "closes_on": "2099-11-01"},
+                    OWNER, yes=True, today=TODAY, at="2099-09-15T09:00:00Z")["run"]["id"]
+    api.open_run(world, rid, OWNER, readers=FakeReaders(), yes=True, today=TODAY, at="2099-09-15T09:01:00Z")
+    got = read(app, "Sam Secretary", "manager")
+    row = next(r for r in got["bands"]["personSteps"] if r["id"] == rid)
+    assert row["held"] is True and row["text"] == "A member's matter: a step is LEGAL" and row["title"] == "a step" and row["step"] == ""
+    assert "77 Sample Row" not in json.dumps(got) and "Hearing for" not in json.dumps(got)
+
+
+def test_the_person_steps_band_is_capped_with_its_total_and_empty_when_nothing_is_due(app, world, example):
+    assert read(app, "Sam Secretary", "manager")["bands"]["personSteps"] == []
+    assert read(app, "Sam Secretary", "manager")["counts"]["personSteps"] == 0
+    person_step_runs(world)
+    got = read(app, "Sam Secretary", "manager")
+    assert len(got["bands"]["personSteps"]) == got["counts"]["personSteps"] == 2
+
+
+def test_the_person_steps_band_reads_and_writes_nothing_and_a_failed_band_says_so(app, world, example, monkeypatch):
+    person_step_runs(world)
+    before = {str(p.relative_to(world)): p.read_bytes() for p in sorted(world.rglob("*")) if p.is_file() and "locks" not in p.parts}
+    read(app, "Sam Secretary", "manager")
+    after = {str(p.relative_to(world)): p.read_bytes() for p in sorted(world.rglob("*")) if p.is_file() and "locks" not in p.parts}
+    assert before == after
+
+    def boom(*a, **k):
+        raise OSError("the runs are not readable")
+
+    monkeypatch.setattr("jason.tasks.step_guide.step_rows", boom)
+    got = read(app, "Sam Secretary", "manager")
+    assert "OSError" in got["bandErrors"]["personSteps"] and got["bands"]["personSteps"] == []

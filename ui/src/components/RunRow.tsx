@@ -2,6 +2,7 @@ import { Glyph } from "./Glyph";
 import { BasisPill } from "./BasisPill";
 import { DueDate } from "./DueDate";
 import { Pill } from "./Pill";
+import { NudgeWord, daysWords } from "./StepGuide";
 import { HELD_WORDS, runHref, type WorkRow } from "../lib/work";
 
 /** Whose move it is, in words, for the group the run is in: "Your move: the manager", "Waiting on the member's reply". */
@@ -17,6 +18,26 @@ export function moveWords(r: WorkRow): string {
 
 /** Whether the run is past a date the law set: the loader's own flag, or a legal date whose days are behind us. */
 export const isPastLegal = (r: WorkRow): boolean => r.pastLaw || !!(r.due && r.due.legal && r.due.days !== null && r.due.days < 0);
+
+/** The soon and open bands rest on a lead time and a threshold the board has not adopted; the other bands are a clock's own. */
+const PROPOSED_BANDS: readonly string[] = ["soon", "stale"];
+
+/** The run's most urgent person step as a mark: the digest's word for its band (LEGAL, OVERDUE, due soon, needs a date, open), how
+ * far off its date is, and which step. Nothing is sent by it; a legal band has no snooze. Nothing when no step is due or late. */
+export function RowNudgeMark({ row }: { row: WorkRow }) {
+  const n = row.nudge;
+  if (!n) return null;
+  const days = n.due && n.days !== null ? daysWords(n.days) : "";
+  return (
+    <span className="work-row-nudge" data-band={n.band}
+          title={PROPOSED_BANDS.includes(n.band) ? "The lead time and the open-a-while threshold are proposed, not the law's." : undefined}>
+      <NudgeWord band={n.band} word={n.word} />
+      {days && <span className="muted"> {days}</span>}
+      {n.n > 0 && <span className="muted"> · step {n.n}</span>}
+      {n.items && n.items.total > 1 && <span className="muted"> · {n.items.notDone} of {n.items.total} not done</span>}
+    </span>
+  );
+}
 
 /** One open run in the list. The whole width is the link to the run. It carries the run's own label, the step and where it
  * stands, whose move it is, the due date with its basis, and the age; never a subject, an item, or a name. A held run seen
@@ -45,6 +66,7 @@ export function RunRow({ row, today }: { row: WorkRow; today?: Date }) {
               {due.cite && <span className="muted"> {due.cite}</span>}
             </>
           ) : <span className="muted">No date</span>}
+          <RowNudgeMark row={row} />
           {past && (
             <strong className="work-past">
               <Glyph name="triangle-alert" size="1em" /> Past a legal date{due?.cite ? ` (${due.cite})` : ""}

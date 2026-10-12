@@ -9,6 +9,7 @@ import { Card } from "./Card";
 import { Caveats } from "./Caveats";
 import { DueDate } from "./DueDate";
 import { Pill } from "./Pill";
+import { NudgeWord, daysWords } from "./StepGuide";
 import { EmptyState, ErrorNotice, Loading } from "./States";
 import "../styles/office-views.css";
 
@@ -84,13 +85,20 @@ export function DisabledForOffice({ office, mine, what = "do this", children }: 
 
 // A run row links to the run (`#/work/<definition>/<id>`); any other row, to the screen that owns it.
 const screenLink = (row: OfficeRow) =>
-  row.type === "run" && row.definition && row.id ? <a href={runHref(row.definition, row.id)}>Open the run</a>
+  (row.type === "run" || row.type === "person-step") && row.definition && row.id ? <a href={runHref(row.definition, row.id)}>Open the run</a>
     : row.screen ? <a href={`#/${row.screen}`}>Open</a> : null;
 
 function RowMarks({ row }: { row: OfficeRow }) {
   return (
     <>
-      {row.urgency && row.urgency !== "coming up" && <Pill word={row.urgency} />}
+      {row.type === "person-step" && row.band ? (
+        <>
+          {row.band === "quiet" ? <span className="muted">{row.urgency}</span> : <NudgeWord band={row.band} word={row.urgency ?? ""} />}
+          {row.due && row.days !== null && row.days !== undefined && <span className="muted">{daysWords(row.days)}</span>}
+          {row.holder && <span className="muted">{row.holder}{row.forOffice ? "" : " (another office)"}</span>}
+          {row.escalatedTo && <span className="muted">also seen by {row.escalatedTo === "the whole board" ? row.escalatedTo : theOffice(row.escalatedTo)}</span>}
+        </>
+      ) : row.urgency && row.urgency !== "coming up" && <Pill word={row.urgency} />}
       {row.type === "plan-to-apply" && row.stale && <span className="muted">will be planned again</span>}
       {row.type === "plan-to-apply" && row.terminalOnly && <span className="muted">applied at the terminal</span>}
       {row.type === "plan-to-apply" && row.pausing && <span className="muted">held by the board's pause</span>}
@@ -122,9 +130,11 @@ export function OfficeBand({ band, data }: { band: BandKey; data: OfficeViewData
   const rows = data.bands[band] ?? [];
   const total = data.counts?.[band] ?? rows.length;
   const error = data.bandErrors?.[band];
+  if (band === "personSteps" && !rows.length && !error) return null;          // quiet by default: a band with nothing in it is not drawn
   const own = isOwnLens(data);
   const who = own ? "you" : theOffice(data.office);
   const empty: Record<BandKey, string> = {
+    personSteps: "No step waiting on a person is due, late, or open a while.",
     waitingOnOffice: `Nothing is waiting on ${who}.`,
     signedWaiting: "No plan is signed and waiting to be applied.",
     needsAttention: `Nothing needs attention for ${who}.`,
@@ -138,6 +148,12 @@ export function OfficeBand({ band, data }: { band: BandKey; data: OfficeViewData
         {!error && rows.length === 0 && <EmptyState>{empty[band]}</EmptyState>}
         {rows.length > 0 && <ul className="office-rows">{rows.map((r, i) => <OfficeRowItem key={`${r.type}-${r.key ?? r.id ?? i}-${r.office}`} row={r} />)}</ul>}
         {total > rows.length && <p className="muted">{total - rows.length} more.</p>}
+        {band === "personSteps" && rows.length > 0 && data.stepNumbers?.note && (
+          <p className="muted office-step-note">
+            Escalation is visibility only: a step late for one office is shown to the board, and nothing is sent. The lead time
+            ({data.stepNumbers.leadDays} days) and the open-a-while threshold ({Math.round(data.stepNumbers.afterHours / 24)} days) are {data.stepNumbers.note}.
+          </p>
+        )}
         {band === "work" && own && total > 0 && <p><a href={MINE_HREF}>All your runs ({total} open)</a></p>}
       </div>
     </Card>

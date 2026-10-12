@@ -281,3 +281,91 @@ def test_the_command_is_registered():
     command.register(parser.add_subparsers(), lambda p: p.add_argument("--env"), lambda a: None)
     args = parser.parse_args(["attention", "--section", "notices", "--json"])
     assert args.section == ["notices"] and args.json and args.func is command.cmd_attention
+
+
+# --- Person steps -----------------------------------------------------------------------------------------------------
+
+def _person_step_runs(root, *, answers: str, basis: str):
+    """One open run of a made-up definition whose person step is on a clock of the given basis, answers due ``answers``."""
+    from dataclasses import replace
+
+    from jason.workflows import api, definitions
+    from jason.workflows.types import ClockBasis, ClockDef
+    from test_workflows_support import C2, FakeReaders, example_cycle
+
+    base = example_cycle()
+    c2 = replace(base.step(C2), clock=ClockDef(ClockBasis(basis), "answers_by", 0, cite="EX 123.4"), legal=basis == "law", skip=None)
+    key = f"example-{basis.replace(' ', '-')}"
+    definitions.register(example_cycle(key=key, steps=tuple(c2 if s.id == C2 else s for s in base.steps)),
+                         plan_kinds={"example-plan"}, jobs={"example-report"})
+    rid = api.start(root, key, "campaign:EX", "Example cycle", {"answers_by": answers, "closes_on": "2099-12-01"}, "A. Manager",
+                    yes=True, today=date(2099, 9, 1), at="2099-09-01T09:00:00Z")["run"]["id"]
+    api.open_run(root, rid, "A. Manager", readers=FakeReaders(), yes=True, today=date(2099, 9, 1), at="2099-09-01T09:01:00Z")
+    return rid
+
+
+def test_person_steps_are_one_line_a_band_with_a_count_and_the_digests_urgency(tmp_path):
+    from jason.workflows import definitions
+
+    definitions.reset()
+    try:
+        _person_step_runs(tmp_path, answers="2099-10-20", basis="law")                   # due today: LEGAL
+        _person_step_runs(tmp_path, answers="2099-10-14", basis="documents")             # six days late: OVERDUE
+        _person_step_runs(tmp_path, answers="2099-10-30", basis="proposed policy")       # ten days off: due soon
+        s = attention.person_steps_section(EMPTY, tmp_path, date(2099, 10, 20))
+    finally:
+        definitions.reset()
+    by = {i.urgency: i for i in s.items}
+    assert set(by) == {Urgency.LEGAL, Urgency.OVERDUE, Urgency.SOON}
+    assert by[Urgency.LEGAL].text == "1 person step on a legal clock (due today or past)"
+    assert by[Urgency.OVERDUE].text == "1 person step overdue"
+    assert "due soon (proposed, not the law's)" in by[Urgency.SOON].text
+    assert all(i.command == "jason workflow --due --for NAME" for i in s.items)
+    assert s.counts["legal"] == s.counts["late"] == s.counts["soon"] == 1 and s.counts["date"] == 0
+    assert "3 person steps due, late, or open a while" in s.summary
+    assert "Nothing is sent." in s.notes[0] and "proposed, not the law's" in s.notes[0]
+    assert "A. Manager" not in json.dumps([i.as_dict() for i in s.items]) and "campaign:EX" not in json.dumps([i.as_dict() for i in s.items])
+
+
+def test_a_held_run_and_an_administrators_own_are_not_counted(tmp_path):
+    from dataclasses import replace
+
+    from jason.workflows import api, definitions
+    from jason.workflows.types import Visibility
+    from test_workflows_support import FakeReaders
+
+    definitions.reset()
+    try:
+        _person_step_runs(tmp_path, answers="2099-10-20", basis="law")
+        base = definitions.find("example-law")
+        for key, vis in (("example-held", Visibility.HELD), ("example-admin", Visibility.ADMIN)):
+            definitions.register(replace(base, key=key, title=key, visibility=vis, held_title="A member's matter" if vis is Visibility.HELD else ""),
+                                 plan_kinds={"example-plan"}, jobs={"example-report"})
+            rid = api.start(tmp_path, key, "campaign:EX", "Example", {"answers_by": "2099-10-20", "closes_on": "2099-12-01"}, "A. Manager",
+                            yes=True, today=date(2099, 9, 1), at="2099-09-01T09:00:00Z")["run"]["id"]
+            api.open_run(tmp_path, rid, "A. Manager", readers=FakeReaders(), yes=True, today=date(2099, 9, 1), at="2099-09-01T09:01:00Z")
+        s = attention.person_steps_section(EMPTY, tmp_path, date(2099, 10, 20))
+    finally:
+        definitions.reset()
+    assert s.counts["legal"] == 1 and len(s.items) == 1
+
+
+def test_no_run_is_a_quiet_section_that_registers_nothing(tmp_path):
+    from jason.workflows import definitions
+
+    definitions.reset()
+    s = attention.person_steps_section(EMPTY, tmp_path, ON)
+    assert s.items == [] and s.available and s.summary == "No person step is due, late, or open a while."
+    assert definitions.all_definitions() == ()
+
+
+def test_person_steps_are_a_section_of_the_digest_the_tool_and_the_cli(tmp_path, capsys):
+    assert "person-steps" in attention.SECTIONS
+    out = api.governance_digest(section="person-steps", data_dir=tmp_path)
+    assert [s["key"] for s in out["sections"]] == ["person-steps"] and out["sections"][0]["tool"].startswith("governance_digest")
+    from jason.commands import attention as cmd
+
+    sub = argparse.ArgumentParser().add_subparsers()
+    cmd.register(sub, lambda p: p.add_argument("--data-dir"), lambda a: None)
+    parser = sub.choices["attention"]
+    assert "person-steps" in parser.parse_args(["--section", "person-steps"]).section

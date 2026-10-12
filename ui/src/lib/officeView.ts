@@ -4,7 +4,7 @@
 export const LENS_PARAM = "as";
 export const OFFICE_WORDS = ["president", "vice president", "secretary", "treasurer", "director", "manager"] as const;
 
-export const BANDS = ["waitingOnOffice", "signedWaiting", "needsAttention", "comingUp", "work"] as const;
+export const BANDS = ["waitingOnOffice", "signedWaiting", "personSteps", "needsAttention", "comingUp", "work"] as const;
 export type BandKey = (typeof BANDS)[number];
 
 export interface OfficeInfo { office: string; vacant: boolean; holders: number }
@@ -41,7 +41,27 @@ export interface OfficeRow {
   reminderDue?: boolean; pausing?: boolean;
   needsSecond?: boolean;
   note?: string;
+  /** A `person-step` row (the personSteps band): its band (`legal`, `late`, `date`, `soon`, `stale`, or `quiet` for a step only
+   * escalated because no one holds its office), the office words that hold it, how far off its date is, whether the office read
+   * holds it (`forOffice`), who else sees it, a per-item step's count, and whether the run is a held one (a general title). */
+  band?: "legal" | "late" | "date" | "soon" | "stale" | "quiet";
+  holder?: string;
+  days?: number | null;
+  forOffice?: boolean;
+  escalatedTo?: string | null;
+  items?: { total: number; notDone: number } | null;
+  held?: boolean;
 }
+
+/** The person-step bands in the order the digest lists them, and the digest's words for each. */
+export const STEP_BANDS = ["legal", "late", "date", "soon", "stale"] as const;
+export type StepBandKey = (typeof STEP_BANDS)[number];
+export const STEP_BAND_WORDS: Readonly<Record<StepBandKey, string>> = {
+  legal: "on a legal clock", late: "overdue", date: "need a date", soon: "due soon", stale: "open a while",
+};
+
+/** The three numbers behind the soon and open-a-while bands: proposals the board has not adopted (`note` says so). */
+export interface StepNumbers { leadDays: number; afterHours: number; escalateAfterHours: number; adopted: boolean; note: string }
 
 export interface NotComposed { band: string; what: string; why: string }
 
@@ -56,8 +76,11 @@ export interface OfficeViewData {
   vacant: boolean;
   offices: OfficeInfo[];
   mine: string[];
-  bands: Record<BandKey, OfficeRow[]>;
-  counts: Record<BandKey, number>;
+  bands: Record<Exclude<BandKey, "personSteps">, OfficeRow[]> & { personSteps?: OfficeRow[] };
+  counts: Record<Exclude<BandKey, "personSteps">, number> & { personSteps?: number };
+  /** The personSteps band by step band (a count of each), and the proposals behind them; absent from an older server. */
+  stepBands?: Partial<Record<StepBandKey, number>>;
+  stepNumbers?: StepNumbers;
   bandErrors: Partial<Record<string, string>>;
   notComposed: NotComposed[];
   caveats: string[];
@@ -103,6 +126,7 @@ export function bandTitle(band: BandKey, d: Pick<OfficeViewData, "office" | "own
   switch (band) {
     case "waitingOnOffice": return own ? "Waiting on you" : `Waiting on ${who}`;
     case "signedWaiting": return "Signed, waiting to be applied";
+    case "personSteps": return "Steps waiting on a person";
     case "needsAttention": return own ? "Needs attention" : `Needs attention for ${who}`;
     case "comingUp": return own ? "Coming up" : `Coming up for ${who}`;
     case "work": return own ? "Your work" : `Work for ${who}`;
@@ -120,14 +144,20 @@ export function notYours(needs: string | readonly string[], mine: readonly strin
 export const holdsAny = (needs: string | readonly string[], mine: readonly string[]): boolean =>
   (typeof needs === "string" ? [needs] : needs).some((o) => mine.includes(o));
 
+/** The person steps by band as words, most urgent first: "1 on a legal clock, 2 overdue". A band with none is left out. */
+export function stepBandsText(bands: Partial<Record<StepBandKey, number>> | undefined): string {
+  return STEP_BANDS.filter((b) => bands?.[b]).map((b) => `${bands![b]} ${STEP_BAND_WORDS[b]}`).join(", ");
+}
+
 /** The Today heading's counts, said once: what waits on the office, the plans signed and waiting to be applied, and what needs
  * attention. A count of nothing is left out; "" when every one is nothing. */
-export function todayCounts(d: Pick<OfficeViewData, "counts" | "office" | "ownOffice">): string {
+export function todayCounts(d: Pick<OfficeViewData, "counts" | "office" | "ownOffice"> & Partial<Pick<OfficeViewData, "stepBands">>): string {
   const c = d.counts ?? ({} as OfficeViewData["counts"]);
   const own = isOwnLens(d);
   const parts = [
     c.waitingOnOffice ? `${c.waitingOnOffice} waiting on ${own ? "you" : theOffice(d.office)}` : "",
     c.signedWaiting ? `${c.signedWaiting} ${c.signedWaiting === 1 ? "plan" : "plans"} signed, waiting to be applied` : "",
+    c.personSteps ? `${c.personSteps} ${c.personSteps === 1 ? "step" : "steps"} waiting on a person${stepBandsText(d.stepBands) ? ` (${stepBandsText(d.stepBands)})` : ""}` : "",
     c.needsAttention ? `${c.needsAttention} ${c.needsAttention === 1 ? "needs" : "need"} attention` : "",
   ];
   return parts.filter(Boolean).join(" · ");

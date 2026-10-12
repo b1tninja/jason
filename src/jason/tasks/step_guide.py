@@ -380,21 +380,21 @@ def folded(root: Path, wf: Workflow, rid: str, day: date, readers: Any = None) -
     return events, fold.state(events, wf, day, resume.children_of(events, readers), run_id=rid)
 
 
-def due_report(root: Path, day: date, *, person: str, holders: Holders, readers: Any = None, prefs: Prefs = nudge_mod.DEFAULTS,
-               within: int | None = None, everything: bool = False) -> dict[str, Any]:
-    """The person steps due, late, or open a while for ``person`` (the offices the roster gives them; an ``anyone`` step is the run's
-    owner's), and the steps escalated to one of their offices (visibility, never a message). A held run is its general title and nothing
-    else; an administrator's run is shown to an administrator only. Reads the stores; writes nothing. ``within`` keeps a "due soon" or
-    "open" line only if its date is within that many days; ``everything`` adds the person's open steps that are quiet."""
+def step_rows(root: Path, day: date, *, holders: Holders, readers: Any = None, prefs: Prefs = nudge_mod.DEFAULTS,
+              reads: Callable[[Workflow], bool] | None = None, everything: bool = False,
+              person: str = "") -> list[tuple[StepDef, Nudge, dict[str, Any], str]]:
+    """Every person step of every open run that has a nudge (or, with ``everything``, is open), as ``(step, nudge, row, owner)``:
+    the board-wide reading both ``due_report`` (one person's) and the digest and the Today band (everyone's) draw on. ``reads``
+    says which definitions the caller may know of (default: every one but an administrator's); a held run is its general title and
+    nothing else. ``row`` carries no label for a held run; ``owner`` is the run's owner (an ``anyone`` step is theirs to see to).
+    Reads the stores; writes nothing."""
     from jason.workflows import definitions, store
 
-    roles = holders.roles_of(person)
-    admin = "administrator" in roles
-    mine: list[tuple[Any, dict[str, Any]]] = []
-    escalated: list[tuple[Any, dict[str, Any]]] = []
+    can_read = reads or (lambda wf: wf.visibility is not Visibility.ADMIN)
+    out: list[tuple[StepDef, Nudge, dict[str, Any], str]] = []
     for definition, rid in store.list_runs(root):
         wf = definitions.find(definition)
-        if wf is None or (wf.visibility is Visibility.ADMIN and not admin):
+        if wf is None or not can_read(wf):
             continue
         try:
             events, view = folded(root, wf, rid, day, readers)
@@ -404,25 +404,45 @@ def due_report(root: Path, day: date, *, person: str, holders: Holders, readers:
         claims = nudge_mod.claims_of(events)
         offices = {r.value for sd in wf.steps for r in sd.acting_roles if r.value not in ("anyone", "jason", "scheduler")}
         for sd, n in nudge_mod.run_nudges(wf, view, day, prefs=prefs, vacant=holders.vacant(offices), claims=claims, quiet=everything):
-            owner = Role.ANYONE in sd.acting_roles and view.owner.casefold() == person.casefold()
-            holds = owner or any(r.value in roles for r in sd.acting_roles if r is not Role.ANYONE)
-            sees = bool(n.escalated_to) and not holds and (n.escalated_to in roles or (n.escalated_to == BOARD and bool(roles & BOARD_OFFICES)))
-            if not (holds or sees):
-                continue
-            if within is not None and n.band in (nudge_mod.Band.SOON, nudge_mod.Band.STALE) and not sees and (n.days is None or n.days > within):
-                continue
             title = sd.title if (not held or sd.public_title) else "a step"
             row = {"run": rid, "definition": wf.key, "runLabel": wf.held_title if held else (view.label or wf.title), "held": held,
                    "step": sd.id, "n": _pos(wf, sd.id), "title": title, "holder": " or ".join(words_of(r) for r in sd.acting_roles),
                    "command": f"jason workflow --show {rid}", **nudge_dict(n, who_account=person, prefs=prefs)}
             if held:                          # the general title, the state, the office, the date and its basis word: nothing that names the matter
                 row.update(label="", cite="", claim=None)
-            (mine if holds else escalated).append((nudge_mod.order_key(n), row))
+            out.append((sd, n, row, view.owner))
+    return out
+
+
+def due_report(root: Path, day: date, *, person: str, holders: Holders, readers: Any = None, prefs: Prefs = nudge_mod.DEFAULTS,
+               within: int | None = None, everything: bool = False, roles: Iterable[str] | None = None,
+               reads: Callable[[Workflow], bool] | None = None) -> dict[str, Any]:
+    """The person steps due, late, or open a while for ``person`` (the offices the roster gives them, or ``roles`` where the caller
+    knows them, as the console does; an ``anyone`` step is the run's owner's), and the steps escalated to one of their offices
+    (visibility, never a message). A held run is its general title and nothing else; an administrator's run is shown to an
+    administrator only (or to what ``reads`` allows). Reads the stores; writes nothing. ``within`` keeps a "due soon" or "open" line
+    only if its date is within that many days; ``everything`` adds the person's open steps that are quiet."""
+    held_roles = frozenset(roles) if roles is not None else holders.roles_of(person)
+    admin = "administrator" in held_roles
+    mine: list[tuple[Any, dict[str, Any]]] = []
+    escalated: list[tuple[Any, dict[str, Any]]] = []
+    allowed = reads or (lambda wf: wf.visibility is not Visibility.ADMIN or admin)
+    for sd, n, row, owner_name in step_rows(root, day, holders=holders, readers=readers, prefs=prefs, reads=allowed,
+                                            everything=everything, person=person):
+        owner = Role.ANYONE in sd.acting_roles and owner_name.casefold() == person.casefold()
+        holds = owner or any(r.value in held_roles for r in sd.acting_roles if r is not Role.ANYONE)
+        sees = bool(n.escalated_to) and not holds and (n.escalated_to in held_roles
+                                                       or (n.escalated_to == BOARD and bool(held_roles & BOARD_OFFICES)))
+        if not (holds or sees):
+            continue
+        if within is not None and n.band in (nudge_mod.Band.SOON, nudge_mod.Band.STALE) and not sees and (n.days is None or n.days > within):
+            continue
+        (mine if holds else escalated).append((nudge_mod.order_key(n), row))
 
     def key(pair: tuple[Any, dict[str, Any]]) -> tuple[Any, str, int]:
         return pair[0], pair[1]["run"], pair[1]["n"]
 
-    return {"person": person, "roles": sorted(roles), "asOf": day.isoformat(), "mine": [r for _, r in sorted(mine, key=key)],
+    return {"person": person, "roles": sorted(held_roles), "asOf": day.isoformat(), "mine": [r for _, r in sorted(mine, key=key)],
             "escalated": [r for _, r in sorted(escalated, key=key)]}
 
 

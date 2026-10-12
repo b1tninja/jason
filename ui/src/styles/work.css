@@ -32,6 +32,7 @@
 .work-row-past { border-color: var(--bad); }
 .work-past { display: inline-flex; align-items: center; gap: .3rem; color: var(--bad); }
 .work-row-due .work-past { display: flex; margin-top: .2rem; }
+.work-row-nudge { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .35rem; margin-top: .2rem; font-size: .9rem; }
 .work-fold { margin-top: .5rem; }
 @media (max-width: 719px) { .work-row-link { grid-template-columns: 1fr; } }
 

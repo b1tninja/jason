@@ -3,6 +3,9 @@ the small acts, over ``jason.workflows``.
 
 - ``GET /api/work[?definition=&role=&due=&state=&mine=1&q=]``: the runs, each once, in the group of its most pressing open
   step (``yours``, ``others``, ``clock``, ``board``), legal dates first. ``mine=1`` keeps the ``yours`` group (the Today band).
+  A row's ``nudge`` is the run's most urgent person step by band (``jason.workflows.nudge``: legal, late, date, soon, stale) with its
+  word, date and basis, or null (a reading; nothing is sent; the numbers behind soon and stale are proposals, not the law's).
+- ``GET /api/work-due[?within=DAYS]`` (``jason.web.extra.work_due``): the person steps waiting on the viewer by band, with counts.
 - ``GET /api/work-run?definition=&id=``: one run. The loader never appends: it folds the stored events, then folds again with
   what opening the run *would* append (a dry resume: the checks, the approvals and jobs the stores now show, the evidence that
   moved), and says so in ``pending``. Writing those events is ``jason workflow --open`` or the ``open`` act.
@@ -339,6 +342,23 @@ def _position(wf: Any, step_id: str) -> int:
     return next((i for i, s in enumerate(wf.steps, 1) if s.id == step_id), 0)
 
 
+NUDGE_KEPT = ("band", "word", "due", "days", "basis", "basisLabel", "legal", "proposed", "items")
+
+
+def _nudge_of(wf: Any, view: Any, day: date) -> dict[str, Any] | None:
+    """The most urgent person step of an open run as the list shows it: its band and word, the date with its basis, how far off, the
+    count of a per-item step, and which step it is (the same fields the run page's step carries as ``nudge``). None when no person
+    step is due, late, in need of a date, or open a while. A reading: nothing is stored or sent; the numbers behind ``soon`` and
+    ``stale`` are proposals (``jason.workflows.nudge.DEFAULTS``)."""
+    from jason.tasks import step_guide
+
+    for sd, n in nudge.run_nudges(wf, view, day):
+        if n.band is not nudge.Band.QUIET:
+            out = {k: v for k, v in step_guide.nudge_dict(n).items() if k in NUDGE_KEPT}
+            return {**out, "step": sd.id, "n": _position(wf, sd.id), "title": sd.title}
+    return None
+
+
 def _row(wf: Any, run: Any, view: Any, who: Who, day: date) -> dict[str, Any]:
     """One list row. No subject, no item, no name: the run's own label, the step, the role, the date and its basis."""
     sv = _pressing(wf, view)
@@ -357,6 +377,7 @@ def _row(wf: Any, run: Any, view: Any, who: Who, day: date) -> dict[str, Any]:
         "mine": bool(sd is not None and who.holds_step(sd) and open_run and view.state.value != "paused"),
         "due": due, "pastLaw": bool(view.past_law), "age": _age(view, day), "paused": view.state.value == "paused",
         "pausedReason": _mask(view.paused_reason), "visibility": wf.visibility.value, "held": False,
+        "nudge": _nudge_of(wf, view, day) if open_run and view.state.value != "draft" else None,
     }
 
 
@@ -378,6 +399,18 @@ def _held_due(due: dict[str, Any] | None) -> dict[str, Any] | None:
             "basis": due["basis"], "basisLabel": due["basisLabel"], "legal": due["legal"], "proposed": due["proposed"]}
 
 
+def _held_nudge(wf: Any, nud: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A held run's nudge outside the private view: the band, its word, the day and its basis word. Not the step, its title (unless
+    the definition marks it public), or a count of items."""
+    if not nud:
+        return None
+    out = {k: nud[k] for k in ("band", "word", "due", "days", "basis", "basisLabel", "legal", "proposed")}
+    sd = wf.step(nud["step"])
+    public = sd is not None and sd.public_title
+    return {**out, "items": None, "step": nud["step"] if public else "", "n": nud["n"] if public else 0,
+            "title": nud["title"] if public else ""}
+
+
 def _held_row(wf: Any, row: dict[str, Any]) -> dict[str, Any]:
     """A held run's list row outside the private view: the definition's general title, the state, the group, the date and its
     basis word, whose move it is by office, and an opaque handle (the run id, which is random). No label, subject, step
@@ -394,6 +427,7 @@ def _held_row(wf: Any, row: dict[str, Any]) -> dict[str, Any]:
         "mine": row["mine"], "due": _held_due(row["due"]), "pastLaw": row["pastLaw"],
         "age": {"days": row["age"]["days"], "opened": None, "idleDays": row["age"]["idleDays"], "updated": ""},
         "paused": row["paused"], "pausedReason": "", "visibility": row["visibility"], "held": True,
+        "nudge": _held_nudge(wf, row["nudge"]),
     }
 
 

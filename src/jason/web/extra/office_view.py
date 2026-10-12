@@ -24,6 +24,13 @@ administrator who holds no office. Where console sign-in is not set up it answer
   applies it, whether the board's reminder is due (``reminderDue``; it only surfaces, nothing is sent) and whether a pause
   the board adopted still holds (``pausing``). The same rows for every office read: the board's rule of 2026-10-11 is that directors and officers (and the
   manager) have the same access, and any of them may apply. Counts, times, and the plan's title; never an item.
+- ``personSteps``: the workflows' person steps that are on a legal clock, late, in need of a date, due soon, or open a while
+  (``jason.workflows.nudge``; docs/workflows/person-steps.md, section 6), one row a step, most urgent first, with its band as a mark
+  (``legal``, ``late``, ``date``, ``soon``, ``stale``) and the office that holds it. **The same rows for every office lens**: escalation
+  is visibility, never a message, so a step late for one office is on every board member's page; the lens only puts the steps the
+  office it reads holds first (``forOffice``). A held run is its general title (even in the private view), an administrator's own
+  definition is listed for an administrator only, and a per-item step is one row with a count. The lead time and the open-a-while
+  threshold are proposals (``numbers``), not the law's. Nothing is sent or snoozed; counts, offices, titles, and dates only.
 - ``needsAttention`` and ``comingUp``: the schedule's occurrences (``jason.tasks.schedule.agenda``) for the duties the
   profile's assignments give the office, or the board, or name it as the backup: overdue and due soon, then the next weeks;
   and a count of the dock's open tasks the office owns.
@@ -47,7 +54,7 @@ Args = dict[str, str]
 LIMIT = 12                                  # rows a band shows; its total is in ``counts``
 PAST_DAYS = 30                              # how far back the schedule looks for what is overdue
 AHEAD_DAYS = 45                             # how far ahead "coming up" looks
-BANDS = ("waitingOnOffice", "signedWaiting", "needsAttention", "comingUp", "work")
+BANDS = ("waitingOnOffice", "signedWaiting", "personSteps", "needsAttention", "comingUp", "work")
 BOARD = "the board"
 
 NOT_AN_OFFICE = ("{word!r} is not an office. The offices are {offices}.")
@@ -366,6 +373,54 @@ def signed_waiting(root: Path, now: Any = None) -> list[dict[str, Any]]:
     return out
 
 
+def person_steps(root: Path, reading: list[str], today: date, scope: Any = None) -> list[dict[str, Any]]:
+    """The ``personSteps`` band: every person step of an open run that is on a legal clock, late, in need of a date, due soon, or open
+    a while, or escalated because no one holds its office, most urgent first. The same rows whatever office is read (escalation is
+    visibility); a step the read office holds comes first among equals (``forOffice``). A held run is its general title (the step is
+    "a step" unless the definition marks it public), an administrator's own definition only for an administrator; a per-item step is
+    one row with its count (``items``), never an item. Nothing is sent, snoozed, or stored."""
+    from jason.tasks import step_guide
+    from jason.web.extra import work, work_guide
+    from jason.workflows import nudge
+
+    work._register(root, [])
+    found = step_guide.step_rows(root, today, holders=work_guide.holders_now(), readers=work._readers(root, today),
+                                 reads=scope.reads if scope is not None else None)
+    out = []
+    for sd, n, r, _owner in found:
+        if n.band is nudge.Band.QUIET and not n.escalated_to:
+            continue
+        held = r["held"]
+        offices = [x.value for x in sd.acting_roles if x.value not in ("anyone", "jason", "scheduler")]
+        word = n.word or ("no one holds it" if n.escalated_to else "open")
+        label = r["runLabel"] if held else work._mask(r["runLabel"])
+        out.append({
+            "type": "person-step", "band": n.band.value, "urgency": word, "office": offices[0] if offices else "",
+            "holder": r["holder"], "forOffice": bool(set(offices) & set(reading)), "id": r["run"], "definition": r["definition"],
+            "title": r["title"], "label": label, "step": "" if held else r["step"], "n": 0 if held else r["n"], "held": held,
+            "due": n.due or None, "days": n.days, "basis": n.basis_label, "legal": n.legal, "proposed": n.proposed,
+            "escalatedTo": n.escalated_to or None,
+            "items": {"total": n.items["total"], "notDone": n.items["notDone"]} if n.items else None,
+            "screen": "",
+            "text": f"{label}: a step is {word}" if held else f"{label}: {r['title']}"
+                    + (f" ({n.items['notDone']} of {n.items['total']} not done)" if n.items else ""),
+            "_key": (0 if set(offices) & set(reading) else 1, nudge.order_key(n), r["run"], r["n"]),
+        })
+    out.sort(key=lambda row: row["_key"])
+    for row in out:
+        del row["_key"]
+    return out
+
+
+def step_numbers() -> dict[str, Any]:
+    """The three numbers behind the person-step bands (lead time, open-a-while, escalation delay), labeled as the proposals they are."""
+    from jason.workflows import nudge
+
+    p = nudge.DEFAULTS
+    return {"leadDays": p.lead_days, "afterHours": p.after_hours, "escalateAfterHours": p.escalate_after_hours, "adopted": p.adopted,
+            "note": "" if p.adopted else nudge.PROPOSED_NOTE}
+
+
 def not_composed(errors: dict[str, str], reading: list[str]) -> list[dict[str, str]]:
     """What this page could not build, and why: the pieces of Today no office owns, and any band that failed."""
     out = []
@@ -409,11 +464,14 @@ def compose(reading: list[str], *, root: Path, officers: tuple[Any, ...], today:
     needs.sort(key=lambda r: (r["rank"], r.get("due") or "9999", r.get("title") or r["text"]))
     work = _band("work", lambda: runs_for(root, reading, scope), errors)
     signed = _band("signedWaiting", lambda: signed_waiting(root), errors)
-    counts = {"waitingOnOffice": len(waiting), "signedWaiting": len(signed), "needsAttention": len(needs),
-              "comingUp": len(coming), "work": len(work)}
-    return {"bands": {"waitingOnOffice": waiting[:LIMIT], "signedWaiting": signed[:LIMIT],
+    steps = _band("personSteps", lambda: person_steps(root, reading, today, scope), errors)
+    counts = {"waitingOnOffice": len(waiting), "signedWaiting": len(signed), "personSteps": len(steps),
+              "needsAttention": len(needs), "comingUp": len(coming), "work": len(work)}
+    by_band = {b: sum(1 for r in steps if r["band"] == b) for b in ("legal", "late", "date", "soon", "stale")}
+    return {"bands": {"waitingOnOffice": waiting[:LIMIT], "signedWaiting": signed[:LIMIT], "personSteps": steps[:LIMIT],
                       "needsAttention": needs[:LIMIT], "comingUp": coming[:LIMIT], "work": work[:LIMIT]},
-            "counts": counts, "bandErrors": errors, "notComposed": not_composed(errors, reading)}
+            "counts": counts, "stepBands": by_band, "stepNumbers": step_numbers(), "bandErrors": errors,
+            "notComposed": not_composed(errors, reading)}
 
 
 def office_view(args: Args) -> dict[str, Any]:
@@ -433,7 +491,7 @@ def office_view(args: Args) -> dict[str, Any]:
     }
     if not reading:
         out.update(bands={b: [] for b in BANDS}, counts={b: 0 for b in BANDS}, bandErrors={}, notComposed=[],
-                   note=MINE_EMPTY)
+                   stepBands={}, stepNumbers=step_numbers(), note=MINE_EMPTY)
         return out
     from jason.web.extra import work_scope
 
@@ -446,4 +504,4 @@ def office_view(args: Args) -> dict[str, Any]:
 
 
 __all__ = ["BANDS", "CAVEATS", "LIMIT", "NOT_AN_OFFICE", "compose", "duty_rows", "lens", "normalize", "office_view",
-           "office_words", "runs_for", "signed_waiting", "waiting_on_office"]
+           "office_words", "person_steps", "runs_for", "signed_waiting", "step_numbers", "waiting_on_office"]

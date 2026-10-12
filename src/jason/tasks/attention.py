@@ -16,7 +16,10 @@
   build (``data/living/<key>/report.json``);
 - **duties** (``jason duties --documents``): the documents' timed duties that nothing tracks and no assignment owns;
 - **approvals** (``jason approvals list``): the engine's plans signed and waiting to be applied, how long each has
-  waited since its last signature, and whether it is older than its kind allows (it is planned again before apply).
+  waited since its last signature, and whether it is older than its kind allows (it is planned again before apply);
+- **person-steps** (``jason workflow --due --for NAME``): the workflows' person steps that are due, late, on a legal clock, in need of
+  a date, or open a while, one line a band with a count (docs/workflows/person-steps.md, section 6). The lead time and the
+  open-a-while threshold are proposals the board has not adopted, and the lines say so; nothing is sent.
 
 Each line is an ``Item`` with an ``Urgency`` and the command that gives its detail. A clock the law or the governing
 documents set, passed, is ``LEGAL``, and so is a resend the statute requires; then what is overdue against a policy,
@@ -665,10 +668,75 @@ def approvals_section(root: Path) -> Section:
     return s
 
 
+# --- Person steps -----------------------------------------------------------------------------------------------------
+
+PERSON_STEP_URGENCY = {"legal": "LEGAL", "late": "OVERDUE", "date": "OPEN", "soon": "SOON", "stale": "OPEN"}
+"""A person step's band as the digest's urgency: a law clock passed is LEGAL, any other clock passed is OVERDUE, a step due within the
+lead is due soon, and a step that needs a date or has sat open waits on a person."""
+PERSON_STEP_WORDS = {"legal": "on a legal clock (due today or past)", "late": "overdue", "date": "need a date",
+                     "soon": "due soon", "stale": "open a while, with no date"}
+
+
+def person_steps_section(community: Any, root: Path, on: date) -> Section:
+    """The workflows' person steps by band (docs/workflows/person-steps.md, section 6): one line a band with its count and the
+    command that lists them. Counts only: no run, step, owner, or item is named. A held run and an administrator's own are not
+    counted here (read them where they are kept). Reads the runs on disk; nothing is sent, snoozed, or stored."""
+    from jason.tasks import step_guide
+    from jason.workflows import nudge, store
+    from jason.workflows.types import Visibility
+
+    s = _new("person-steps")
+    rows = (step_guide.step_rows(root, on, holders=_holders(), readers=_readers(root, on),
+                                 reads=lambda wf: wf.visibility is Visibility.BOARD) if store.list_runs(root) else [])
+    found = Counter(n.band.value for _, n, _, _ in rows if n.band is not nudge.Band.QUIET)
+    for band in ("legal", "late", "date", "soon", "stale"):
+        n = found.get(band, 0)
+        if n:
+            s.items.append(Item(Urgency[PERSON_STEP_URGENCY[band]],
+                                f"{n} person step{'s' if n != 1 else ''} {PERSON_STEP_WORDS[band]}"
+                                + (f" ({nudge.PROPOSED_NOTE})" if band in ("soon", "stale") else ""),
+                                "jason workflow --due --for NAME", rank=STATUTE if band == "legal" else POLICY))
+    escalated = sum(1 for _, n, _, _ in rows if n.escalated_to)
+    s.counts = {**{b: found.get(b, 0) for b in ("legal", "late", "date", "soon", "stale")}, "escalated": escalated}
+    total = sum(s.counts[b] for b in ("legal", "late", "date", "soon", "stale"))
+    s.summary = (f"{total} person step{'s' if total != 1 else ''} due, late, or open a while"
+                 + (f"; {escalated} late enough to show to another office" if escalated else "") + "."
+                 if total else "No person step is due, late, or open a while.")
+    s.notes.append(f"Lead time {nudge.DEFAULTS.lead_days} days and open-a-while {nudge.DEFAULTS.after_hours // 24} days are "
+                   f"{nudge.PROPOSED_NOTE} until the board adopts them. Held runs and the administrator's own are not counted. "
+                   "Nothing is sent.")
+    return s
+
+
+def _holders() -> Any:
+    """The roster by office, for a step whose office nobody holds. A roster that cannot be read is an unknown one."""
+    from jason.tasks.step_guide import Holders
+
+    try:
+        from jason import access
+
+        officers = tuple(access.community_officers())
+    except Exception:  # noqa: BLE001 - no community chosen, or officers that cannot be read: unknown, not vacant
+        officers = ()
+    return Holders.from_officers(officers)
+
+
+def _readers(root: Path, on: date) -> Any:
+    """The stores a run is read against (``jason.workflows.readers``), and the general definitions registered the first time they
+    are missing (never at import)."""
+    from jason.workflows import definitions
+    from jason.workflows.definitions_general import GENERAL, register_general
+    from jason.workflows.readers import StoreReaders
+
+    if not all(definitions.find(build().key) is not None for build in GENERAL):
+        register_general(root)
+    return StoreReaders(root, today=on)
+
+
 # --- The digest -------------------------------------------------------------------------------------------------------
 
 SECTIONS = ("meetings", "requests", "schedule", "people", "notices", "living", "conflicts", "duties", "intake",
-            "approvals")
+            "approvals", "person-steps")
 TITLES = {"meetings": ("The board meetings' clocks: notice and minutes", "jason schedule-evidence --watch",
                        "governance_digest (section meetings)"),
           "schedule": ("The schedule: overdue and due soon", "jason schedule", "schedule_agenda"),
@@ -679,6 +747,8 @@ TITLES = {"meetings": ("The board meetings' clocks: notice and minutes", "jason 
           "notices": ("Notices with follow-ups owed", "jason notices", "notice_delivery"),
           "living": ("Living documents", "jason living", "living_document"),
           "approvals": ("Plans signed and waiting to be applied", "jason approvals list", "approvals_list"),
+          "person-steps": ("Person steps due, late, or open a while", "jason workflow --due --for NAME",
+                           "governance_digest (section person-steps)"),
           "duties": ("The documents' timed duties nothing tracks", "jason duties --documents all --timed --untracked",
                      "document_duties")}
 
@@ -723,6 +793,7 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
         "living": lambda: living_section(community, root, on),
         "duties": lambda: duties_section(community, root),
         "approvals": lambda: approvals_section(root),
+        "person-steps": lambda: person_steps_section(community, root, on),
     }
     unknown = [k for k in sections if k not in builders]
     if unknown:
@@ -733,4 +804,4 @@ def digest(community: Any, data_dir: Path, *, on: date | None = None, limit: int
 __all__ = ["CAVEAT", "Digest", "Item", "LIMIT", "SECTIONS", "Section", "Urgency", "approvals_section", "conflicts_section",
            "cover_rank",
            "digest", "duties_section", "intake_section", "living_section", "meetings_section", "notices_section",
-           "people_section", "request_rank", "requests_section", "schedule_section"]
+           "people_section", "person_steps_section", "request_rank", "requests_section", "schedule_section"]
