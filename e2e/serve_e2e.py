@@ -79,7 +79,109 @@ def build(data: Path, dist: Path, required: bool = False, port: int = 0):
 
         pick_fake.install(app, f"http://127.0.0.1:{port}")
 
+    _hardening_routes(app, data)
     return app
+
+
+BY = "A Manager"
+
+
+def _hardening_routes(app, data: Path) -> None:
+    """Test-only routes for the hardening flows (docs/console/screens/split.md): a library that cannot be read, and drafts in the states
+    the server leaves them in (an unfinished apply, a confidential file, a library file with a draft). They live in this process's app
+    object only; the shipped app has none of them. ``library-busy`` makes the splitter's own library read raise ``LibraryBusy``, as a locked
+    or unreadable database does; nothing else about the server is changed."""
+    import sqlite3
+    import uuid
+
+    from flask import request
+
+    from jason.community import community
+    from jason.tasks import split_journal as sj
+    from jason.tasks import split_session as ss
+
+    state = {"busy": False}
+    real_connect = ss._library_connect
+
+    def connect(root):
+        if state["busy"]:
+            raise ss.LibraryBusy()
+        return real_connect(root)
+
+    ss._library_connect = connect
+
+    @app.get("/__e2e/library-busy")
+    def e2e_library_busy():
+        state["busy"] = request.args.get("on", "") in ("1", "true", "yes")
+        return {"ok": True, "busy": state["busy"]}
+
+    def unique_pdf(path: Path, pages: int = 6) -> Path:
+        import pymupdf
+
+        tag = uuid.uuid4().hex
+        doc = pymupdf.open()
+        for n in range(1, pages + 1):
+            doc.new_page().insert_text((72, 100), f"Made-up page {n} of {tag}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(str(path))
+        doc.close()
+        return path
+
+    seeded: list[str] = []
+
+    @app.get("/__e2e/split-forget")
+    def e2e_split_forget():
+        """Take the drafts the seed route made out of the list again (their session files and journals), so a spec that runs after the one that
+        seeded them still sees an empty start page. The copies of the files stay; nothing else is touched."""
+        gone = 0
+        for sid in seeded:
+            for path in (ss.session_file(data, sid), sj.journal_file(data, sid)):
+                for victim in (path, path.with_name(path.name + ".bak")):
+                    if victim.is_file():
+                        victim.unlink()
+                        gone += 1
+        seeded.clear()
+        return {"ok": True, "removed": gone}
+
+    def open_upload(community_) -> str:
+        path = unique_pdf(data / "e2e" / f"seed-{uuid.uuid4().hex[:8]}.pdf")
+        sid = ss.open_session({"kind": "path", "path": str(path)}, by=BY, community=community_, root=data)["session"]["id"]
+        ss.act(sid, "mark", {"pages": [2, 3, 4, 5]}, by=BY, community=community_, root=data)           # five parts, the last of two pages
+        return sid
+
+    @app.get("/__e2e/split-seed")
+    def e2e_split_seed():
+        """``what=upload`` a new draft of five parts (its bytes are its own); ``unfinished`` the same, with an apply killed after its second
+        part; ``confidential`` the draft of the confidential library statement; ``library`` a new library file of its own with a draft."""
+        what = request.args.get("what", "upload")
+        c = community()
+        if what == "confidential":
+            sid = ss.open_session({"kind": "library", "id": "7003"}, by=BY, community=c, root=data)["session"]["id"]
+            seeded.append(sid)
+            return {"id": sid}
+        if what == "library":
+            tag = uuid.uuid4().hex[:6]
+            name = f"Seeded {tag}.pdf"
+            unique_pdf(data / "library" / "files" / "Board" / name, 6)
+            doc_id = f"8{int(tag, 16) % 100000:05d}"
+            with sqlite3.connect(data / "library" / "library.db") as conn:
+                conn.execute("INSERT INTO documents (id, source, path, name, kind, category, records, method, period, confidential, evidence)"
+                             " VALUES (?,?,?,?,?,?,?,?,?,?,'')", (doc_id, "ingest", f"Board/{name}", name, "", "", "", "NONE", "2099-06", 0))
+            sid = ss.open_session({"kind": "library", "id": doc_id}, by=BY, community=c, root=data)["session"]["id"]
+            ss.act(sid, "mark", {"pages": [2, 3, 4, 5]}, by=BY, community=c, root=data)
+            seeded.append(sid)
+            return {"id": sid, "library": doc_id}
+        sid = open_upload(c)
+        seeded.append(sid)
+        if what == "unfinished":
+            os.environ["JASON_FAULT"] = "split.apply:after_part:2"
+            try:
+                ss.apply(sid, by=BY, confirm=True, community=c, root=data)
+            except sj.Killed:
+                pass
+            finally:
+                os.environ.pop("JASON_FAULT", None)
+        return {"id": sid}
 
 
 def seed_library(data: Path) -> None:

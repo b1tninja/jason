@@ -661,3 +661,72 @@ def test_the_command_refuses_a_stale_fingerprint_and_prints_the_new_one(world, p
     assert _cli(world, monkeypatch, sid, "--apply", "--yes", "--by", BY, "--expect", fp) == 1
     err = capsys.readouterr().err
     assert "Nothing was written" in err and "fingerprint" in err and not store_pins(world)
+
+
+# --- the console: a confirmed apply names its plan, and an unfinished apply is finished or rolled back by a person -------------------
+
+WEB = "A Manager"                    # the roster person the console tests sign in as
+
+
+def _console(world, monkeypatch):
+    from test_split_surfaces import _signed
+
+    return _signed(world, monkeypatch)
+
+
+def _kill_after_second_part(world, sid, monkeypatch):
+    monkeypatch.setenv("JASON_FAULT", "split.apply:after_part:2")
+    with pytest.raises(sj.Killed):
+        ss.apply(sid, by=WEB, confirm=True, **kw(world))
+    monkeypatch.delenv("JASON_FAULT")
+
+
+def test_the_console_refuses_a_stale_fingerprint_in_words_with_the_new_review_and_writes_nothing(world, pdf, monkeypatch):
+    sid = ready(world, pdf)
+    c = _console(world, monkeypatch)
+    url = f"/api/write/split/{sid}"
+    shown = c.post(url, json={"act": "apply", "by": WEB})
+    assert shown.status_code == 200, shown.json
+    fp = shown.json["planFingerprint"]
+    ss.act(sid, "mark", {"pages": [8]}, by=BY, **kw(world))                                   # another tab moves a boundary
+    stale = c.post(url, json={"act": "apply", "by": WEB, "dryRun": False, "confirm": True, "expect": fp})
+    assert stale.status_code == 409 and stale.json["planChanged"] is True and "Nothing was written" in stale.json["error"]
+    assert stale.json["review"]["planFingerprint"] != fp and not store_pins(world) and not parts_on_disk(world)
+    again = c.post(url, json={"act": "apply", "by": WEB, "dryRun": False, "confirm": True, "expect": stale.json["review"]["planFingerprint"]})
+    assert again.status_code == 200 and again.json["ok"] is True
+
+
+def test_the_console_shows_an_unfinished_apply_and_finishes_it_only_when_a_person_confirms(world, pdf, monkeypatch):
+    sid = ready(world, pdf)
+    _kill_after_second_part(world, sid, monkeypatch)
+    c = _console(world, monkeypatch)
+    listed = c.get("/api/split-sessions").json["sessions"][0]
+    opened = c.get(f"/api/split-session?id={sid}").json
+    for said in (listed["unfinishedApply"], opened["unfinishedApply"]):
+        assert said["choices"] == ["finish", "rollback"] and said["of"] >= 1 and said["by"] == WEB
+    url = f"/api/write/split/{sid}"
+    before = len(parts_on_disk(world))
+    dry = c.post(url, json={"act": "recover", "mode": "finish", "by": WEB})                      # a dry run unless the person confirms
+    assert dry.status_code == 200 and dry.json["dryRun"] is True and dry.json["would"]["act"] == "finish"
+    half = c.post(url, json={"act": "recover", "mode": "finish", "by": WEB, "confirm": True})   # confirm while dryRun is still the default
+    assert half.json["dryRun"] is True and len(parts_on_disk(world)) == before
+    assert ss.pending_apply(world.root, sid) is not None
+    assert c.post(url, json={"act": "recover", "mode": "sideways", "by": WEB, "dryRun": False, "confirm": True}).status_code == 400
+    assert c.post(url, json={"act": "recover", "mode": "finish", "by": "Someone Else", "dryRun": False, "confirm": True}).status_code == 403
+    done = c.post(url, json={"act": "recover", "mode": "finish", "by": WEB, "dryRun": False, "confirm": True})
+    assert done.status_code == 200 and done.json["ok"] is True and done.json["act"] == "recover"
+    assert ss.load(world.root, sid).status == "applied" and ss.pending_apply(world.root, sid) is None
+    assert "unfinishedApply" not in c.get(f"/api/split-session?id={sid}").json
+    assert c.post(url, json={"act": "recover", "mode": "finish", "by": WEB, "dryRun": False, "confirm": True}).status_code == 400   # nothing left to finish
+
+
+def test_the_console_rolls_an_unfinished_apply_back_and_the_draft_is_as_it_was(world, pdf, monkeypatch):
+    sid = ready(world, pdf)
+    _kill_after_second_part(world, sid, monkeypatch)
+    c = _console(world, monkeypatch)
+    url = f"/api/write/split/{sid}"
+    dry = c.post(url, json={"act": "recover", "mode": "rollback", "by": WEB})
+    assert dry.json["dryRun"] is True and ss.pending_apply(world.root, sid) is not None
+    done = c.post(url, json={"act": "recover", "mode": "rollback", "by": WEB, "dryRun": False, "confirm": True})
+    assert done.status_code == 200 and done.json["rolledBack"] is True and done.json["heldFilesKept"] is True
+    assert ss.load(world.root, sid).status == "draft" and ss.pending_apply(world.root, sid) is None

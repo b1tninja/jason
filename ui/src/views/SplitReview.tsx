@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge, Confirm } from "../components";
 import { Glyph } from "../components/Glyph";
-import type { SplitBackend } from "./splitApi";
+import { busyOf, planChangedOf, type Busy, type SplitBackend } from "./splitApi";
 import type { FactsCache } from "./splitFacts";
 import type { ApplyAnswer, Review, ReviewPart, SidewaysPage, Turn, Turns } from "./splitModel";
 import { TURN_DEGREES, flagItems, pagesList, rangeWords, turnBody, turnWord } from "./splitModel";
+import { BusyNotice, ChangedNotice, ConfidentialNotice, DUPLICATES_SKIPPED_SENTENCE } from "./splitNotices";
+import { UNFINISHED_SENTENCE, unfinishedWords } from "./SplitRecover";
 import type { ThumbLoader } from "./splitThumbs";
 
 /** The review step (docs/pdf-splitter.md, sections 5.7 and 9.5): the checkpoint before anything is written. Counts that must add up, the first
@@ -51,9 +53,11 @@ const NO_TURNS: Turns = {};
 
 function turnOf(v: string): Turn | null { return v === "fix" ? "fix" : v === "90" || v === "180" || v === "270" ? (Number(v) as Turn) : null; }
 
-export function SplitReview({ backend, id, by, loader, facts, status, drop, setDrop, onBack, onDone, confidential, onRename, turns = NO_TURNS, setTurns, onReviewPages, onBusy }: {
+export function SplitReview({ backend, id, by, loader, facts, status, drop, setDrop, onBack, onDone, confidential, withheld = null, onRename, turns = NO_TURNS, setTurns, onReviewPages, onBusy }: {
   backend: SplitBackend; id: string; by: string; loader: ThumbLoader; facts: FactsCache; status: string; drop: number[]; setDrop(d: number[]): void;
   onBack(): void; onDone(): void; confidential: boolean; onRename(page: number, title: string): Promise<void>;
+  /** the server withheld this file's page text (`masked`): its sentence and whether the library could be asked */
+  withheld?: { why: string; known: boolean } | null;
   /** pages a person chose to turn in the new files, and the way to change them (the page menu sets them too) */
   turns?: Turns; setTurns?(t: Turns): void;
   /** jump to the listed pages (leaves the review): "Review these pages" */
@@ -74,14 +78,24 @@ export function SplitReview({ backend, id, by, loader, facts, status, drop, setD
   const [partFiling, setPartFiling] = useState<Record<string, PartFiling>>({});
   const [seen, setSeen] = useState<Map<number, SidewaysPage>>(new Map());
   const heading = useRef<HTMLHeadingElement>(null);
+  // the library could not be read: what was being done, so Try again does it again (nothing was changed)
+  const [busyNote, setBusyNote] = useState<{ note: Busy; again: () => void; n: number } | null>(null);
+  // the plan changed after the person reviewed it: the server's sentence, until the next review is read
+  const [changed, setChanged] = useState<string | null>(null);
+  const changedHead = useRef<HTMLHeadingElement>(null);
 
   const partsBody = () => { const rows = Object.entries(partFiling).filter(([, v]) => v).map(([segment, f]) => ({ segment, filing: f })); return rows.length ? rows : undefined; };
   const choices = () => ({ drop, keepCopies, filing: filing || undefined, rotate: turnBody(turns), parts: partsBody() });
 
   const read = useCallback(async () => {
-    setError(""); setPreview(null);
-    try { setReview((await backend.act(id, { act: "review", drop, keepCopies, filing: filing || undefined, rotate: turnBody(turns), parts: partsBody() })).review ?? null); }
-    catch (e) { setReview(null); setError((e as Error).message); }
+    setError(""); setPreview(null); setBusyNote(null);
+    try { setReview((await backend.act(id, { act: "review", drop, keepCopies, filing: filing || undefined, rotate: turnBody(turns), parts: partsBody() })).review ?? null); setChanged(null); }
+    catch (e) {
+      setReview(null);
+      const b = busyOf(e);
+      if (b) setBusyNote((was) => ({ note: b, again: () => void read(), n: (was?.n ?? 0) + 1 }));
+      else setError((e as Error).message);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backend, id, drop, keepCopies, filing, partFiling, turns]);
   useEffect(() => { void read(); }, [read]);
@@ -107,18 +121,35 @@ export function SplitReview({ backend, id, by, loader, facts, status, drop, setD
     setBlanks(out);
   };
 
+  // The plan this person reviewed. Every apply, the dry run and the confirmed one, names it (`expect`); a plan that is not this one is refused
+  // by the server in words, with the new review, and nothing is written.
+  const reviewed = review?.planFingerprint;
+  const takeNewPlan = (next: Review, words: string) => {
+    setReview(next); setPreview(null); setChanged(words); setBusyNote(null);
+    requestAnimationFrame(() => changedHead.current?.focus());
+  };
   const send = async (dry: boolean) => {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setBusyNote(null);
     try {
-      const a = await backend.act(id, { act: "apply", dryRun: dry, confirm: !dry, by: by || undefined, ...choices() });
-      if (dry) setPreview(a); else { setResult(a); onDone(); }
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+      const a = await backend.act(id, { act: "apply", dryRun: dry, confirm: !dry, by: by || undefined, expect: reviewed, ...choices() });
+      if (dry && reviewed && a.planFingerprint && a.planFingerprint !== reviewed && a.review) takeNewPlan(a.review, "");   // moved between the review and the preview
+      else if (dry) { setPreview(a); setChanged(null); }
+      else { setResult(a); onDone(); }
+    } catch (e) {
+      const b = busyOf(e);
+      const c = planChangedOf(e);
+      if (c) takeNewPlan(c.review, c.message);
+      else if (b) setBusyNote((was) => ({ note: b, again: () => void send(dry), n: (was?.n ?? 0) + 1 }));
+      else setError((e as Error).message);
+    } finally { setBusy(false); }
   };
 
   if (result) return <Written result={result} busy={busy} heading={heading} onBack={onBack} onAgain={() => { setResult(null); void read(); }} />;
 
   const parts: ReviewPart[] = review?.parts ?? [];
   const can = !!review && review.totalsOk && status === "draft" && parts.length > 0;
+  // the library was busy when the parts were compared with the files jason holds: the preview may be read, but a write is refused until the check can run
+  const dupSkipped = !!review && review.duplicateCheck?.checked === false && !!review.duplicateCheck.skipped && review.duplicateCheck.skipped !== "not asked for";
   const turnPages = [...new Set([...seen.keys(), ...Object.keys(turns).map(Number)])].sort((a, b) => a - b);
   const sidewaysAll = [...seen.keys()];
   const setTurn = (page: number, t: Turn | null) => {
@@ -131,8 +162,11 @@ export function SplitReview({ backend, id, by, loader, facts, status, drop, setD
   return (
     <section className="split-review" aria-labelledby="split-review-h">
       <h2 id="split-review-h" tabIndex={-1} ref={heading}>{review ? `Review: ${review.files} ${review.files === 1 ? "document" : "documents"} from ${review.sourcePages} pages` : "Review"}</h2>
+      {withheld && <ConfidentialNotice why={withheld.why} known={withheld.known} compact by={by} />}
       {error && <div className="notice notice-error" role="alert"><span>{error}</span></div>}
-      {!review && !error && <p role="status" className="muted">Reading the draft…</p>}
+      {busyNote && <BusyNotice busy={busyNote.note} again={busyNote.n} working={busy} onRetry={busyNote.again} />}
+      {changed !== null && <ChangedNotice detail={changed} headingRef={changedHead} />}
+      {!review && !error && !busyNote && <p role="status" className="muted">Reading the draft…</p>}
       {status !== "draft" && <p className="notice notice-warn" role="note">This split is {status}; it can no longer be applied.</p>}
       {review && (
         <>
@@ -141,6 +175,13 @@ export function SplitReview({ backend, id, by, loader, facts, status, drop, setD
             {review.pagesInFiles} pages in files + {review.dropped.length} left out = {review.pagesInFiles + review.dropped.length} of {review.sourcePages}.
           </p>
           {review.problems.map((p) => <p key={p} className="notice notice-warn" role="alert">{p}</p>)}
+          {dupSkipped && (
+            <div className="split-note" data-note="duplicates-skipped" role="group" aria-label="The duplicate check was skipped">
+              <p><Glyph name="triangle-alert" size={14} /> <strong>{DUPLICATES_SKIPPED_SENTENCE}</strong></p>
+              {review.duplicateCheck?.skipped && <p className="muted" data-detail>{review.duplicateCheck.skipped}</p>}
+              <p><button type="button" disabled={busy} onClick={() => void read()}>Check again</button></p>
+            </div>
+          )}
 
           <fieldset className="split-filing" disabled={status !== "draft"}>
             <legend>Where the new files go</legend>
@@ -256,6 +297,7 @@ export function SplitReview({ backend, id, by, loader, facts, status, drop, setD
             <div className="split-preview" role="region" aria-label="What the split will do" tabIndex={-1}>
               <h3>What will happen</h3>
               <p>{preview.would ? `${preview.would.files} new files will be written as ${preview.would.by || "you"}.` : ""} {preview.note}</p>
+              {preview.unfinishedApply && <p data-note="unfinished-in-preview"><Glyph name="triangle-alert" size={12} /> <strong>{UNFINISHED_SENTENCE}.</strong> {unfinishedWords(preview.unfinishedApply)} Writing with the same choices finishes it; finish it or roll it back from the draft's header.</p>}
               {preview.review && <Plan review={preview.review} dry />}
             </div>
           )}
@@ -264,7 +306,8 @@ export function SplitReview({ backend, id, by, loader, facts, status, drop, setD
       <div className="row wrap">
         <button type="button" onClick={onBack} disabled={busy}>Back to the pages</button>
         {!preview ? <button type="button" className="primary" disabled={!can || busy} onClick={() => send(true)}>Preview the split</button>
-          : <button type="button" className="primary" disabled={!can || busy} onClick={() => send(false)}>{`Write ${review?.files} ${review?.files === 1 ? "file" : "files"}${by ? ` as ${by}` : ""}`}</button>}
+          : <button type="button" className="primary" disabled={!can || busy || dupSkipped} aria-describedby={dupSkipped ? "split-write-why" : undefined} onClick={() => send(false)}>{`Write ${review?.files} ${review?.files === 1 ? "file" : "files"}${by ? ` as ${by}` : ""}`}</button>}
+        {dupSkipped && <span id="split-write-why" className="muted" data-why="write-blocked">Writing is blocked: the duplicate check has not run, and an apply is refused until it can.</span>}
         {!can && review && status === "draft" && !review.totalsOk && <span className="muted">The page counts must add up first.</span>}
         {status === "draft" && (
           <Confirm label="Decline" summary={<p>Decline this split? Nothing is written, and the draft is kept as declined.</p>} busy={busy}
@@ -314,6 +357,7 @@ function Written({ result, busy, heading, onBack, onAgain }: { result: ApplyAnsw
         {(result.dropped?.length ?? 0) > 0 && <li>Pages left out of every file: {result.dropped!.join(", ")}.</li>}
       </ul>
       {result.note && <p className="muted">{result.note}</p>}
+      {result.unfinishedApply && <p data-note="unfinished-after-apply"><Glyph name="triangle-alert" size={12} /> <strong>{UNFINISHED_SENTENCE}.</strong> {unfinishedWords(result.unfinishedApply)} Finish it or roll it back from the draft's header; nothing more is written until you confirm.</p>}
       <div className="row wrap"><button type="button" onClick={onBack}>Back to the pages</button>{!result.ok && <button type="button" className="primary" disabled={busy} onClick={onAgain}>Review again to finish the rest</button>}</div>
     </section>
   );

@@ -278,7 +278,7 @@ def test_a_busy_library_shows_that_the_duplicate_check_was_skipped_and_refuses_a
         ss.apply(sid, by=BY, confirm=True, root=world.root)
     assert ss.load(world.root, sid).status == "draft"
     c = _signed(world)
-    r = c.post(f"/api/write/split/{sid}", json={"act": "apply", "by": BY, "dryRun": False, "confirm": True})
+    r = c.post(f"/api/write/split/{sid}", json={"act": "apply", "by": BY, "dryRun": False, "confirm": True, "expect": "0" * 32})
     assert r.status_code == 503 and r.headers["Retry-After"] and "Nothing was written" in r.json["error"]
     assert not (world.root / "records" / "history.jsonl").exists() or "split-apply" not in (world.root / "records" / "history.jsonl").read_text("utf-8")
 

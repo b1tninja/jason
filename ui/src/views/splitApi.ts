@@ -63,6 +63,28 @@ export function conflictOf(e: unknown): Conflict | null {
   return null;
 }
 
+/** The library could not be read just now (a 503 with `Retry-After`, or `busy: true`): nothing was changed, and trying again is safe. */
+export interface Busy { retryAfter: number; message: string }
+
+export const DEFAULT_RETRY_SECONDS = 5;
+
+export function busyOf(e: unknown): Busy | null {
+  const err = e as { status?: number; message?: string; retryAfter?: number; body?: { busy?: boolean; retryAfter?: number } | null };
+  if (err?.status !== 503) return null;
+  const after = err.retryAfter ?? err.body?.retryAfter;
+  if (!err.body?.busy && after === undefined) return null;
+  return { retryAfter: Math.max(0, Math.min(120, Math.floor(after ?? DEFAULT_RETRY_SECONDS))), message: err.message ?? "" };
+}
+
+/** An apply refused because the plan is not the plan that was reviewed (409 `planChanged`): the server's words and the new (masked) review. */
+export interface PlanChange { message: string; review: Review }
+
+export function planChangedOf(e: unknown): PlanChange | null {
+  const err = e as { status?: number; message?: string; body?: { planChanged?: boolean; review?: Review } | null };
+  if (err?.status === 409 && err.body?.planChanged && err.body.review) return { message: err.message ?? "", review: err.body.review };
+  return null;
+}
+
 /** Whether a failure is the network's (the request never got an answer) rather than the server's refusal. */
 export function isOffline(e: unknown): boolean {
   const err = e as { status?: number; name?: string };

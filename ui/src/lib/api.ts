@@ -3,11 +3,21 @@
 export class ApiError extends Error {
   status?: number;
   body?: unknown;
-  constructor(message: string, status?: number, body?: unknown) {
+  /** Seconds the server asked to wait before trying again (the `Retry-After` header of a 503), when it sent one. */
+  retryAfter?: number;
+  constructor(message: string, status?: number, body?: unknown, retryAfter?: number) {
     super(message);
     this.status = status;
     this.body = body;
+    this.retryAfter = retryAfter;
   }
+}
+
+/** The seconds in a response's `Retry-After` header (a whole number; an HTTP date is not read), else undefined. */
+export function retryAfterOf(res: Pick<Response, "headers">): number | undefined {
+  const raw = res.headers?.get?.("Retry-After");
+  const n = raw ? Number(raw.trim()) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
 }
 
 /** Whether the console is in the owner view: `?view=owner` in the hash (`#/<screen>?view=owner`). */
@@ -34,7 +44,7 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
     /* non-JSON body */
   }
   const error = (body as { error?: string } | null)?.error;
-  if (!res.ok || error) throw new ApiError(error ?? `${res.status} ${res.statusText}`, res.status, body);
+  if (!res.ok || error) throw new ApiError(error ?? `${res.status} ${res.statusText}`, res.status, body, retryAfterOf(res));
   return body as T;
 }
 
@@ -184,6 +194,6 @@ export async function sendJson<T>(method: "POST" | "DELETE", path: string, body?
     resetServerSession();
     return sendJson<T>(method, path, body, true);
   }
-  if (!res.ok || error) throw new ApiError(error ?? `${res.status} ${res.statusText}`, res.status, data);
+  if (!res.ok || error) throw new ApiError(error ?? `${res.status} ${res.statusText}`, res.status, data, retryAfterOf(res));
   return data as T;
 }

@@ -1,3 +1,4 @@
+import { retryAfterOf } from "../lib/api";
 import { priorityOf, budgetFor, type Budget } from "./splitWindow";
 import { SIZE_STEPS, type Size } from "./splitModel";
 
@@ -10,10 +11,17 @@ import { SIZE_STEPS, type Size } from "./splitModel";
 
 export class LoadError extends Error {
   status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
+  /** seconds the server asked to wait before asking again (a 503's `Retry-After`: the library could not be read just now) */
+  retryAfter?: number;
+  constructor(status: number, message: string, retryAfter?: number) { super(message); this.status = status; this.retryAfter = retryAfter; }
 }
 
-export type Fetcher = (url: string, signal: AbortSignal) => Promise<string>;
+/** What a cell says while the library could not be read for its picture; the server's whole sentence is in the notice above the pages. */
+export const WAITING_WORDS = "Waiting for the library";
+/** What a cell says when the server refused its picture until the private view is open (403); the notice above the pages has the server's sentence. */
+export const NEEDS_PRIVATE_WORDS = "Needs the private view";
+
+export type Fetcher =(url: string, signal: AbortSignal) => Promise<string>;
 
 /** A picture as an object URL; a `data:` address is its own picture. A refusal keeps the server's words. */
 export const fetchPicture: Fetcher = async (url, signal) => {
@@ -22,7 +30,7 @@ export const fetchPicture: Fetcher = async (url, signal) => {
   if (!res.ok) {
     let words = "";
     try { words = ((await res.json()) as { error?: string }).error ?? ""; } catch { /* not JSON */ }
-    throw new LoadError(res.status, words || `${res.status} ${res.statusText}`);
+    throw new LoadError(res.status, words || `${res.status} ${res.statusText}`, res.status === 503 ? retryAfterOf(res) : undefined);
   }
   return URL.createObjectURL(await res.blob());
 };
@@ -39,6 +47,10 @@ export interface LoaderOpts {
   fetcher?: Fetcher;
   budget?: Budget;
   concurrency?: number;
+  /** the server said the library could not be read just now (a 503 with Retry-After), once until a picture arrives again */
+  onBusy?: (retryAfter: number, words: string) => void;
+  /** a picture arrived after the library was busy */
+  onRecovered?: () => void;
 }
 
 export interface LoaderStats { inflight: number; queued: number; attached: number; cached: Record<Size, number>; requested: number; aborted: number }
@@ -61,8 +73,14 @@ export class ThumbLoader {
   private dir: -1 | 0 | 1 = 0;
   private fast = false;
   private counts = { requested: 0, aborted: 0 };
+  private busy = false;                              // the library was busy for a picture that failed with a Retry-After, and none has arrived since
+  private retrying = false;                          // the failed pictures were asked for again after that
+  onBusy?: LoaderOpts["onBusy"];
+  onRecovered?: LoaderOpts["onRecovered"];
 
   constructor(o: LoaderOpts) {
+    this.onBusy = o.onBusy;
+    this.onRecovered = o.onRecovered;
     this.urlOf = o.urlOf;
     this.fetcher = o.fetcher ?? fetchPicture;
     this.budget = o.budget ?? budgetFor();
@@ -140,6 +158,7 @@ export class ThumbLoader {
 
   /** Try every failed picture again (the draft that had no server copy yet now has one). */
   retryFailed(): void {
+    this.retrying = true;                            // so a library that is still busy says so again; it is recovered when a picture arrives
     const pages = new Set([...this.failed.keys()].map((k) => Number(k.slice(k.indexOf(":") + 1))));
     this.failed.clear();
     for (const page of pages) for (const entry of this.byPage.get(page) ?? []) { entry.el.dataset.state = "loading"; this.want(entry); }
@@ -249,6 +268,7 @@ export class ThumbLoader {
         if (this.inflight.get(job.key) !== ctl) { this.release(url); return; }     // aborted meanwhile
         this.inflight.delete(job.key);
         this.cache.set(job.key, url);
+        if (this.busy) { this.busy = false; this.retrying = false; this.onRecovered?.(); }
         for (const entry of this.byPage.get(job.page) ?? []) this.show(entry);
         this.evict(job.size);
         this.pump();
@@ -257,7 +277,10 @@ export class ThumbLoader {
         if (this.inflight.get(job.key) !== ctl) return;
         this.inflight.delete(job.key);
         if (!(e instanceof DOMException && e.name === "AbortError")) {
-          this.failed.set(job.key, e instanceof Error ? e.message : "This page could not be drawn");
+          const waiting = e instanceof LoadError && e.status === 503 && e.retryAfter !== undefined;       // the library could not be read: the notice carries the server's words
+          const private_ = e instanceof LoadError && e.status === 403;                                    // a confidential file's picture before the private view: the notice carries the sentence
+          this.failed.set(job.key, waiting ? WAITING_WORDS : private_ ? NEEDS_PRIVATE_WORDS : e instanceof Error ? e.message : "This page could not be drawn");
+          if (waiting && (!this.busy || this.retrying)) { const le = e as LoadError; this.busy = true; this.retrying = false; this.onBusy?.(le.retryAfter ?? 0, le.message); }
           for (const entry of this.byPage.get(job.page) ?? []) this.show(entry);
         }
         this.pump();

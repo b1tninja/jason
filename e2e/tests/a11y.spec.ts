@@ -1,6 +1,6 @@
 import axe from "axe-core";
 import type { Locator, Page } from "@playwright/test";
-import { expect, quiet, signIn, test } from "./fixtures";
+import { expect, forgetSeeds, libraryBusy, moveDraft, quiet, seed, signIn, test } from "./fixtures";
 
 // The PDF splitter's accessibility (docs/pdf-splitter-accessibility.md): axe-core over every state at phone, tablet, and desktop widths, at 400%
 // zoom (a 320 by 256 window), in the dark scheme, and in forced colours; the structure of the grid; the words of a cell; focus in and out of the
@@ -839,5 +839,107 @@ test.describe("choosing from my own Google Drive (the Picker)", () => {
     await expect(page.getByRole("region", { name: "What will be recorded" })).toBeVisible();
     await everywhere(page, "pin preview", [".pick-outcome", ".record-act"]);
     await settle(page, watch);
+  });
+});
+
+// The states the backend hardening adds (docs/pdf-splitter.md 6.7 and 8.1; docs/console/screens/split.md): a confidential file's notice with the private
+// view's ask, a library that could not be read (the open panel, the review's skipped duplicate check), a plan that changed after it was reviewed, and
+// an apply that did not finish with its confirm stamp. Made through the launcher's test-only routes; no library file is added, so the library
+// explorer's counts in console.spec.ts stay as they were.
+const HARDENING: { name: string; reach: (p: Page) => Promise<void> }[] = [
+  { name: "the open panel with the library busy", reach: async (p) => {
+    await signIn(p, "A Manager", "setup/split");
+    await p.getByRole("button", { name: "From the library" }).click();
+    await p.getByRole("table", { name: /Files in the library/ }).getByRole("radio", { name: /Combined Scan 2099\.pdf/ }).check();
+    await libraryBusy(p, true);
+    await p.getByRole("button", { name: "Check the file" }).click();
+    await expect(p.getByText("The library could not be read just now. Nothing was changed.")).toBeVisible();
+    await expect(p.getByRole("button", { name: /^Try again in \d+ seconds?$/ })).toBeDisabled();
+  } },
+  { name: "a confidential draft, its notice and the private view's ask", reach: async (p) => {
+    await signIn(p);
+    const id = await seed(p, "confidential");
+    await p.goto(`/#/setup/split/${id}`);
+    await p.getByRole("note", { name: "This file is confidential" }).getByRole("button", { name: "Open the private view…" }).click();
+    await expect(p.getByRole("group", { name: "Open the private view" })).toBeVisible();
+  } },
+  { name: "the review of a confidential draft", reach: async (p) => {
+    await signIn(p);
+    await p.goto(`/#/setup/split/${await seed(p, "confidential")}`);
+    await p.getByRole("button", { name: "Review and split" }).first().click();
+    await expect(p.getByRole("heading", { name: /^Review: / })).toBeVisible();
+    await expect(p.locator(".split-review").getByText("hidden", { exact: true })).toBeVisible();
+  } },
+  { name: "the draft that did not finish, and its confirm", reach: async (p) => {
+    await signIn(p);
+    await p.goto(`/#/setup/split/${await seed(p, "unfinished")}`);
+    const panel = p.getByRole("region", { name: "An earlier apply did not finish" });
+    await panel.getByRole("button", { name: "Roll it back" }).click();
+    await expect(panel.getByRole("group", { name: "Roll it back" })).toBeVisible();
+  } },
+  { name: "the draft list with a draft that did not finish", reach: async (p) => {
+    await signIn(p);
+    await seed(p, "unfinished");
+    await p.goto("/#/setup/split");
+    await expect(p.locator("tr[data-unfinished], tr:has([data-unfinished])").first()).toBeVisible();
+  } },
+  { name: "a review whose duplicate check was skipped", reach: async (p) => {
+    await signIn(p);
+    const id = await seed(p, "upload");
+    await p.goto(`/#/setup/split/${id}`);
+    await expect(p.getByLabel("Draft summary")).toContainText(/\d+ pages/);
+    await libraryBusy(p, true);
+    await p.getByRole("button", { name: "Review and split" }).first().click();
+    await expect(p.getByRole("group", { name: "The duplicate check was skipped" })).toBeVisible();
+    await p.getByRole("button", { name: "Preview the split" }).click();
+    await expect(p.locator("#split-write-why")).toBeVisible();
+  } },
+  { name: "a review whose plan changed", reach: async (p) => {
+    await signIn(p);
+    const id = await seed(p, "upload");
+    await p.goto(`/#/setup/split/${id}`);
+    await expect(p.getByLabel("Draft summary")).toContainText(/\d+ pages/);
+    await p.getByRole("button", { name: "Review and split" }).first().click();
+    await p.getByRole("button", { name: "Preview the split" }).click();
+    const write = p.getByRole("button", { name: /^Write 5 files/ });
+    await expect(write).toBeVisible();
+    await moveDraft(p, id, [6]);
+    await write.click();
+    await expect(p.getByRole("group", { name: "The draft changed since you reviewed it: the plan is now different. Review it again." })).toBeVisible();
+  } },
+];
+
+test.describe("axe: the hardening states, at phone and desktop widths", () => {
+  test.use({ allowConsole: [/Failed to load resource/], allowStatus: [503] });
+  test.afterEach(async ({ page }) => { await libraryBusy(page, false); await forgetSeeds(page); });      // console.spec.ts expects an empty start page
+  for (const size of [{ name: "phone", width: 390, height: 844 }, { name: "desktop", width: 1440, height: 900 }]) {
+    test.describe(size.name, () => {
+      test.use({ viewport: { width: size.width, height: size.height } });
+      for (const state of HARDENING) {
+        test(state.name, async ({ page }) => {
+          await state.reach(page);
+          expect(await scan(page)).toEqual([]);
+        });
+      }
+    });
+  }
+
+  for (const media of [{ colorScheme: "dark" as const }, { forcedColors: "active" as const }]) {
+    for (const state of [HARDENING[1], HARDENING[3], HARDENING[0]]) {
+      test(`${Object.keys(media)[0]}: ${state.name} adds no violation`, async ({ page }) => {
+        const skip = "forcedColors" in media ? ["color-contrast"] : [];
+        await page.emulateMedia(media);
+        await state.reach(page);
+        expect(await scan(page, skip)).toEqual([]);
+      });
+    }
+  }
+
+  test("the new notices keep their buttons at 24 by 24 px, and say what they are without colour", async ({ page }) => {
+    await HARDENING[3].reach(page);
+    const small = await page.locator(".split-note button, .split-note a").evaluateAll((els) => els.filter((e) => { const r = e.getBoundingClientRect(); return r.width < 24 || r.height < 24; }).map((e) => e.textContent));
+    expect(small).toEqual([]);
+    // every notice carries a glyph beside its words (not colour alone)
+    for (const n of await page.locator(".split-note").all()) expect(await n.locator("svg.glyph").count()).toBeGreaterThan(0);
   });
 });

@@ -31,7 +31,14 @@
     other is held. A part filed to the library with no text layer gets a background OCR job in the person's name (``"ocr": false``
     opts out; at most ``split.ocr_queue_max`` per apply); the answer carries ``ocrQueued``, ``ocrSkipped``, ``notQueued``. ``rotate`` turns pages **in the new files only**: ``{"61": 90, "66": "fix"}`` (degrees clockwise, or ``fix`` for the
     degrees jason measured the page's text needs), or ``"sideways"`` for every page measured sideways. ``review`` takes the same;
+  - ``recover`` ``{"mode": "finish" | "rollback", "dryRun": true (the default), "confirm": false}``: finish or roll back the draft's
+    unfinished apply (``unfinishedApply`` on the listing and on ``GET /api/split-session``). **A dry run unless** ``dryRun`` is false
+    **and** ``confirm`` is true, as the signed-in person; a dry run says what it would do and writes nothing. A finish whose choices
+    no longer match answers 409 ``planChanged`` as an apply does;
   - ``decline`` ``{"dryRun": false}``.
+
+  A **confirmed** ``apply`` from the console must carry ``expect``, the ``planFingerprint`` of the review the person confirmed (the
+  command line and the Python API keep it optional): without it the answer is a 400 and nothing is written.
 
 Nothing here reaches PayHOA, Google, or the county; the one Drive read is ``open`` with ``{"kind": "drive"}``, and it writes nothing there. A confidential file is masked in every answer, and its pictures need the
 private view (``jason.web.split``).
@@ -45,11 +52,13 @@ from typing import Any
 Args = dict[str, str]
 
 ACTS = ("open", "boundaries", "mark", "unmark", "move", "level", "clear", "range", "label", "undo", "redo", "accept", "reject",
-        "suggest", "review", "apply", "decline")
+        "suggest", "review", "apply", "recover", "decline")
 CAVEATS = (
     "A suggestion is jason's guess, with its reasons; it is not a boundary until a person accepts it. A split writes new files "
     "only when a person confirms it, and the original is never changed.",
 )
+NEEDS_EXPECT = ("A confirmed apply carries the plan fingerprint of the review you confirmed (expect), so that what is written is what you "
+                "reviewed. Review the split again, then confirm. Nothing was written.")
 OWNER_REFUSED = "The splitter is the board's: it is not served in the owner view."
 
 
@@ -128,6 +137,9 @@ def split_session(args: Args) -> dict[str, Any]:
     if span:
         a, _, b = span.partition("-")
         out["facts"] = ss.facts_view(root, sid, int(a or 1), int(b or a or 0), lqip=not out["confidential"])["facts"]
+    pending = ss.unfinished(root, sid)               # an apply that did not finish: who, when, how far, and the two ways out
+    if pending is not None:
+        out["unfinishedApply"] = pending
     if (args.get("review") or "").strip() in ("1", "true", "yes") and session.status in ("draft", "confirmed"):
         out["review"] = split_mask.review(ss.review(sid, community=_community(), root=root), hide)
     if (args.get("flags") or "").strip() in ("1", "true", "yes"):
@@ -185,6 +197,8 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             if act == "review":
                 return {"ok": True, "act": act, "review": split_mask.review(ss.review(sid, **kw), hide)}
             dry = body.get("dryRun", True) is not False
+            if not dry and bool(body.get("confirm")) and not str(body.get("expect") or "").strip():
+                raise ValueError(NEEDS_EXPECT)
             try:
                 out = ss.apply(sid, by=by, confirm=bool(body.get("confirm")) and not dry, dry_run=dry,
                                ocr=body.get("ocr") is not False, expect=str(body.get("expect") or ""), **kw)
@@ -192,6 +206,10 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
                 abort(make_response(jsonify(error=str(exc), conflict=True, planChanged=True,
                                             review=split_mask.review(exc.review, hide)), 409))
             return {"ok": True, "act": act, **split_mask.apply_result(out, hide)}
+        if act == "recover":
+            dry = body.get("dryRun", True) is not False
+            out = ss.recover(sid, str(body.get("mode") or ""), by=by, confirm=bool(body.get("confirm")) and not dry, community=community, root=root)
+            return {"ok": True, "act": act, **split_mask.apply_result(out, ss.hides_text(root, ss.load(root, sid)))}
         if act == "suggest":
             return {"act": act, **ss.suggest(sid, by=by, community=community, root=root)}
         if act == "decline":
@@ -199,6 +217,9 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
                                                         root=root, community=community)}
         return {"act": act, **ss.act(sid, act, body, by=by, version=None if version is None else int(version),
                                      dry_run=bool(body.get("dryRun")), community=community, root=root)}
+    except ss.PlanChanged as exc:                    # a finish whose choices differ from the unfinished apply's: nothing was written
+        abort(make_response(jsonify(error=str(exc), conflict=True, planChanged=True,
+                                    review=split_mask.review(exc.review, ss.hides_text(root, ss.load(root, key)))), 409))
     except SplitConflict as exc:
         abort(make_response(jsonify(error=str(exc), conflict=True, current=exc.current), 409))
     except ss.LibraryBusy as exc:                    # the library could not be read: not "no such file"; a person tries again

@@ -14,6 +14,8 @@ export interface Options {
   allowConsole: RegExp[];
   /** the most times one URL may be asked in a test: a refetch loop goes far past it */
   repeatCeiling: number;
+  /** server statuses of 500 and over a test expects (the library cannot be read: 503 with Retry-After); any other is still a failure */
+  allowStatus: number[];
 }
 
 const mine = (u: string) => { const p = new URL(u).pathname; return p.startsWith("/api") || p.startsWith("/auth"); };
@@ -21,7 +23,8 @@ const mine = (u: string) => { const p = new URL(u).pathname; return p.startsWith
 export const test = base.extend<{ watch: Watch } & Options>({
   allowConsole: [[], { option: true }],
   repeatCeiling: [3, { option: true }],
-  watch: [async ({ page, allowConsole, repeatCeiling }, use) => {
+  allowStatus: [[], { option: true }],
+  watch: [async ({ page, allowConsole, repeatCeiling, allowStatus }, use) => {
     const calls: Watch["calls"] = [];
     const open = new Map<Request, Watch["calls"][number]>();
     const errors: string[] = [];
@@ -34,7 +37,7 @@ export const test = base.extend<{ watch: Watch } & Options>({
       const row = open.get(r.request());
       if (!row) return;
       row.status = r.status();
-      if (r.status() >= 500) errors.push(`${r.request().method()} ${row.url} answered ${r.status()}: ${(await r.text().catch(() => "")).slice(0, 300)}`);
+      if (r.status() >= 500 && !allowStatus.includes(r.status())) errors.push(`${r.request().method()} ${row.url} answered ${r.status()}: ${(await r.text().catch(() => "")).slice(0, 300)}`);
     });
     page.on("requestfinished", (r) => { const row = open.get(r); if (row) row.done = true; });
     page.on("requestfailed", (r) => { const row = open.get(r); if (row) { row.done = true; row.status = -1; } });
@@ -61,6 +64,37 @@ export { expect };
 export async function signIn(page: Page, name = "A Manager", hash = "") {
   await page.goto(`/__e2e/sign-in?name=${encodeURIComponent(name)}&next=${encodeURIComponent("/")}`);
   if (hash) await page.goto(`/#/${hash.replace(/^#?\/?/, "")}`);
+}
+
+/** Make the splitter's library read fail (`on`) or work again, through the launcher's test-only route. */
+export async function libraryBusy(page: Page, on: boolean) {
+  const r = await page.request.get(`/__e2e/library-busy?on=${on ? 1 : 0}`);
+  expect((await r.json()).busy).toBe(on);
+}
+
+/** Make a draft in a state the server leaves it in, through the launcher's test-only route; the draft's id. */
+export async function seed(page: Page, what: "upload" | "unfinished" | "confidential" | "library"): Promise<string> {
+  const r = await page.request.get(`/__e2e/split-seed?what=${what}`);
+  expect(r.ok(), await r.text()).toBe(true);
+  return (await r.json()).id as string;
+}
+
+/** Take the seeded drafts out of the list again (a spec that runs before another that expects an empty start page calls this when it is done). */
+export async function forgetSeeds(page: Page) {
+  expect((await page.request.get("/__e2e/split-forget")).ok()).toBe(true);
+}
+
+/** A write to the splitter from outside the page, as another tab would make it: the server's token and the page's own Origin (the write guard asks for both). */
+export async function writeSplit(page: Page, id: string, data: Record<string, unknown>) {
+  const s = await (await page.request.get("/api/session")).json();
+  return page.request.post(`/api/write/split/${id}`, { headers: { [s.header || "X-Jason-Token"]: s.token, Origin: new URL(page.url()).origin }, data: { by: "A Manager", ...data } });
+}
+
+/** Move a draft from outside the page (another tab marks `pages`), so the plan the page reviewed is out of date. */
+export async function moveDraft(page: Page, id: string, pages: number[]) {
+  const cur = await (await page.request.get(`/api/split-session?id=${id}`)).json();
+  const r = await writeSplit(page, id, { act: "mark", pages, version: cur.version });
+  expect(r.ok(), await r.text()).toBe(true);
 }
 
 /** Wait until the page has been quiet: no `/api` request started for `ms`. */

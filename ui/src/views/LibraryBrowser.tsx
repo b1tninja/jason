@@ -5,6 +5,8 @@ import {
   filtersOn, kindWord, libraryFiles, NO_QUERY, SORT_WORDS, sourceWord,
   type LibraryAnswer, type LibraryFile, type LibraryQuery, type LibrarySort, type TextFilter,
 } from "./libraryModel";
+import { busyOf, type Busy } from "./splitApi";
+import { BusyNotice } from "./splitNotices";
 import { sizeText, splitRoute } from "./splitModel";
 
 type Fetcher = (q: LibraryQuery, page?: string) => Promise<LibraryAnswer>;
@@ -26,12 +28,14 @@ export function LibraryBrowser({ selectedId, onSelect, fetcher = libraryFiles }:
   const [answer, setAnswer] = useState<LibraryAnswer | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  // the library could not be read just now (a 503 with Retry-After): nothing was changed, and Try again asks the same question again
+  const [wait, setWait] = useState<{ note: Busy; q: LibraryQuery; page: string; n: number } | null>(null);
   const [said, setSaid] = useState("");
   const ticket = useRef(0);
 
   const load = useCallback(async (q: LibraryQuery, page = "") => {
     const mine = ++ticket.current;            // an answer that arrives after a newer question is dropped
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setWait(null);
     try {
       const a = await fetcher(q, page);
       if (mine !== ticket.current) return;
@@ -39,7 +43,9 @@ export function LibraryBrowser({ selectedId, onSelect, fetcher = libraryFiles }:
       setRows((prev) => (page ? [...prev, ...(a.files ?? [])] : a.files ?? []));
       if (a.found) setSaid(`${a.total} ${a.total === 1 ? "file" : "files"}${page ? ", more shown" : ""}`);
     } catch (e) {
-      if (mine === ticket.current) { setError((e as Error).message); setAnswer(null); setRows([]); }
+      const b = busyOf(e);
+      if (mine === ticket.current && b) { setWait((was) => ({ note: b, q, page, n: (was?.n ?? 0) + 1 })); setAnswer(null); setRows([]); }
+      else if (mine === ticket.current) { setError((e as Error).message); setAnswer(null); setRows([]); }
     } finally {
       if (mine === ticket.current) setBusy(false);
     }
@@ -114,6 +120,7 @@ export function LibraryBrowser({ selectedId, onSelect, fetcher = libraryFiles }:
       <div className="sr-only" role="status" aria-live="polite">{said}</div>
       {busy && rows.length === 0 && <p className="muted" role="status">Reading the library</p>}
       {error && <p className="notice notice-error" role="alert">{error}</p>}
+      {wait && <BusyNotice busy={wait.note} again={wait.n} working={busy} onRetry={() => void load(wait.q, wait.page)} />}
       {answer && !answer.found && (
         <div className="notice notice-warn" role="alert">
           <p>{answer.why ?? "The library could not be listed."}</p>

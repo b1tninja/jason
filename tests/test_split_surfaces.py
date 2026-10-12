@@ -133,11 +133,15 @@ def test_apply_from_the_console_is_a_dry_run_until_dry_run_is_false_and_the_pers
     assert ss.load(world.root, sid).status == "draft"
     review = c.post(url, json={"act": "review", "by": BY, "drop": [2]})
     assert review.json["review"]["dropped"] == [2]
-    done = c.post(url, json={"act": "apply", "by": BY, "dryRun": False, "confirm": True})
+    fingerprint = shown.json["planFingerprint"]
+    bare = c.post(url, json={"act": "apply", "by": BY, "dryRun": False, "confirm": True})      # the console's confirm names the plan it reviewed
+    assert bare.status_code == 400 and "plan fingerprint" in bare.json["error"] and "Nothing was written" in bare.json["error"]
+    assert ss.load(world.root, sid).status == "draft"
+    done = c.post(url, json={"act": "apply", "by": BY, "dryRun": False, "confirm": True, "expect": fingerprint})
     assert done.status_code == 200 and done.json["ok"] is True and len(done.json["held"]) == 3
     s = ss.load(world.root, sid)
     assert s.status == "applied" and s.confirmed["by"] == BY
-    assert c.post(url, json={"act": "apply", "by": BY, "dryRun": False, "confirm": True}).status_code == 400   # already applied
+    assert c.post(url, json={"act": "apply", "by": BY, "dryRun": False, "confirm": True, "expect": fingerprint}).status_code == 400   # already applied
     assert c.post(url, json={"act": "mark", "pages": [3], "by": BY}).status_code == 400
     other = _open(c, pdf).json["session"]["id"]
     assert c.post(f"/api/write/split/{other}", json={"act": "decline", "by": BY}).json["declined"] is True

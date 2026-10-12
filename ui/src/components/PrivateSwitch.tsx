@@ -97,7 +97,9 @@ export function PrivateAsk({ name, onOpen, onCancel, minutes, initial, autoFocus
     if (e.key === "Escape") { e.preventDefault(); onCancel(); }
   };
   return (
-    <form className="confirm private-ask" role="group" aria-label="Open the private view" onSubmit={submit} onKeyDown={onKeyDown} noValidate>
+    // (the group is a div around the form: a form takes no group role, which axe's aria-allowed-role reports)
+    <div className="confirm private-ask" role="group" aria-label="Open the private view">
+    <form className="private-ask-form" style={{ display: "grid", gap: 6 }} onSubmit={submit} onKeyDown={onKeyDown} noValidate>
       <span className="confirm-label" aria-hidden="true">Private view</span>
       <p className="private-ask-lead">Restricted material is shown until it closes. Opening it is logged with your name and reason.</p>
       <label htmlFor={fieldId} className="private-ask-label">Why</label>
@@ -119,6 +121,7 @@ export function PrivateAsk({ name, onOpen, onCancel, minutes, initial, autoFocus
         <button type="button" onClick={onCancel} disabled={busy}>Cancel</button>
       </div>
     </form>
+    </div>
   );
 }
 

@@ -334,7 +334,9 @@ def test_the_console_serves_the_flags_and_takes_filing_and_rotate_on_the_apply(w
     assert shown.json["review"]["filing"]["asked"] == "held"
     assert c.post(url, json={"act": "review", "by": BY, "filing": "drive"}).status_code == 400
     assert c.get(f"/api/split-session?id={sid}&flags=1&view=owner").status_code == 403
-    done = c.post(url, json={"act": "apply", "by": BY, "dryRun": False, "confirm": True, "filing": "held", "rotate": {"2": "fix"}})
+    same = {"act": "apply", "by": BY, "filing": "held", "rotate": {"2": "fix"}}
+    fingerprint = c.post(url, json=same).json["planFingerprint"]
+    done = c.post(url, json={**same, "dryRun": False, "confirm": True, "expect": fingerprint})
     assert done.status_code == 200 and done.json["rotated"] == [{"page": 2, "degrees": 90}] and len(done.json["held"]) == 3
 
 

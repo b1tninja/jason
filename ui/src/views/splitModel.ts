@@ -67,12 +67,19 @@ export interface SessionView {
   boundaries: Start[]; segments: SegmentRow[]; suggestions: Suggestion[];
   confirmed: Record<string, string>; applied: Record<string, unknown>; suggestedAt: string; notes: string[];
 }
+/** An apply that did not finish (`jason.tasks.split_journal.describe`): who began it, when, how far it got, and the two ways out. No file name. */
+export interface UnfinishedApply { apply: string; by: string; at: string; written: number; of: number; visible: boolean; failed: number; choices: string[]; words?: string }
+/** What the server withheld from a confidential file's answer before the private view is open (`jason.tasks.split_mask`). */
+export interface Masked { text: string; why: string; known: boolean }
 export interface SessionAnswer extends SessionView {
+  /** present only while page text is withheld: the note, the sentence, and whether the library could be asked (`retry` is its opposite) */
+  masked?: Masked; confidentialWhy?: string; retry?: boolean; unfinishedApply?: UnfinishedApply;
   renderer?: string; sizes?: string[]; confidential?: boolean; facts?: PageFact[]; review?: Review; flags?: FlagsAnswer;
   limits?: { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number; clientRender?: boolean; clientRenderMaxPages?: number }; caveats?: string[];
 }
 export interface ListedSession {
   id: string; status: string; pages: number; segments: number; suggestionsOpen: number; updated: string; by: string; confidential: boolean; kind: string; label: string;
+  unfinishedApply?: UnfinishedApply;
 }
 export interface ReviewPart {
   segment: string; level: number; start: number; end: number; ordinal: number; slot: string; title: string; kind: string | null; pages: [number, number][];
@@ -90,10 +97,15 @@ export interface Review {
   id: string; status: string; version: number; sourcePages: number; files: number; parts: ReviewPart[]; dropped: number[]; pagesInFiles: number;
   totalsOk: boolean; problems: string[]; collisions: string[]; duplicates: string[]; held: string[]; result: string; caveats?: string[];
   library?: string[]; filing?: FilingCounts; rotated?: TurnedPage[]; sidewaysLeft?: number;
+  /** what an apply of this plan must still find: a confirmed apply sends it back as `expect` */
+  planFingerprint?: string;
+  /** whether the parts were compared with the files jason already holds; `skipped` is the server's sentence when they were not */
+  duplicateCheck?: { checked: boolean; skipped: string };
 }
 export interface LibraryResult { segment: string; action?: string; libraryId?: string; kind?: string; size?: number; ordinal?: number }
 export interface ApplyAnswer {
-  dryRun?: boolean; ok?: boolean; note?: string; would?: { act: string; id: string; by: string; files: number }; review?: Review;
+  dryRun?: boolean; ok?: boolean; note?: string; would?: { act: string; id: string; by: string; files: number; planFingerprint?: string }; review?: Review;
+  planFingerprint?: string; unfinishedApply?: UnfinishedApply; rolledBack?: boolean; resumed?: boolean; unpinned?: string[]; keptInLibrary?: string[];
   filled?: unknown[]; held?: { segment: string; ordinal?: number; why?: string }[]; skipped?: { segment: string; action: string; why?: string; of?: string }[];
   failed?: { segment: string; why: string }[]; dropped?: number[]; autoRead?: boolean;
   library?: LibraryResult[]; rotated?: TurnedPage[];

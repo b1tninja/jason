@@ -497,3 +497,37 @@ input[aria-invalid="true"] { border-color: var(--bad); }
   .split-viewer-acts [aria-pressed="true"] { outline: 2px solid Highlight; }
   .split-viewfinder { border-color: Highlight; outline-color: CanvasText; }
 }
+
+/* ==== the notices for what the server says that is not a failure (docs/pdf-splitter.md 6.7 and 8.1; ui/src/views/splitNotices.tsx) ====
+   A confidential file's text is withheld, the library could not be read, the plan changed after it was reviewed, an apply did not finish. Each is
+   words first and a glyph beside them; the left rule is the second cue and its style differs (solid, dashed, double) so no notice is told apart
+   by colour. The text is the page's ink, never the tone, so it reads at the same contrast in light, dark, and forced colours. */
+.split-note { margin: 0 0 .5rem; padding: .55rem .8rem; border: 1px solid var(--split-field-line); border-left: 5px solid var(--split-warn-ink); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.split-note p { margin: .15rem 0; }
+.split-note h2, .split-note h3 { margin: 0 0 .25rem; font-size: .95rem; }
+.split-note [data-detail] { color: var(--ink); font-size: .85rem; }
+.split-note button { min-height: 24px; min-width: 24px; }
+.split-note .confirm { margin-top: .35rem; }
+.split-held { border-left-style: double; border-left-width: 6px; }
+.split-busy { border-left-style: dashed; }
+.split-changed { border-left-style: solid; }
+.split-unfinished { border-left-style: solid; border-left-width: 6px; }
+.split-note :is(h2, h3):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.split-recover-acts { align-items: flex-start; gap: .5rem; }
+.split-view .record-selected { color: var(--split-good-ink); }          /* "selected" beside a chosen library file: the good ink, which reaches 4.5:1 on the table's grey */
+/* the private view's ask, inside a notice: in the flow of the page, not a dropdown from the header */
+.split-note [data-private="may"] { position: relative; }
+.split-view .split-note [data-private="may"] .private-ask { position: absolute; top: calc(100% + 4px); left: 0; right: auto; z-index: 40; }      /* a popover under its button, as in the header; the draft's pages keep their height */
+.split-note .private-ask button[type="submit"] { min-height: 24px; }
+.split-unfinished-row { margin-top: .2rem; font-size: .85rem; }
+.split-unfinished-how { font-size: .8rem; }
+.split-view .split-note .sr-only { position: absolute; }
+@media (forced-colors: active) {
+  .split-note { border: 1px solid CanvasText; border-left: 6px double CanvasText; }
+  .split-busy { border-left-style: dashed; }
+  .split-note button:disabled { color: GrayText; border-color: GrayText; }
+}
+@media (max-width: 719px) {
+  .split-note { padding: .5rem .6rem; }
+  .split-recover-acts { flex-direction: column; align-items: stretch; }
+}

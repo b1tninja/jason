@@ -487,9 +487,25 @@ describe("a draft with a thousand pages", () => {
   it("says a page could not be drawn, in the server's words, in the cell", async () => {
     const { LoadError } = await import("./splitThumbs");
     const backend = new DemoBackend({ pages: 40 });
-    const failing = (_url: string) => Promise.reject(new LoadError(403, "The pictures of a confidential file need the private view."));
+    const failing = (_url: string) => Promise.reject(new LoadError(422, "This page could not be drawn"));
     const { view } = await mountGrid(40, new ThumbLoader({ urlOf: (p, s) => backend.thumbUrl("demo", p, s), fetcher: failing }));
-    await waitFor(() => expect(view.container.querySelector(".split-cell-note")?.textContent).toBe("The pictures of a confidential file need the private view."));
+    await waitFor(() => expect(view.container.querySelector(".split-cell-note")?.textContent).toBe("This page could not be drawn"));
+    expect(view.container.querySelector("button.split-cell-btn")?.getAttribute("aria-label")).toMatch(/, This page could not be drawn$/);   // the words in the cell are in its name
+  });
+
+  it("says in a few words in the cell when the private view or the library is needed; the whole sentence is in the notice above the pages", async () => {
+    const { LoadError } = await import("./splitThumbs");
+    const backend = new DemoBackend({ pages: 40 });
+    const one = async (error: Error) => {
+      const { view } = await mountGrid(40, new ThumbLoader({ urlOf: (p, s) => backend.thumbUrl("demo", p, s), fetcher: () => Promise.reject(error) }));
+      await waitFor(() => expect(view.container.querySelector(".split-cell-note")?.textContent).not.toBe(""));
+      const words = view.container.querySelector(".split-cell-note")!.textContent;
+      view.unmount();
+      return words;
+    };
+    expect(await one(new LoadError(403, "Executive-session and other restricted material (P3) opens only in the private view."))).toBe("Needs the private view");
+    expect(await one(new LoadError(503, "The library could not be read just now (it may be busy)", 5))).toBe("Waiting for the library");
+    expect(await one(new LoadError(503, "No renderer is installed"))).toBe("No renderer is installed");                  // a 503 with no Retry-After is not the library's
   });
 });
 

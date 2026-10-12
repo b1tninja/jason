@@ -10,7 +10,9 @@ import { FlagsDialog, WalkBar } from "./SplitFlags";
 import { MenuButton, ToolButton, Toolbar, type MenuEntry, type MenuSpec } from "./SplitMenus";
 import { SegmentList, itemsOf } from "./SplitRail";
 import { SplitReview } from "./SplitReview";
-import { type Background, type SplitBackend } from "./splitApi";
+import { busyOf, type Background, type Busy, type SplitBackend } from "./splitApi";
+import { BusyNotice, ConfidentialNotice } from "./splitNotices";
+import { RecoverPanel } from "./SplitRecover";
 import { FactsCache } from "./splitFacts";
 import { PIN_PX, RAIL_OPEN_PX, fitCell, loadPrefs, resolveLayout, savePrefs, stripWindow, type LayoutPrefs } from "./splitLayout";
 import {
@@ -46,7 +48,8 @@ interface Boot { store: SplitStore; facts: FactsCache; loader: ThumbLoader; firs
  * saves), a facts cache, and a picture loader to the screen. Nothing per page is React state. */
 export function SplitEditor({ backend, id }: { backend: SplitBackend; id: string }) {
   const { me } = useSession(NO_PEOPLE);
-  const [boot, setBoot] = useState<Boot | { error: string } | null>(null);
+  const [boot, setBoot] = useState<Boot | { error: string; busy?: Busy } | null>(null);
+  const [attempt, setAttempt] = useState(0);                         // "Try again" after the library could not be read
   useEffect(() => {
     let live = true;
     const store = new SplitStore(backend, id, me);
@@ -65,10 +68,10 @@ export function SplitEditor({ backend, id }: { backend: SplitBackend; id: string
       facts = new FactsCache(backend, id, s.source.pages);
       pictures?.useFacts((n) => facts?.get(n));
       if (live) setBoot({ store, facts, loader, first: s as SessionAnswer, pictures });
-    }, (e: Error) => { if (live) setBoot({ error: e.message }); });
+    }, (e: Error) => { if (live) setBoot({ error: e.message, busy: busyOf(e) ?? undefined }); });
     return () => { live = false; loader.clear(); facts?.dispose(); if (pictures && pictures !== backend.pictures) pictures.dispose(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend, id]);
+  }, [backend, id, attempt]);
   useEffect(() => { if (boot && "store" in boot) boot.store.by = me; }, [boot, me]);
   // The title says the screen and the draft's kind and size, never its file name (a confidential file's size is left out too).
   const ready = boot && "store" in boot ? boot : null;
@@ -77,6 +80,14 @@ export function SplitEditor({ backend, id }: { backend: SplitBackend; id: string
     : `Split document: ${status.charAt(0).toUpperCase()}${status.slice(1)}${ready.first.confidential || ready.first.source.confidential ? "" : `, ${ready.first.source.pages} pages`}`);
   if (!boot) return <p role="status" className="muted">Opening the draft…</p>;
   if ("error" in boot) {
+    if (boot.busy) {
+      return (
+        <div className="stack split-view">
+          <BusyNotice busy={boot.busy} again={attempt} onRetry={() => { setBoot(null); setAttempt((n) => n + 1); }} />
+          <p><a href="#/setup/split">Back to the splitter</a></p>
+        </div>
+      );
+    }
     return <div role="alert" className="notice notice-error"><span>{boot.error}</span><a href="#/setup/split">Back to the splitter</a></div>;
   }
   return <EditorBody backend={backend} id={id} by={me} {...boot} />;
@@ -166,12 +177,26 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
   }, [facts, store, factsVersion, notYet]);
   const session = snap.session!;
   const pages = session.source.pages;
-  const confidential = !!first.confidential || session.source.confidential;
+  // the server's last word (a library file's flag is asked again on each read; a file it could not ask about reads as confidential), else what the draft opened with
+  const confidential = snap.confidential ?? (!!first.confidential || session.source.confidential);
   const phone = useMediaQuery(PHONE);
   const big = useMediaQuery(BIG_QUERY);
   const canPinQuery = useMediaQuery(PIN_QUERY);
   const canPin = canPinQuery && !phone;
   const lowMemory = (deviceMemory() ?? 8) <= 2;
+  // The library could not be read for a picture (a 503 with Retry-After): said once, with a Try again that asks the failed pictures again.
+  const [pictureBusy, setPictureBusy] = useState<{ busy: Busy; n: number } | null>(null);
+  useEffect(() => {
+    loader.onBusy = (after, words) => setPictureBusy((was) => ({ busy: { retryAfter: after, message: words }, n: (was?.n ?? 0) + 1 }));
+    loader.onRecovered = () => setPictureBusy(null);
+    return () => { loader.onBusy = undefined; loader.onRecovered = undefined; };
+  }, [loader]);
+  const hadPictureBusy = useRef(false);
+  useEffect(() => {
+    if (pictureBusy) { hadPictureBusy.current = true; return; }
+    if (hadPictureBusy.current && document.activeElement === document.body) { hadPictureBusy.current = false; active()?.focusPage(focusRef.current); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pictureBusy]);
 
   // ---- the layout: focus, the drawers, and what is shown; kept for the tab
   const [prefs, setPrefsState] = useState<LayoutPrefs>(() => loadPrefs(id));
@@ -679,6 +704,9 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
       {/* The one polite region for what a person just did. A save in progress or finished is on the screen (the summary line) and is not spoken: a
           mark would otherwise make three announcements and a time of day. A save that fails is an alert below. */}
       <div className="split-live" role="status" aria-live="polite">{message}</div>
+      {confidential && snap.withheld && <ConfidentialNotice why={snap.withheld.why} known={snap.withheld.known} by={by} onCheckAgain={() => { void store.reload(); facts.refresh(); }} />}
+      <RecoverPanel backend={backend} id={id} u={snap.unfinished} by={by} onSettled={() => { void store.reload(); }} />
+      {pictureBusy && <BusyNotice busy={pictureBusy.busy} again={pictureBusy.n} onRetry={() => loader.retryFailed()} />}
       <Loupe enabled={magOn} touchMode={magTouch} zoom={prefs.magnifierZoom} onZoom={setMagZoom} load={sharp} release={releaseSharp} budget={magBudget}
         maxPx={pictureStatus?.client ? LOUPE_MAX_PX : SERVER_MAX_PX} announce={setMessage}
         mode={prefs.magMode} corner={prefs.magCorner} size={prefs.magPx} view={prefs.magView} hop={prefs.magHop} phone={phone}
@@ -758,7 +786,7 @@ function EditorBody({ backend, id, by, store, facts, loader, first, pictures }: 
             facts={facts} confidential={confidential} starts={snap.starts.has(focus)} />
         </Drawer>
         <Drawer id="review" label="Review and split" open={reviewing} side={sideFor("right")} onClose={() => setReviewing(false)} width="min(64rem, 100%)" locked={reviewBusy} fallbackFocus={() => active()?.focusPage(focusRef.current)}>
-          <SplitReview backend={backend} id={id} by={by} loader={loader} facts={facts} status={session.status} drop={drop} setDrop={setDrop} confidential={confidential}
+          <SplitReview backend={backend} id={id} by={by} loader={loader} facts={facts} status={session.status} drop={drop} setDrop={setDrop} confidential={confidential} withheld={snap.withheld}
             turns={turns} setTurns={setTurns} onReviewPages={startWalk} onBusy={setReviewBusy}
             onBack={() => setReviewing(false)} onDone={() => { void store.reload(); }} onRename={async (p, t) => { store.label(p, "title", t); await store.idle(); }} />
         </Drawer>

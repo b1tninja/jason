@@ -6,7 +6,9 @@ import { useHash } from "../lib/useHash";
 import { useSession, NO_PEOPLE } from "../lib/session";
 import { useDocumentTitle } from "../lib/useDocumentTitle";
 import { SplitEditor } from "./SplitEditor";
-import { realBackend, type ListAnswer, type OpenAnswer, type OpenRef, type SplitBackend, type SplitLimits } from "./splitApi";
+import { busyOf, realBackend, type Busy, type ListAnswer, type OpenAnswer, type OpenRef, type SplitBackend, type SplitLimits } from "./splitApi";
+import { BusyNotice } from "./splitNotices";
+import { UnfinishedBadge } from "./SplitRecover";
 import { LOCAL_ID, currentLocal, dropLocal, startLocal } from "./splitLocal";
 import { DemoBackend } from "./splitDemo";
 import { DEMO_ID, parseSplitRoute, sizeText, splitRoute, type ListedSession } from "./splitModel";
@@ -79,7 +81,7 @@ export function OpenPanel({ backend, by, libraryFetcher, limits, limitsReady = t
     startLocal(f, backend, by, { enabled: true, maxPages: limits?.clientRenderMaxPages ?? limits?.maxPages ?? 3000 });
     window.location.hash = splitRoute(LOCAL_ID).slice(1);
   };
-  const reset = () => { setChecked(null); setError(""); };
+  const reset = () => { setChecked(null); setError(""); setWait(null); };
   useEffect(() => {
     if (!limitsReady || !held) return;
     const f = held;
@@ -87,15 +89,22 @@ export function OpenPanel({ backend, by, libraryFetcher, limits, limitsReady = t
     choose(f);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limitsReady, held]);
+  // the library could not be read while the file was being found: nothing was changed, and Try again asks the same question again
+  const [wait, setWait] = useState<{ note: Busy; dry: boolean; n: number } | null>(null);
   const go = async (dry: boolean) => {
     if (!ref) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setWait(null);
     try {
       const a = await backend.open(ref, dry, by);
       if (a.driveConnected === false) setChecked(a);
       else if (dry) setChecked(a);
       else if (a.session) window.location.hash = splitRoute(a.session.id).slice(1);
-    } catch (e) { setChecked(null); setError((e as Error).message); } finally { setBusy(false); }
+    } catch (e) {
+      setChecked(null);
+      const b = busyOf(e);
+      if (b) setWait((was) => ({ note: b, dry, n: (was?.n ?? 0) + 1 }));
+      else setError((e as Error).message);
+    } finally { setBusy(false); }
   };
   return (
     <section className="split-open" aria-labelledby="split-open-h">
@@ -137,6 +146,7 @@ export function OpenPanel({ backend, by, libraryFetcher, limits, limitsReady = t
       )}
       <p className="muted">The splitter reads a copy and never changes the original, wherever it is.</p>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
+      {wait && <BusyNotice busy={wait.note} again={wait.n} working={busy} onRetry={() => void go(wait.dry)} />}
       {checked && checked.driveConnected === false && <NotConnected d={checked} />}
       {checked?.dryRun && checked.would && (
         <div className="split-preview" role="region" aria-label="What opening will do">
@@ -164,8 +174,8 @@ function Drafts({ rows }: { rows: ListedSession[] }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} data-split={r.id}>
-              <th scope="row" data-label="Draft"><a href={splitRoute(r.id)} aria-label={`Open the draft ${r.label}`}>{r.label}</a> <span className="muted">{r.id}</span>{r.confidential && <> <Badge tone="warn" glyph="file-lock">confidential</Badge></>}</th>
-              <td data-label="Status"><StatusBadge status={r.status} /></td>
+              <th scope="row" data-label="Draft"><a href={splitRoute(r.id)} aria-label={`Open the draft ${r.label}${r.unfinishedApply ? ". An earlier apply did not finish" : ""}`}>{r.label}</a> <span className="muted">{r.id}</span>{r.confidential && <> <Badge tone="warn" glyph="file-lock">confidential</Badge></>}</th>
+              <td data-label="Status"><StatusBadge status={r.status} />{r.unfinishedApply && <div className="split-unfinished-row" data-unfinished><UnfinishedBadge u={r.unfinishedApply} /></div>}</td>
               <td data-label="Pages">{r.pages}</td>
               <td data-label="Segments">{r.segments}</td>
               <td data-label="Suggestions open">{r.suggestionsOpen}</td>

@@ -1,5 +1,5 @@
 import { conflictOf, isOffline, type ActBody, type AnyAnswer, type Conflict, type SplitBackend } from "./splitApi";
-import { documentNumbers, segmentsOf, sameStarts, startsOf, unionStarts, type Seg, type SessionView, type Suggestion } from "./splitModel";
+import { documentNumbers, segmentsOf, sameStarts, startsOf, unionStarts, type Seg, type SessionAnswer, type SessionView, type Suggestion, type UnfinishedApply } from "./splitModel";
 
 /** The draft in the browser (docs/pdf-splitter.md, section 2, "Undo, redo, and autosave"). A person's change shows at once on a local copy of the
  * starts, and is sent to the server one act at a time in order, each carrying the version it started from. The server's answer replaces the
@@ -23,6 +23,11 @@ export interface Snapshot {
   pending: number;
   readOnly: boolean;
   restorable: number;
+  /** read with the draft (not with an edit's answer): an apply that did not finish, and the server's note that page text is withheld */
+  unfinished: UnfinishedApply | null;
+  withheld: { why: string; known: boolean } | null;
+  /** whether the file is confidential now, as the last read of the draft said (a library file's flag is asked again on each read); null before one */
+  confidential: boolean | null;
 }
 
 interface Op { body: ActBody; apply?: (s: Map<number, number>) => Map<number, number> }
@@ -43,7 +48,7 @@ export class SplitStore {
     this.id = id;
     this.snap = {
       session: null, starts: this.server, segs: [], docNo: new Uint16Array(1), sugByPage: new Map(), version: 0, save: "saved", savedAt: "", message: "",
-      conflict: null, busy: false, pending: 0, readOnly: false, restorable: 0,
+      conflict: null, busy: false, pending: 0, readOnly: false, restorable: 0, unfinished: null, withheld: null, confidential: null,
     };
   }
 
@@ -93,7 +98,11 @@ export class SplitStore {
 
   private take(a: SessionView): void {
     this.server = startsOf(a.boundaries);
-    this.emit({ session: a, version: a.version });
+    const read = a as SessionAnswer;
+    this.emit({
+      session: a, version: a.version, unfinished: read.unfinishedApply ?? null, confidential: typeof read.confidential === "boolean" ? read.confidential : this.snap.confidential,
+      withheld: read.masked || read.confidentialWhy ? { why: read.confidentialWhy ?? read.masked?.why ?? "", known: read.masked ? read.masked.known : !read.retry } : null,
+    });
   }
 
   /** Read the draft again (after a decline, or when a person asks). Queued changes are kept on top. */

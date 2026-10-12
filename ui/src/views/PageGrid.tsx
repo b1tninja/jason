@@ -87,19 +87,20 @@ interface CellProps {
 
 const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, focused, w, h, sizes, confidential, loader, variant, readOnly, turn, col }: CellProps) {
   const img = useRef<HTMLImageElement>(null);
-  const note = useRef<HTMLSpanElement>(null);
+  // Why the picture could not be drawn, in the cell and in its name (the visible words are part of the name). Held as state only for a cell that fails.
+  const [failed, setFailed] = useState("");
   useEffect(() => {
     const el = img.current;
     if (!el) return;
     return loader.attach(el, page, sizes.split(",") as Size[], {
-      onState: (state, words) => { if (note.current) note.current.textContent = state === "failed" ? (words || "This page could not be drawn") : ""; },
+      onState: (state, words) => setFailed(state === "failed" ? (words || "This page could not be drawn") : ""),
     });
   }, [loader, page, sizes]);
   const lq = confidential ? "" : lqipUrl(f?.lqip);
   const isStart = start >= 0;
   const open = !!sug && sug.state === "open" && !isStart;
   const words = cellWords(f, start, no, open ? sug : undefined, turn, variant === "strip");
-  const label = cellLabel(page, f, start, no, open ? sug : undefined, confidential, turn, variant === "strip");
+  const label = cellLabel(page, f, start, no, open ? sug : undefined, confidential, turn, variant === "strip") + (failed && variant !== "strip" ? `, ${failed}` : "");
   const noteId = `split-note-${variant}-${page}`;
   const noteText = cellNote(page, f, start, no, open ? sug : undefined, confidential, turn);
   // The footer's words are drawn in the order the accessible name lists them (number, tag, state, segment), so the name holds the visible text
@@ -124,7 +125,7 @@ const PageCell = memo(function PageCell({ page, f, start, no, sug, selected, foc
           {words.turned && <><span className="split-cell-state split-cell-turn" data-turned=""><Glyph name="refresh-cw" size={12} /> {words.turned}</span>{" "}</>}
           {words.seg && <span className="split-cell-seg">{words.seg}</span>}
         </span>
-        {variant !== "strip" && <span className="split-cell-note" ref={note} aria-hidden="true" />}
+        {variant !== "strip" && <>{" "}<span className="split-cell-note" aria-hidden="true">{failed}</span></>}
       </button>
       {noteText && <span id={noteId} hidden>{noteText}</span>}
       {isStart && page !== 1 && !readOnly && <span className="split-handle" data-handle={page} aria-hidden="true" title="Drag to move this start"><Glyph name="arrow-left-right" size={12} /></span>}
