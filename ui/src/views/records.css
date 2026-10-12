@@ -95,3 +95,30 @@
 .record-bound, .record-bound-counts { margin: 0; padding-left: 1.2rem; }
 .record-bound > li { padding-bottom: .4rem; }
 .record-current-acts { margin-top: .4rem; }
+
+/* Choosing from the person's own Google Drive (PickStart, PickOutcome, HeldCopies; docs/google-picker.md). Tokens only. */
+.pick-start, .pick-outcome, .pick-held { display: grid; gap: .5rem; border: 1px solid var(--rule); border-radius: 8px; padding: .75rem 1rem; background: var(--panel); max-width: 44rem; }
+.pick-start > *, .pick-outcome > *, .pick-held > * { margin: 0; }
+.pick-start h3, .pick-outcome :is(h2, h3), .pick-held h2 { font-size: 1rem; margin: 0; }
+.pick-outcome :is(h2, h3):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pick-rows, .pick-held-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+.pick-rows > li, .pick-held-list > li { border: 1px solid var(--line); border-radius: 8px; padding: .55rem .75rem; display: grid; gap: .3rem; background: var(--bg); }
+.pick-rows > li > *, .pick-held-list > li > * { margin: 0; }
+.pick-rows > li[data-outcome="refused"] { border-color: var(--warn); border-left-width: 4px; }
+.pick-rows > li[data-outcome="held"], .pick-rows > li[data-outcome="already held"] { border-left: 4px solid var(--good); }
+.pick-row-head { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; overflow-wrap: anywhere; }
+.pick-row-name { font-weight: 500; }
+.pick-open { display: grid; gap: .4rem; }
+:is(.pick-start, .pick-outcome, .pick-held) :is(button, a, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.pick-start, .pick-outcome, .pick-held) button { min-height: 24px; min-width: 24px; }
+@media (forced-colors: active) {
+  .pick-rows > li, .pick-held-list > li, .pick-start, .pick-outcome, .pick-held { border-color: CanvasText; forced-color-adjust: auto; }
+  .pick-rows > li[data-outcome="refused"] { border-color: Highlight; border-left-width: 4px; }
+  :is(.pick-start, .pick-outcome, .pick-held) :is(button, a):focus-visible { outline-color: CanvasText; }
+}
+@media (max-width: 720px) { .pick-start, .pick-outcome, .pick-held { padding: .6rem .7rem; } }
+/* The badges in these sections read at 4.5:1 on their tint in both schemes (the same mix as the splitter's). */
+:is(.pick-outcome, .pick-held) { --pick-good-ink: color-mix(in srgb, var(--good) 70%, var(--ink)); --pick-warn-ink: color-mix(in srgb, var(--warn) 70%, var(--ink)); --pick-neutral-ink: color-mix(in srgb, var(--muted) 75%, var(--ink)); }
+:root :is(.pick-outcome, .pick-held) .badge-good { color: var(--pick-good-ink); }
+:root :is(.pick-outcome, .pick-held) .badge-warn { color: var(--pick-warn-ink); }
+:root :is(.pick-outcome, .pick-held) .badge.badge-neutral { color: var(--pick-neutral-ink); }

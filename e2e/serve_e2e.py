@@ -31,9 +31,10 @@ for name in ("JASON_COMMUNITY", "JASON_COMMUNITY_VIA", "JASON_DEFAULT_COMMUNITY_
 os.environ["JASON_COMMUNITY_NOTICED"] = "shim,alias"
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
-def build(data: Path, dist: Path, required: bool = False):
+def build(data: Path, dist: Path, required: bool = False, port: int = 0):
     """The real app over ``data``, with the splitter reading that folder."""
     import webclient
 
@@ -70,6 +71,13 @@ def build(data: Path, dist: Path, required: bool = False):
     def e2e_sign_out():
         session.pop("account", None)
         return redirect("/")
+
+    if port:
+        # Google's Picker and Drive stood in for (e2e/pick_fake.py): the real start and callback routes run, the "Google" they leave for is
+        # this process, and the files are made up. Choosing from the person's own Drive stays off until a test turns `pick.enabled` on.
+        import pick_fake
+
+        pick_fake.install(app, f"http://127.0.0.1:{port}")
 
     return app
 
@@ -123,6 +131,11 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit("--fresh empties only a folder under e2e/.run")
         shutil.rmtree(data)
     data.mkdir(parents=True, exist_ok=True)
+    # The made-up private facts are copied beside the data: a test that pins a file to a record slot writes the slot's store under this folder,
+    # and the checked-in fixtures must stay as they are.
+    spec = data / "e2e-spec"
+    shutil.copytree(ROOT / "tests" / "fixtures" / "spec", spec, dirs_exist_ok=True)
+    os.environ["JASON_SPEC_DIR"] = str(spec)
     from jason.community import split_gold
 
     (data / "e2e").mkdir(exist_ok=True)
@@ -134,7 +147,7 @@ def main(argv: list[str] | None = None) -> None:
     build_image_pdf(data / "e2e" / "ccitt.pdf", "ccitt", 3, 100)       # three made-up pages, each one 1-bit CCITT Group 4 image
     seed_library(data)
     os.environ["JASON_DATA_DIR"] = str(data.resolve())      # every store the console reads or writes is under the throwaway folder
-    app = build(data, Path(a.dist), a.require_sign_in)
+    app = build(data, Path(a.dist), a.require_sign_in, a.port)
     from waitress import serve
 
     print(f"READY http://127.0.0.1:{a.port} {data}", flush=True)

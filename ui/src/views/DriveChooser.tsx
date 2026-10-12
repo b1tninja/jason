@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Glyph } from "../components/Glyph";
 import { postJson } from "../lib/api";
+import { PickStart } from "./PickStart";
 import { ActPanel, useFileBytes, useUploadCap } from "./RecordActs";
 import { MAX_PICK_FILES, sizeWords, type Cardinality, type DriveItem, type DriveListing, type DriveResolved, type Plan } from "./recordTypes";
 
@@ -23,7 +24,7 @@ const ALL_TABS: { id: ChooserTab; label: string }[] = [
 export interface Step { kind: "pick" | "bind"; ref: string; name: string; /** Several files chosen together: one pick of them all. */ many?: { ref: string; name: string }[] }
 
 /** The fields every pick shares: the period of a series, the instrument number of a repeating key document, and a note. */
-function PickFields({ slot, period, setPeriod, entry, setEntry, note, setNote }: {
+export function PickFields({ slot, period, setPeriod, entry, setEntry, note, setNote }: {
   slot: ChooserSlot; period: string; setPeriod: (s: string) => void; entry: string; setEntry: (s: string) => void; note: string; setNote: (s: string) => void;
 }) {
   const id = useId();
@@ -403,6 +404,7 @@ export function DriveChooser({ slot, by, startTab = "drive", onClose, onDone, pi
               ))}
             </div>
             <div role="tabpanel" id={`${id}-p-${tab}`} aria-labelledby={`${id}-t-${tab}`} className="record-tabpanel">
+              {tab === "drive" && <PickStart purpose={pick ? "split" : "slot"} slot={pick ? "" : slot.key} />}
               {tab === "drive" && (pick
                 ? <DriveTab slot={slot} pdfOnly onPick={(its) => choose({ ref: its[0].id, name: its[0].name, size: its[0].size })} />
                 : <DriveTab slot={slot} onPick={(its) => setStep(its.length === 1 ? { kind: "pick", ref: its[0].id, name: its[0].name } : { kind: "pick", ref: its[0].id, name: `${its.length} files`, many: its.map((i) => ({ ref: i.id, name: i.name })) })} onBind={(c) => setStep({ kind: "bind", ref: c.id, name: c.name })} />)}

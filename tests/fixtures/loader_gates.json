@@ -429,6 +429,10 @@
    "gate": "p2",
    "why": "one splitter draft; the loader requires P2"
   },
+  "drive-held": {
+   "gate": "p2",
+   "why": "the copies held from files a person picked in their own Drive: numbers, sizes and days, no names or ids; the loader requires P2"
+  },
   "split-sessions": {
    "gate": "p2",
    "why": "the splitter's drafts; the loader requires P2"

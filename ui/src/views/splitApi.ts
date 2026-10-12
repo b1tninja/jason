@@ -15,7 +15,8 @@ export interface OpenAnswer {
 /** The limits a draft's screens read (`jason.limits`); the two `clientRender` ones say whether and for how long a file the browser draws. */
 export interface SplitLimits { maxPages: number; suggestEnabled: boolean; draftDays: number; maxParts: number; clientRender?: boolean; clientRenderMaxPages?: number }
 export interface ListAnswer { found?: boolean; note?: string; sessions: ListedSession[]; limits?: SplitLimits; caveats?: string[] }
-export type OpenRef = { kind: "library"; id: string } | { kind: "upload"; name: string; base64: string } | { kind: "drive"; id: string };
+/** `held` is a copy jason keeps of a file the person picked in their own Google Drive (docs/google-picker.md); `id` is the copy's address from the server. */
+export type OpenRef = { kind: "library"; id: string } | { kind: "upload"; name: string; base64: string } | { kind: "drive"; id: string } | { kind: "held"; id: string };
 export type ActBody = { act: string; by?: string; version?: number; dryRun?: boolean; [k: string]: unknown };
 export type AnyAnswer = ActAnswer & ApplyAnswer & { review?: Review };
 

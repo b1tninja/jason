@@ -13,6 +13,9 @@ import { DEMO_ID, parseSplitRoute, sizeText, splitRoute, type ListedSession } fr
 import { useFileBytes, useUploadCap } from "./RecordActs";
 import { DriveChooser, NotConnected, type ChooserSlot } from "./DriveChooser";
 import { LibraryBrowser } from "./LibraryBrowser";
+import { HeldCopies, OpenHeld, PickOutcome } from "./PickPanels";
+import { PickStart } from "./PickStart";
+import { usePickReturn } from "../lib/pick";
 import { libraryFiles, type LibraryFile } from "./libraryModel";
 import "./records.css";
 import "./split.css";
@@ -127,6 +130,7 @@ export function OpenPanel({ backend, by, libraryFetcher, limits, limitsReady = t
             ? <p role="status">Chosen in Drive: <strong>{drive.name}</strong>{drive.size !== null ? `, ${sizeText(drive.size)}` : ""}.</p>
             : <p className="muted" role="status">No file chosen yet.</p>}
           <p className="muted">jason reads Drive with its own account and writes nothing there. A file that account cannot see is not listed: share it with the account shown, or upload the file.</p>
+          <PickStart purpose="split" />
           {choosing && <DriveChooser slot={DRIVE_SLOT} by={by} startTab="drive" onClose={() => setChoosing(false)} onDone={() => undefined}
             pick={{ title: "Choose a PDF in Drive to split", onChoose: (f) => { setDrive(f); reset(); } }} />}
         </div>
@@ -182,13 +186,19 @@ function SplitStart() {
   const r = useApi<ListAnswer>("/api/split-sessions");
   const { me } = useSession(NO_PEOPLE);
   useEffect(() => { dropLocal(); }, []);                  // coming back to the list lets go of a file held for the editor
+  const back = usePickReturn("split");
   return (
     <div className="stack split-view">
       <ScreenHeader title="Split document" summary="Open a combined PDF, see its pages, and tap the first page of each document. jason can suggest starts; you decide. Nothing is written until you review and confirm, and the original is never changed." />
       <section className="split-demo-card" aria-label="Try it">
         <p><a className="split-demo-link" href={splitRoute(DEMO_ID)}>Try it on a made-up 120-page file</a> <span className="muted">No server, no real documents: the pages are invented and the draft lives in this tab.</span></p>
       </section>
+      {back.value && (
+        <PickOutcome value={back.value} onClose={back.close} level={2} action={(row, n) => <OpenHeld backend={realBackend} by={me} heldId={row.heldId} label={`file ${n}`} />}
+          again={<PickStart purpose="split" />} />
+      )}
       <OpenPanel backend={realBackend} by={me} limits={r.status === "ready" ? r.data.limits : undefined} limitsReady={r.status !== "loading"} />
+      <HeldCopies backend={realBackend} by={me} />
       <section aria-labelledby="split-drafts-h">
         <h2 id="split-drafts-h">Drafts</h2>
         <RemoteView r={r}>

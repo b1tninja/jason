@@ -1,6 +1,6 @@
 import axe from "axe-core";
 import type { Locator, Page } from "@playwright/test";
-import { expect, signIn, test } from "./fixtures";
+import { expect, quiet, signIn, test } from "./fixtures";
 
 // The PDF splitter's accessibility (docs/pdf-splitter-accessibility.md): axe-core over every state at phone, tablet, and desktop widths, at 400%
 // zoom (a 320 by 256 window), in the dark scheme, and in forced colours; the structure of the grid; the words of a cell; focus in and out of the
@@ -10,17 +10,19 @@ import { expect, signIn, test } from "./fixtures";
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
 /** Run axe on the page and name each violated rule with the number of nodes, sorted: `["color-contrast:2"]`. */
-async function scan(page: Page, skip: string[] = []): Promise<string[]> {
+async function scan(page: Page, skip: string[] = [], only: string[] = []): Promise<string[]> {
   await page.addScriptTag({ content: axe.source });
   const out = await page.evaluate(async (tags) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // (the console's own "Go to" select on a narrow window sits outside a landmark: the shell's, and outside the splitter's audit)
     // (a cell scrolled partly out of a 256 px window is read by axe as text that is off screen, so its words look missing; the cells beside it, whole in view, are checked)
     document.querySelectorAll("button.split-cell-btn").forEach((b) => { const r = b.getBoundingClientRect(); if (r.top < 0 || r.bottom > window.innerHeight) b.setAttribute("data-axe-partial", ""); });
-    const r = await (window as any).axe.run({ exclude: [[".console-goto"], ["[data-axe-partial]"]] }, { runOnly: { type: "tag", values: tags.tags }, rules: Object.fromEntries(tags.skip.map((id: string) => [id, { enabled: false }])), resultTypes: ["violations"] });
+    // (`only` limits the scan to those parts of the page that are there: a state under test that sits in a screen whose other parts are audited elsewhere)
+    const include = tags.only.filter((q: string) => document.querySelector(q)).map((q: string) => [q]);
+    const r = await (window as any).axe.run({ ...(include.length ? { include } : {}), exclude: [[".console-goto"], ["[data-axe-partial]"]] }, { runOnly: { type: "tag", values: tags.tags }, rules: Object.fromEntries(tags.skip.map((id: string) => [id, { enabled: false }])), resultTypes: ["violations"] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (r.violations as any[]).map((v) => `${v.id}:${v.nodes.length} ${v.nodes.slice(0, 3).map((n: any) => n.target.join(" ")).join(" | ")}`);
-  }, { tags: TAGS, skip });
+  }, { tags: TAGS, skip, only });
   return out.sort();
 }
 
@@ -744,5 +746,98 @@ test.describe("the edge tabs and the grid (D20)", () => {
     await page.waitForTimeout(400);
     await expect(c).toHaveCount(1);
     expect(await page.evaluate(() => document.activeElement?.closest("[data-cell]")?.getAttribute("data-page"))).toBe("40");
+  });
+});
+
+// Choosing from the person's own Google Drive (docs/google-picker.md): each state of the new screens, scanned by axe in the light scheme at desktop and
+// phone widths and at 400% zoom, in the dark scheme, and in forced colours; the controls are 24 by 24 CSS px or more; the focus lands on the results heading.
+test.describe("choosing from my own Google Drive (the Picker)", () => {
+  test.use({ viewport: { width: 1440, height: 900 }, repeatCeiling: 40, allowConsole: [/status of (40[34]|403)/] });
+  test.beforeEach(async ({ page }) => { await page.request.get("/__e2e/limit?key=pick.enabled&value=on"); });
+  test.afterEach(async ({ page }) => { await page.request.get("/__e2e/limit?key=pick.enabled"); });
+
+  const settle = async (page: Page, watch: { calls: { done: boolean }[]; count(): number }) => {
+    await quiet(page, watch as never, 400);
+    await expect.poll(() => watch.calls.filter((c) => !c.done).length, { timeout: 20_000 }).toBe(0);
+  };
+  const scenario = (page: Page, name: string) => page.request.get(`/__e2e/pick-scenario?name=${name}&reset=1`);
+  /** The start page, the From Drive tab, and (with a scenario) a pick made and returned from. */
+  async function reach(page: Page, watch: Parameters<typeof settle>[1], name: string) {
+    await signIn(page, "A Manager", "setup/split");
+    await page.getByRole("button", { name: "From Drive" }).click();
+    if (name === "tab") return;
+    await scenario(page, name);
+    await settle(page, watch);
+    await page.getByRole("button", { name: "Choose from my Google Drive" }).first().click();
+    await expect(page.getByRole("heading").filter({ hasText: /What you picked|Nothing was kept/ })).toBeFocused();
+  }
+  const VARIANTS: { name: string; size?: { width: number; height: number }; media?: Parameters<Page["emulateMedia"]>[0]; skip?: string[] }[] = [
+    { name: "light, desktop" }, { name: "phone", size: { width: 390, height: 844 } }, { name: "400% zoom", size: { width: 320, height: 256 } },
+    { name: "dark", media: { colorScheme: "dark" } }, { name: "forced colours", media: { forcedColors: "active" }, skip: ["color-contrast"] },
+  ];
+  async function everywhere(page: Page, what: string, only: string[] = []) {
+    for (const v of VARIANTS) {
+      if (v.size) await page.setViewportSize(v.size);
+      if (v.media) await page.emulateMedia(v.media);
+      expect(await scan(page, v.skip ?? [], only), `${what}, ${v.name}`).toEqual([]);
+      if (v.size) await page.setViewportSize({ width: 1440, height: 900 });
+      if (v.media) await page.emulateMedia({ colorScheme: "light", forcedColors: "none" });
+    }
+  }
+  const small = (page: Page) => page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>(".pick-start :is(button, a[href]), .pick-outcome :is(button, a[href]), .pick-held :is(button, a[href])"))
+    .filter((e) => !(e.tagName === "A" && e.closest("p") && getComputedStyle(e).display === "inline"))
+    .map((e) => ({ name: (e.getAttribute("aria-label") ?? e.textContent ?? "").trim().slice(0, 40), r: e.getBoundingClientRect() }))
+    .filter((x) => x.r.width > 0 && (x.r.width < 24 || x.r.height < 24)).map((x) => `${x.name} ${Math.round(x.r.width)}x${Math.round(x.r.height)}`));
+
+  test("the button and its words, then the calm line when it is off", async ({ page, watch }) => {
+    await reach(page, watch, "tab");
+    await expect(page.getByRole("button", { name: "Choose from my Google Drive" })).toBeVisible();
+    expect(await small(page)).toEqual([]);
+    await everywhere(page, "the button");
+    await page.request.get("/__e2e/limit?key=pick.enabled");
+    await page.reload();
+    await page.getByRole("button", { name: "From Drive" }).click();
+    await expect(page.getByText("Picking from your own Drive is off for this community.")).toBeVisible();
+    await everywhere(page, "off");
+    await settle(page, watch);
+  });
+
+  test("the results: kept and refused rows; nothing kept; the held copies listed", async ({ page, watch }) => {
+    await reach(page, watch, "mixed");
+    await expect(page.getByRole("list", { name: "Files you picked" }).getByRole("listitem")).toHaveCount(6);
+    expect(await small(page)).toEqual([]);
+    await everywhere(page, "mixed result");
+    await page.getByRole("button", { name: "Check the file: file 1" }).click();
+    await expect(page.getByRole("region", { name: /What opening file 1 will do/ })).toBeVisible();
+    await everywhere(page, "checked row");
+    await page.goto("/#/setup/split");
+    await page.reload();
+    await expect(page.getByRole("list", { name: "Copies held from Drive" })).toBeVisible();
+    expect(await small(page)).toEqual([]);
+    await everywhere(page, "held copies");
+    await reach(page, watch, "none");
+    await everywhere(page, "nothing kept");
+    await reach(page, watch, "denied");
+    await everywhere(page, "refused by Google");
+    await settle(page, watch);
+  });
+
+  test("a record slot: the results beside the choosing buttons, and the pin preview", async ({ page, watch }) => {
+    await signIn(page, "A Manager", `setup/records/${encodeURIComponent("records/5200/minutes")}`);
+    await scenario(page, "ok");
+    await page.getByRole("button", { name: "Choose from Drive" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Loading the folder")).toHaveCount(0, { timeout: 30_000 });
+    await everywhere(page, "the chooser", ["[role=dialog]"]);
+    await settle(page, watch);
+    await dialog.getByRole("button", { name: "Choose from my Google Drive" }).click();
+    await expect(page.getByRole("heading", { name: "What you picked from Google Drive" })).toBeFocused();
+    await everywhere(page, "slot results", [".pick-outcome"]);
+    await page.getByRole("button", { name: /^Pin file 2 to / }).click();
+    await page.getByLabel(/Period this file is for/).fill("2099-06");
+    await page.getByRole("button", { name: "Preview the pin" }).click();
+    await expect(page.getByRole("region", { name: "What will be recorded" })).toBeVisible();
+    await everywhere(page, "pin preview", [".pick-outcome", ".record-act"]);
+    await settle(page, watch);
   });
 });

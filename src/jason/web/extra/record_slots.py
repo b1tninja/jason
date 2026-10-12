@@ -31,7 +31,8 @@ key of a slot is in the URL, never a file's name or id.
   person's name; the job fetches the file into jason's store, reads it, and keeps the reading beside the pin. The page
   never reads inline.
 
-- ``{"act": "upload", "name": "scan.pdf", "base64": "...", "period": "", "entry": "", "note": ""}``: a file from the computer,
+- ``{"act": "upload", "name": "scan.pdf", "base64": "...", "period": "", "entry": "", "note": ""}``: a file from the computer (or,
+  in place of ``base64``, ``"heldId": <sha256>``: a copy jason holds from Google's Picker, handed over by the server),
   at most the `upload.max_bytes` limit (100 MB unless set), a PDF, an image, or a Word file (type and size checked). With
   ``"override": {"allowed": "200MB", "reason": "..."}`` the community's administrator (signed in as themselves) lets this one file
   past the limit, up to the limit's once-only maximum (not for a key document's slot): the override is this upload's, never a
@@ -207,6 +208,29 @@ def _override(body: dict[str, Any], by: str) -> Any:
         raise ValueError("Refused: " + exc.describe()) from exc
 
 
+def _held_copy(body: dict[str, Any], root: Any) -> tuple[str, bytes | None]:
+    """The bytes of a held copy a person chose in Google's Picker (``heldId``, the copy's SHA-256), for an upload to a slot: the server
+    hands them over, so the browser never holds the file. ``("", None)`` when the body names none. The copy is never pinned as a Drive
+    file (the server's own account cannot see a person's private file again); it is kept as an upload is
+    (docs/google-picker.md)."""
+    held_id = str(body.get("heldId") or "").strip()
+    if not held_id:
+        return "", None
+    if body.get("base64"):
+        raise ValueError("send a held copy (heldId) or the file's bytes (base64), not both")
+    from pathlib import Path
+
+    from jason.tasks import drive_pick
+
+    path = drive_pick.held_path(Path(root), held_id)
+    if path is None:
+        raise ValueError("No held copy with that id (it may have been purged); choose the file from Drive again. Nothing was kept.")
+    name = Path(str(body.get("name") or "").strip()).name or f"Picked from Drive {held_id[:8]}.pdf"
+    if not name.lower().endswith(".pdf"):
+        name += ".pdf"
+    return name, path.read_bytes()
+
+
 def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
     from jason.tasks import record_acts, record_readback, record_upload
     from jason.tasks import record_slots as rs
@@ -251,7 +275,9 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
         elif act == "upload":
             if body.get("path"):
                 raise ValueError("the console uploads the file's bytes, never a path on the server")
-            out = record_upload.upload(key, name=str(body.get("name") or ""), base64_body=str(body.get("base64") or ""),
+            held_name, held_data = _held_copy(body, root)
+            out = record_upload.upload(key, name=held_name or str(body.get("name") or ""), data=held_data,
+                                       base64_body="" if held_data is not None else str(body.get("base64") or ""),
                                        period=str(body.get("period") or ""), entry=str(body.get("entry") or ""), note=note, read=False,
                                        override=_override(body, by), **kw)
             if not dry and out.get("pin") and not out.get("already"):

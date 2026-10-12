@@ -62,6 +62,8 @@ export interface ServerSession {
   roleClass?: string;
   canActAs?: boolean; acting?: Acting | null; actAsPeople?: { name: string; role: string }[]; actAsRoles?: string[];
   private?: PrivateView;
+  /** Choosing files from the person's own Google Drive (`jason.web.pick`, docs/google-picker.md): whether the community has it on, where it starts, and where the result is read once. */
+  pick?: { enabled: boolean; start: string; result: string };
 }
 
 /** The private view (`jason.web.access`): a time-limited, logged window in which restricted (P3) material is shown to

@@ -388,6 +388,30 @@ def pick(file_ids: list[str], *, by: str, drive: Any, root: Path, purpose: Purpo
 
 # --- the held copies ---------------------------------------------------------------------------------------------------------
 
+def listing(root: Path, *, limit: int = 20, private: bool = False) -> dict[str, Any]:
+    """The held copies, newest pick first, as a screen shows them: a number, a size, a page count, and the day of the last pick. No
+    name (none is kept) and no Drive id. A confidential copy's size and pages, and its id, are withheld unless ``private`` (the private
+    view is open); its row still says it is there. Read-only; disk only."""
+    folder = held_dir(root)
+    rows: list[dict[str, Any]] = []
+    for pdf in sorted(folder.glob("*.pdf")) if folder.is_dir() else []:
+        sha = pdf.stem
+        if not _is_sha(sha):
+            continue
+        note = provenance(root, sha)
+        picks = [p for p in (note.get("picks") or []) if isinstance(p, dict)]
+        rows.append({"id": sha, "size": int(note.get("size") or pdf.stat().st_size), "pages": int(note.get("pages") or 0),
+                     "at": str(picks[-1].get("at", "")) if picks else "", "confidential": bool(note.get("confidential"))})
+    rows.sort(key=lambda r: r["at"], reverse=True)
+    out = []
+    for n, r in enumerate(rows[:max(1, limit)], start=1):
+        hide = r["confidential"] and not private
+        out.append({"n": n, "id": "" if hide else r["id"], "size": None if hide else r["size"], "pages": None if hide else r["pages"],
+                    "day": r["at"][:10], "confidential": r["confidential"], "held": hide})
+    return {"found": True, "copies": out, "total": len(rows),
+            "note": "Copies jason read once from files you picked in your own Drive. Nothing is kept of their names."}
+
+
 def purge(root: Path, *, dry_run: bool = True) -> dict[str, Any]:
     """Remove every held copy and its note. A dry run lists the count and bytes. Draft sessions that were opened from a held copy
     keep their own copy in the splitter's store; this removes the held originals only."""

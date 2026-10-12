@@ -4,6 +4,9 @@ import { useApi } from "../lib/useApi";
 import { useHash } from "../lib/useHash";
 import { useSession, NO_PEOPLE } from "../lib/session";
 import { DriveChooser, StepPanel, type ChooserTab, type Step } from "./DriveChooser";
+import { usePickReturn, type PickRow as HeldRow } from "../lib/pick";
+import { HeldPanel, PickOutcome } from "./PickPanels";
+import { PickStart } from "./PickStart";
 import { JobWatch, PickRow, SlotWord, pickCounts } from "./RecordActs";
 import { AckPanel, AnswerPanel, CurrentPanel, DeclinePanel, KeepPanel, MorePanel, ReadPanel, ReopenPanel, RepinPanel, ReplacePanel, SplitPanel, UnpinPanel } from "./RecordPanels";
 import {
@@ -19,6 +22,7 @@ type Panel =
   | { kind: "reopen"; what: "answer" | "more" }
   | { kind: "bind" }
   | { kind: "step"; step: Step }
+  | { kind: "held"; row: HeldRow; n: number }
   | { kind: "read" | "unpin" | "keep" | "repin" | "replace" | "split" | "decline" | "ack" | "current"; pin: string };
 
 /** A folder binding's counts in words, from the folder's last listing (never from Drive now). */
@@ -374,6 +378,7 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
   const r = useApi<SlotPageData>(`/api/record-slot?key=${encodeURIComponent(slotKey)}`);
   const { me } = useSession(NO_PEOPLE);
   const [panel, setPanel] = useState<Panel | null>(null);
+  const back = usePickReturn("slot");                 // coming back from Google's Picker for a slot: what was picked, shown once
   const [notice, setNotice] = useState<{ text: string; job?: number; command?: string; bad?: boolean; rows?: { part: PartPlan; name?: string }[]; patch?: string } | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const status = useRef<HTMLDivElement | null>(null);
@@ -483,6 +488,10 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
                 </div>
                 {!d.acts.pickFile && d.acts.why && <p className="muted">{d.acts.why}</p>}
                 <p className="muted">A pick records which file you mean. It moves, copies, renames, and shares nothing. jason reads the file only when you ask.</p>
+                {back.value && (
+                  <PickOutcome value={back.value} onClose={back.close} again={<PickStart purpose="slot" slot={d.key} />}
+                    action={d.acts.upload ? (row, n) => <button type="button" aria-label={`Pin file ${n} to ${d.title}`} onClick={() => open({ kind: "held", row, n })}>{`Pin file ${n}`}</button> : undefined} />
+                )}
                 {panel && panel.kind !== "chooser" && (
                   <div className="record-panel">
                     {panel.kind === "answer" && <AnswerPanel {...common} />}
@@ -490,6 +499,7 @@ function SlotScreen({ slotKey }: { slotKey: string }) {
                     {panel.kind === "reopen" && <ReopenPanel {...common} what={panel.what} />}
                     {panel.kind === "bind" && <BindAsk title={d.title} onGo={(ref) => setPanel({ kind: "step", step: { kind: "bind", ref, name: "the folder" } })} onCancel={() => close()} />}
                     {panel.kind === "step" && <StepPanel slot={chooserSlot} step={panel.step} by={me} onDone={done} onBack={() => close()} />}
+                    {panel.kind === "held" && <HeldPanel slot={chooserSlot} row={panel.row} n={panel.n} by={me} onDone={done} onBack={() => close()} />}
                     {hp && panel.kind === "read" && <ReadPanel {...hp} />}
                     {hp && panel.kind === "unpin" && <UnpinPanel {...hp} />}
                     {hp && panel.kind === "current" && <CurrentPanel {...hp} />}

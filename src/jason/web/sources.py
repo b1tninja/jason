@@ -932,6 +932,7 @@ EXTRA_LOADERS: dict[str, str] = {
     "limits": "jason.web.extra.limits_view:limits",  # Setup > Limits: this community's limits in force, each with source, range, ceiling, last change, why; officers, managers, administrators read
     "library-files": "jason.web.extra.library_browse:library_files",  # ?kind=&source=&since=&until=&text=&minPages=&sort=&page= the library's PDFs for the splitter's explorer, with filter counts; a name search is a POST (/api/write/library/files); disk only; board only; a confidential file masked
     "split-sessions": "jason.web.extra.split:split_sessions",  # the PDF splitter's drafts: id, status, pages, counts; a confidential file masked; the board's
+    "drive-held": "jason.web.extra.drive_held:drive_held",  # the files picked in a person's own Drive that jason holds: a number, a size, pages, a day; no name or id; a confidential copy masked; the board's
     "split-session": "jason.web.extra.split:split_session",  # ?id=&facts=1-200&review=1 one draft: boundaries, segments, suggestions with reasons, version; the board's
     "instance-limits": "jason.web.extra.limits_view:instance_limits",  # Instance > Limits: the instance layer (value, ceiling, who, why); an admin as themselves only; never a community's values
     "controls": "jason.web.extra.controls:controls",  # ?family=&state=: the safeguards the board opts into and jason suggests, by family, with the provision whole, the floor, the roster check; P2
