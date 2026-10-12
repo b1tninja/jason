@@ -191,8 +191,15 @@ def test_a_step_is_built_as_another_kind_only_when_what_the_page_names_is_not_bu
 
 
 def test_wanted_lists_each_unbuilt_read_job_and_kind_once_and_none_of_them_exists_yet():
-    assert list(members.WANTED) == list(dict.fromkeys(members.WANTED)) and set(members.WANTED) == set(members.BECOMES.values())
+    from jason.workflows import jobs
+
+    registered = {v for v in members.BECOMES.values() if v.startswith("job ") and v.split()[1] in JOBS}
+    assert list(members.WANTED) == list(dict.fromkeys(members.WANTED))
+    assert set(members.WANTED) == set(members.BECOMES.values()) - registered     # a registered job is no longer wanted
     assert members.WANTED
+    # the seven described jobs of this family are registered; the two with no single command are what is left
+    assert {v.split()[1] for v in registered} == {d.name for d in jobs.DESCRIPTORS if d.family == "members"}
+    assert {w.split()[1] for w in members.WANTED if w.startswith("job ")} == {"respond-standards", "letter-pdf-export"} <= set(jobs.UNDESCRIBED)
     kinds = registries()
     for want in members.WANTED:
         word, _, name = want.partition(" ")

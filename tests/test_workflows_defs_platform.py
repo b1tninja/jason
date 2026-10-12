@@ -24,7 +24,7 @@ import pytest
 import shelf_support
 
 import jason.workflows.defs.platform as platform
-from jason.workflows import api, checks, definitions
+from jason.workflows import api, checks, definitions, jobs
 from jason.workflows import definitions_general as general
 from jason.workflows.readers import CHECKS, JOBS, NamedCheck, StoreReaders
 from jason.workflows.types import ClockBasis, Role, StepKind, StepRefused, Visibility, parse_sop
@@ -191,11 +191,15 @@ def test_the_wanted_list_names_every_read_job_and_kind_the_person_steps_say_they
             for word in ("check", "job"):
                 if f"Becomes a {word} (" in s.why:
                     name = s.why.split(f"Becomes a {word} (", 1)[1].split(")", 1)[0]
-                    assert f"{word} {name} (" in text, (s.id, name)
-                    assert name not in (CHECKS if word == "check" else JOBS), name       # wanted, not yet registered
+                    if word == "check":
+                        assert f"check {name} (" in text and name not in CHECKS, (s.id, name)     # wanted, not yet registered
+                    else:
+                        assert name in JOBS and f"job {name} (" not in text, (s.id, name)        # described and registered (jobs.READY)
                     assert s.kind is StepKind.PERSON, s.id
                     named += 1
     assert named >= 8
+    assert {d.name for d in jobs.DESCRIPTORS if d.family == "platform"} == {"mail-sync", "gmail-sync", "responses-check", "responses-read"}
+    assert not [line for line in platform.WANTED if line.startswith("job ")]       # every job it wanted is registered
     assert "plan payhoa-requests-from-email (email-conversation.6)" in text and "plan gmail-thread-reply" in text
 
 

@@ -315,6 +315,7 @@ def test_wanted_is_a_tuple_of_strings_each_with_a_kind_and_a_purpose():
     assert isinstance(prop.WANTED, tuple) and prop.WANTED and all(isinstance(w, str) for w in prop.WANTED)
     assert all(w.split(":", 1)[0] in {"check", "job", "plan", "template", "command", "role"} and " -- " in w for w in prop.WANTED)
     assert not (set(CHECKS) | set(JOBS)) & {w.split(":", 1)[1].split(" -- ")[0] for w in prop.WANTED}
+    assert not [w for w in prop.WANTED if w.startswith("job:")]                  # every job it wanted is registered (jobs.READY)
     wanted_checks = {w.split(":", 1)[1].split(" -- ")[0] for w in prop.WANTED if w.startswith("check:")}
     assert wanted_checks == {"improvement-findings-conflicts", "program-standing-catalog", "deliverable-on-file"}
     assert not wanted_checks & set(CHECK_STEPS.values())

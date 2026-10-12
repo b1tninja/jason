@@ -4,7 +4,8 @@ three screen pages monthly-review, county-tax-cycle, and delinquency-process).
 Everything here is plainly fake ("A. Manager", 2099 dates, "123 Main St"). The expected step tables are written out below from
 the page, not read back from the module: each row is (the page's word for the step, its kind here, its role). A page row of
 kind ``check`` is a ``check`` step (role jason) when ``jason.workflows.checks.money`` builds its read, else a ``person`` step
-whose ``why`` says what it becomes; a page row of kind ``job`` is a ``person`` step, because no money job is registered.
+whose ``why`` says what it becomes; a page row of kind ``job`` is a ``person`` step: a money job is only a descriptor of a
+command a person runs (``jason.workflows.jobs``), so no step names one.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import pytest
 import shelf_support
 
 from jason.approvals import registry
-from jason.workflows import api, definitions, store
+from jason.workflows import api, definitions, jobs, store
 from jason.workflows import definitions_general as general
 from jason.workflows.defs import all_builders, money
 from jason.workflows.readers import CHECKS, JOBS, StoreReaders
@@ -237,7 +238,11 @@ def test_wanted_lists_every_name_a_why_asks_for_and_nothing_else():
         for s in build(key).steps:
             asked |= {f"{k} {name}" for k, name in re.findall(r"wanted: (check|job|plan) ([\w-]+)", s.why)}
     listed = {w.split(":")[0] for w in money.WANTED}
-    assert listed == asked
+    registered = {a for a in asked if a.startswith("job ") and a.split()[1] in JOBS}        # a described job (jobs.READY) is not wanted
+    assert listed == asked - registered
+    assert {a.split()[1] for a in registered} == {d.name for d in jobs.DESCRIPTORS if d.family == "money"}
+    assert {a.split()[1] for a in listed if a.startswith("job ")} == {
+        "bill-sources-read", "tax-documents-keep", "books-sync", "packet-build"} <= set(jobs.UNDESCRIBED)
     assert len(money.WANTED) == len(listed)
     assert all(re.match(r"^(check|job|plan) [\w-]+: .+", w) for w in money.WANTED)
 

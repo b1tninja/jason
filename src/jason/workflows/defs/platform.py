@@ -69,11 +69,8 @@ WANTED: tuple[str, ...] = (
     "check draft-source (gmail-draft.1): the system, hearing, or agenda file the draft is about exists and is current",
     "check draft-preview (gmail-draft.6): the dry run of `jason draft` shows a subject and suggested addresses",
     "check vault-answers (integration-connect.3): the backend answers (names only), or says it is not signed in",
-    # jobs (readers.JOBS)
-    "job mail-sync (mail-triage.2): `jason mail`",
-    "job gmail-sync (email-conversation.2): `jason gmail --sync`",
-    "job responses-check (response-inbox.1): `jason responses --check`",
-    "job responses-read (response-inbox.6): `jason responses --read ID --by NAME` (the GPU lane with --model)",
+    # jobs (readers.JOBS): none wanted. mail-sync, gmail-sync, responses-check, and responses-read are registered as descriptors
+    # (jason.workflows.jobs, jobs.READY); their steps stay a person's, and each why still names the job it becomes
     # approvals kinds (the registry)
     "plan payhoa-requests-from-email (email-conversation.6): enter an emailed request in PayHOA (R2, one person)",
     "plan gmail-thread-reply (email-conversation.9): a reply draft in the thread (a second approvals kind)",

@@ -258,16 +258,26 @@ def test_a_step_is_built_as_another_kind_only_when_what_the_page_names_is_not_bu
         if found is None:
             assert s.kind is StepKind.PERSON and (s.spawns or "branch" in s.why.lower()), sid
         else:
-            assert s.kind is StepKind.PERSON and f"{found.group(1)}:{found.group(2)}" in records.WANTED, sid
+            assert s.kind is StepKind.PERSON and f"{found.group(1)}:{found.group(2)}" in records.NAMED, sid
         assert s.command or s.record or s.spawns, f"{sid} shows what a person runs or records"
         assert not s.job and not s.plan_kind and s.check is None, sid
 
 
 def test_wanted_lists_each_unbuilt_read_job_and_kind_once_and_none_of_them_exists_yet():
-    assert list(records.WANTED) == list(dict.fromkeys(records.WANTED)) and records.WANTED
+    from jason.workflows import jobs
+
+    assert list(records.NAMED) == list(dict.fromkeys(records.NAMED)) and records.WANTED
     named = {f"{m.group(1)}:{m.group(2)}" for w in everything().values() for s in w.steps
              for m in re.finditer(r"Becomes an? (check|job|plan) step \(([^)]+)\)", s.why)}
-    assert named == set(records.WANTED)
+    assert named == set(records.NAMED)
+    # a job whose descriptor is registered (jobs.READY) is no longer wanted; its step stays a person's
+    registered = {n for n in records.NAMED if n.startswith("job:") and n[4:] in JOBS}
+    assert set(records.WANTED) == set(records.NAMED) - registered and list(records.WANTED) == [
+        w for w in records.NAMED if w not in registered]
+    assert {n[4:] for n in registered} == {d.name for d in jobs.DESCRIPTORS if d.family == "records"} | {"conflict-leads"}     # the board's
+    assert {w[4:] for w in records.WANTED if w.startswith("job:")} == {
+        "citations-scan", "library-drive-sync", "parcel-gap-lookup", "parcel-report", "recorder-reading", "record-read",
+        "split-read-back"} and {w[4:] for w in records.WANTED if w.startswith("job:")} <= set(jobs.UNDESCRIBED)
     kinds = registries()
     for want in records.WANTED:
         word, _, name = want.partition(":")

@@ -47,37 +47,37 @@ NO_WRITE = ("--yes",)
 DESCRIPTORS: tuple[JobDescriptor, ...] = (
     # --- property -----------------------------------------------------------------------------------------------------
     _d("life-safety-read-report", "property", "jason models --filed", ("--filed",), NO_WRITE),
-    _d("life-safety-propose", "property", "jason life-safety --propose", ("--propose",)),
+    _d("life-safety-propose", "property", "jason life-safety --propose", ("--propose",), ("--confirm",)),
     _d("contract-terms", "property", "jason contract-terms FILE", (), ("--list",)),
     _d("paint-refresh", "property", "jason paint --refresh", ("--refresh",), NO_WRITE),
     _d("vendor-portal-sync", "property", "jason vendors --sync", ("--sync",), ("--yes", "--drive", "--reports")),
     # --- members ------------------------------------------------------------------------------------------------------
-    _d("notice-recipients-plan", "members", "jason delivery --notice RULE --ids FILE", ("--notice", "--ids"), NO_WRITE),
+    _d("notice-recipients-plan", "members", "jason delivery --notice RULE --ids FILE", ("--notice", "--ids"), ("--yes", "--apply")),
     _d("notices-sync-any-key", "members", "jason notices KEY --sync", ("--sync",)),
     _d("mailroom-preview", "members", "jason mailroom --pdf FILE --units UNITS", ("--pdf", "--units"),
        ("--send", "--cancel", "--yes")),
     _d("catalog-sync", "members", "jason sync-catalog", (), NO_WRITE),
     _d("respond-sources", "members", "jason respond --sources", ("--sources",), NO_WRITE),
     _d("form-library-check", "members", "jason form-library --check", ("--check",), NO_WRITE),
-    _d("form-discover", "members", "jason discover-forms --read", ("--read",), ("--confirm",)),
+    _d("form-discover", "members", "jason discover-forms --read", ("--read",), ("--confirm", "--hold", "--drop")),
     # --- board --------------------------------------------------------------------------------------------------------
     _d("meetings-sync", "board", "jason meetings --sync", ("--sync",)),
     _d("board-reports-refresh", "board", "jason report --all", ("--all",), NO_WRITE),
-    _d("board-packet-build", "board", "jason board --packet", ("--packet",), NO_WRITE),
-    _d("board-notice-draw", "board", "jason board --notice --date DATE", ("--notice", "--date"), NO_WRITE),
-    _d("minutes-draft", "board", "jason board --minutes DATE", ("--minutes",), NO_WRITE),
+    _d("board-packet-build", "board", "jason board --packet", ("--packet",), ("--yes", "--create-sheet", "--set")),
+    _d("board-notice-draw", "board", "jason board --notice --date DATE", ("--notice", "--date"), ("--yes", "--create-sheet", "--set")),
+    _d("minutes-draft", "board", "jason board --minutes DATE", ("--minutes",), ("--yes", "--create-sheet", "--set")),
     _d("rule-change-timeline", "board", "jason rule-change KEY --notice-date DATE", ("--notice-date",), NO_WRITE),
     _d("law-export", "board", "jason export-authorities"),
-    _d("law-versions", "board", "jason law-history --versions --since YEAR --shelf", ("--versions",)),
+    _d("law-versions", "board", "jason law-history --versions --since YEAR --shelf", ("--versions",), ("--add-version",)),
     _d("outlines-fetch", "board", "jason outlines --fetch", ("--fetch",)),
     _d("conflict-leads", "board", "jason conflicts --leads", ("--leads",)),
-    _d("law-sweep", "board", "jason law-history --sweep --since YEAR", ("--sweep",)),
-    _d("cite-survey", "board", "jason cite --survey", ("--survey",)),
-    _d("section-refs-scan", "board", "jason section-refs --scan", ("--scan",), NO_WRITE),
+    _d("law-sweep", "board", "jason law-history --sweep --since YEAR", ("--sweep",), ("--add-version",)),
+    _d("cite-survey", "board", "jason cite --survey", ("--survey",), ("--apply", "--migrate-ids")),
+    _d("section-refs-scan", "board", "jason section-refs --scan", ("--scan",), ("--yes", "--apply")),
     _d("schedule-read-google", "board", "jason schedule --read-google", ("--read-google",), NO_WRITE),
     _d("schedule-evidence", "board", "jason schedule-evidence --all", ("--all",), ("--record",)),
-    _d("duties-read", "board", "jason duties --documents --read", ("--documents", "--read"), NO_WRITE),
-    _d("duties-fill-bearers", "board", "jason duties --documents --fill-bearers", ("--documents", "--fill-bearers"), NO_WRITE),
+    _d("duties-read", "board", "jason duties --documents --read", ("--documents", "--read"), ("--yes", "--set-bearer", "--set-kind")),
+    _d("duties-fill-bearers", "board", "jason duties --documents --fill-bearers", ("--documents", "--fill-bearers"), ("--yes", "--set-bearer", "--set-kind")),
     _d("manual-classify", "board", "jason manual --classify", ("--classify",)),
     _d("manual-render", "board", "jason manual --render", ("--render",)),
     _d("revisions-fetch", "board", "jason revisions KEY --fetch --versions", ("--fetch",)),
@@ -90,15 +90,15 @@ DESCRIPTORS: tuple[JobDescriptor, ...] = (
     _d("tax-catalog-sync", "money", "jason sync-tax"),
     # --- records ------------------------------------------------------------------------------------------------------
     _d("chronology", "records", "jason chronology --catalog NAME", ("--catalog",), NO_WRITE),
-    _d("county-lookup", "records", "jason onboard --lookup", ("--lookup",), NO_WRITE),
-    _d("documents-locate", "records", "jason onboard --locate", ("--locate",), NO_WRITE),
+    _d("county-lookup", "records", "jason onboard --lookup", ("--lookup",), ("--yes", "--apply", "--confirm", "--replace")),
+    _d("documents-locate", "records", "jason onboard --locate", ("--locate",), ("--yes", "--apply", "--confirm", "--replace")),
     _d("index-build", "records", "jason index --build", ("--build",)),
     _d("ingest-dry-run", "records", "jason ingest SOURCE", (), ("--apply", "--park", "--model")),
     _d("ingest-model", "records", "jason ingest SOURCE --model", ("--model",), ("--apply",)),
     _d("ingest-park", "records", "jason ingest SOURCE --park", ("--park",), ("--apply",)),
-    _d("intake-scan", "records", "jason intake --scan", ("--scan",), ("--apply",)),
+    _d("intake-scan", "records", "jason intake --scan", ("--scan",), ("--apply", "--confirm")),
     _d("inspections-read", "records", "jason inspections"),
-    _d("library-ocr-suggestions", "records", "jason intake --library-ocr", ("--library-ocr",), ("--apply",)),
+    _d("library-ocr-suggestions", "records", "jason intake --library-ocr", ("--library-ocr",), ("--apply", "--confirm")),
     _d("living-build", "records", "jason living KEY --fetch --working", ("--fetch", "--working"), NO_WRITE),
     _d("models-as-of", "records", "jason models --as-of DATE", ("--as-of",), NO_WRITE),
     _d("parcel-history", "records", "jason instrument-graph --parcel APN", ("--parcel",)),
@@ -113,14 +113,16 @@ DESCRIPTORS: tuple[JobDescriptor, ...] = (
     _d("vendor-reports", "records", "jason vendors --reports", ("--reports",), ("--drive", "--yes")),
     # --- platform -----------------------------------------------------------------------------------------------------
     _d("mail-sync", "platform", "jason mail"),
-    _d("gmail-sync", "platform", "jason gmail --sync", ("--sync",), NO_WRITE),
-    _d("responses-check", "platform", "jason responses --check", ("--check",)),
-    _d("responses-read", "platform", "jason responses --read ID --by NAME", ("--read",)),
+    _d("gmail-sync", "platform", "jason gmail --sync", ("--sync",), ("--yes", "--file-vendor")),
+    _d("responses-check", "platform", "jason responses --check", ("--check",), ("--confirm", "--add-manual")),
+    _d("responses-read", "platform", "jason responses --read ID --by NAME", ("--read",), ("--confirm", "--add-manual")),
 )
 
-READY: frozenset[str] = frozenset({"property"})
-"""The families whose descriptors are registered in ``readers.JOBS``. A family is added here when its own definition and tests
-move from "wanted" to "registered" (see the module docstring)."""
+READY: frozenset[str] = frozenset({"property", "members", "board", "money", "records", "platform"})
+"""The families whose descriptors are registered in ``readers.JOBS``: all six. A family was added here when its own ``WANTED``
+and tests moved from "wanted" to "registered" (see the module docstring). No step became a job step: a person still runs the
+command and attests the result (the Work page shows it with Copy), so registering a descriptor only lets the engine recognize
+the job when a person queues it. The fourteen wanted jobs in ``UNDESCRIBED`` stay unregistered."""
 
 # A name two families want (the same command) is described once, under the family that wanted it first: ``conflict-leads`` is
 # the board's (the records family lists it too) and ``gmail-sync`` is the platform's (the property family lists it too). The

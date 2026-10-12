@@ -273,6 +273,12 @@ def test_wanted_is_what_the_whys_say_each_step_becomes():
             assert name not in CHECKS, f"{name} is registered now: use it"
         if kind == "job":
             assert name not in JOBS, f"{name} is registered now: use it"
+    # the jobs this family described are registered (jobs.READY) and so no longer wanted; the one left has no command
+    from jason.workflows import jobs
+
+    described = {d.name for d in jobs.DESCRIPTORS if d.family == "board"}
+    assert len(described) == 20 and described <= set(JOBS) and not described & {n.partition(":")[2] for n in board.WANTED}
+    assert [n for n in board.WANTED if n.startswith("job:")] == ["job:duties-score"] and "duties-score" in jobs.UNDESCRIBED
 
 
 def test_the_module_imports_only_the_engine_types_and_the_standard_library():

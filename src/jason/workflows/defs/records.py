@@ -48,14 +48,14 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Callable
 
-from jason.workflows.readers import named_check
+from jason.workflows.readers import JOBS, named_check
 from jason.workflows.types import (
     Choice, ClockBasis, ClockDef, DateSlot, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
 )
 
 FAMILY = "records"
 
-WANTED: tuple[str, ...] = (
+NAMED: tuple[str, ...] = (
     # reads (a ``check`` step once a read of this name is registered in ``readers.CHECKS``; the reads of
     # ``jason.workflows.checks.records`` are registered and are no longer listed)
     "check:designation-on-file", "check:document-kind-read", "check:parcel-strand-gaps", "check:quotes-verified",
@@ -69,8 +69,13 @@ WANTED: tuple[str, ...] = (
     # plans (a ``plan`` step once the approvals kind is registered)
     "plan:local.ingest.apply", "plan:local.living.reread",
 )
-"""Every read, job, and plan kind that a step of this family would use and that is not registered yet. Each is the name a
-``person`` step's ``why`` gives; a test keeps the two lists equal and keeps each name out of the registries."""
+"""Every read, job, and plan kind that a ``person`` step's ``why`` says it becomes (``becomes()`` accepts only these). A test
+keeps this list equal to the names the whys give."""
+
+WANTED: tuple[str, ...] = tuple(w for w in NAMED if not (w.startswith("job:") and w[4:] in JOBS))
+"""``NAMED`` less the jobs whose descriptor is registered (``jason.workflows.jobs``, ``jobs.READY``): what a step of this family
+would use and that is not registered yet. A registered job's step stays a person's (its ``why`` still names the job); what is
+left is the checks, the plan kinds, and the jobs that are not one jason command (``jobs.UNDESCRIBED``)."""
 
 M, S, A = Role.MANAGER, Role.SECRETARY, Role.ADMINISTRATOR
 ANY, JASON = Role.ANYONE, Role.JASON
@@ -82,10 +87,10 @@ ITEM = Repeat.PER_ITEM
 
 
 def becomes(kind: str, name: str) -> str:
-    """The sentence a person-run step carries about what it becomes. The name must be in ``WANTED``."""
+    """The sentence a person-run step carries about what it becomes. The name must be in ``NAMED``."""
     key = f"{kind}:{name}"
-    if key not in WANTED:
-        raise ValueError(f"{key} is not in WANTED")
+    if key not in NAMED:
+        raise ValueError(f"{key} is not in NAMED")
     article = {"check": "a check", "job": "a job", "plan": "a plan"}[kind]
     return (f"Becomes {article} step ({name}) when that {kind} is registered; until then a person runs the command shown "
             "and attests the result.")
@@ -610,5 +615,5 @@ BUILDERS: tuple[Callable[[], Workflow], ...] = (
 NOT_OFFERED: tuple[Callable[[], Workflow], ...] = ()
 """Nothing is left out any more (``records_production`` moved into ``BUILDERS`` as a held definition)."""
 
-__all__ = ["BUILDERS", "FAMILY", "NOT_OFFERED", "WANTED", "becomes", "careful_reading", "document_intake", "founding_documents",
+__all__ = ["BUILDERS", "FAMILY", "NAMED", "NOT_OFFERED", "WANTED", "becomes", "careful_reading", "document_intake", "founding_documents",
            "ingest", "key_document", "onboard", "parcel_title", "record_slot", "records_production", "split_document"]

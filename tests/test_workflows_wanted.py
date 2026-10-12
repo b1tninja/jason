@@ -66,11 +66,40 @@ def test_only_a_ready_familys_descriptors_are_registered_in_the_jobs_the_engine_
     ready = {d.name for d in jobs.registered()}
     assert ready == {d.name for d in jobs.DESCRIPTORS if d.family in jobs.READY} and ready
     assert ready <= set(JOBS)
+    assert {d.family for d in jobs.DESCRIPTORS} == set(jobs.READY) == set(wanted.FAMILIES)       # every family is promoted
     held_back = {d.name for d in jobs.DESCRIPTORS if d.family not in jobs.READY} - ready
-    assert held_back and not held_back & set(JOBS)
+    assert not held_back                                                 # nothing described is held back
     assert {"payhoa-form-test", "owner-info-send-plan", "owner-info-email-test", "notices-sync"} <= set(JOBS)   # the first four stay
     for name in ready:
         assert JOBS[name].first and JOBS[name].require[0] == JOBS[name].first
+    assert not set(jobs.UNDESCRIBED) & set(JOBS)                         # a job with no single command is never registered
+    assert len(jobs.UNDESCRIBED) == 14
+
+
+def test_a_registered_job_leaves_its_familys_wanted_and_what_is_left_is_the_undescribed():
+    left: dict[str, set[str]] = {}
+    for w in wanted.wants():
+        if w.kind == "job":
+            assert w.name not in JOBS, f"{w.family}: {w.name} is registered, so it is no longer wanted"
+            left.setdefault(w.family, set()).add(w.name)
+    assert left == {
+        "members": {"respond-standards", "letter-pdf-export"},
+        "board": {"duties-score"},
+        "money": {"bill-sources-read", "tax-documents-keep", "books-sync", "packet-build"},
+        "records": {"citations-scan", "library-drive-sync", "parcel-gap-lookup", "parcel-report", "recorder-reading",
+                    "record-read", "split-read-back"},
+    }                                                                   # property and platform want no job any more
+    assert set().union(*left.values()) == set(jobs.UNDESCRIBED)         # all fourteen, each with its reason
+    rows = wanted.report()
+    assert all(not r["waiting"] and not r["bare"] for r in rows.values())
+    assert {f: len(r["undescribed"]) for f, r in rows.items()} == {
+        "members": 2, "board": 1, "money": 4, "records": 7, "property": 0, "platform": 0}
+
+
+def test_the_jobs_of_the_other_families_are_registered_and_no_longer_wanted():
+    names = {f: {d.name for d in jobs.DESCRIPTORS if d.family == f} for f in ("members", "board", "money", "records", "platform")}
+    assert {f: len(n) for f, n in names.items()} == {"members": 7, "board": 20, "money": 5, "records": 22, "platform": 4}
+    assert all(n <= set(JOBS) for n in names.values())
 
 
 def test_the_property_jobs_are_registered_and_no_longer_wanted():
@@ -79,8 +108,29 @@ def test_the_property_jobs_are_registered_and_no_longer_wanted():
     assert {d.name for d in jobs.DESCRIPTORS if d.family == "property"} == {
         "life-safety-read-report", "life-safety-propose", "contract-terms", "paint-refresh", "vendor-portal-sync"}
     left = {w.split(":", 1)[1].split(" -- ")[0] for w in prop.WANTED if w.startswith("job:")}
-    assert left == {"gmail-sync"}                                       # the platform family describes it; it is not registered yet
-    assert not left & set(JOBS)
+    assert not left                                                     # gmail-sync is the platform family's, registered with it
+    assert "gmail-sync" in JOBS
+
+
+# --- what a descriptor can match -------------------------------------------------------------------------------------------
+
+WRITE_FLAGS = ("--yes", "--apply", "--confirm", "--send", "--cancel", "--add-version", "--add-manual", "--file-vendor",
+               "--replace", "--set-bearer", "--set-kind", "--create-sheet")
+"""Flags of a jason command that write what is not the job's own output (a store a person confirms, Drive, PayHOA, a log of a
+person's act). A line that carries one is another act, so a descriptor of a command that has it forbids it (or requires it)."""
+
+
+def test_a_descriptor_forbids_every_flag_of_its_command_that_makes_the_line_a_confirmed_write(commands):
+    for d in jobs.DESCRIPTORS:
+        for flag in WRITE_FLAGS:
+            if flag in commands[d.first]:
+                assert flag in d.forbid or flag in d.require, f"{d.name}: `jason {d.first} {flag}` would be read as this job"
+
+
+def test_a_registered_descriptor_names_no_association_street_unit_or_person():
+    text = " ".join(f"{d.name} {d.command} {' '.join(d.require)}" for d in jobs.DESCRIPTORS).lower()
+    for word in ("mystique", "sacramento", "placer", "smud", "payhoa key", "unit "):
+        assert word not in text, word
 
 
 def test_the_registry_modules_import_no_jason_module_and_register_no_approvals_kind():

@@ -122,8 +122,9 @@ def markdown(families: Iterable[str] = FAMILIES) -> str:
         "Generated from each family's `WANTED` against what is registered (`jason.workflows.jobs.wanted`; "
         "`tests/test_workflows_wanted.py` fails when this list drifts). A job is a **descriptor** of an existing jason command: a "
         "person runs the command, and the engine only recognizes the queued job by its words and reads how it ended. "
-        "`jobs.READY` names the families whose descriptors are registered in `readers.JOBS`; a family joins it in the change "
-        "that makes its steps job steps and updates its own tests (each family's test pins its wanted names as not yet registered). "
+        "`jobs.READY` names the families whose descriptors are registered in `readers.JOBS`; all six "
+        "are in it now, so each family's `WANTED` lists only the jobs with no single command (a registered job's step stays a person's: "
+        "the Work page shows the command with Copy, and the engine only recognizes the job when a person queues it). "
         "No approvals kind is added here: that is the board's call, so the kinds are only listed.",
         "",
         "| Family | Jobs wanted | Registered | Descriptor written, family not ready | No single command | Neither descriptor nor reason | Plan kinds and cases wanted (unmet) |",

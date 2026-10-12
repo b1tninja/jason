@@ -49,12 +49,9 @@ EACH = Repeat.PER_ITEM
 
 WANTED: tuple[str, ...] = (
     # reads that would be `check` steps (names to add to readers.CHECKS): all built (jason.workflows.checks.board)
-    # jobs (names to add to readers.JOBS)
-    "job:meetings-sync", "job:board-reports-refresh", "job:board-packet-build", "job:board-notice-draw",
-    "job:minutes-draft", "job:rule-change-timeline", "job:law-export", "job:law-versions", "job:outlines-fetch",
-    "job:conflict-leads", "job:law-sweep", "job:cite-survey", "job:section-refs-scan", "job:schedule-read-google",
-    "job:schedule-evidence", "job:duties-read", "job:duties-fill-bearers", "job:duties-score", "job:manual-classify",
-    "job:manual-render", "job:revisions-fetch",
+    # jobs (names to add to readers.JOBS): the twenty with a descriptor are registered (jason.workflows.jobs, jobs.READY), and
+    # their steps stay a person's; what is left has no single jason command (jobs.UNDESCRIBED)
+    "job:duties-score",
     # approvals kinds and cases (to register)
     "kind:google.doc", "kind:google.calendar+google.tasks", "kind:zoom.hearing.create", "kind:local.section-refs.apply",
     "case:gmail-drafts/rule-change-proposed", "case:gmail-drafts/rule-change-adopted",

@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Mapping
 
-from jason.workflows.readers import named_check
+from jason.workflows.readers import JOBS, named_check
 from jason.workflows.types import (
     Check, Choice, ClockBasis, ClockDef, DateSlot, Guides, Phase, Reminds, Repeat, Role, SkipRule, StepDef, StepKind, Support, Workflow,
 )
@@ -497,8 +497,11 @@ def _becomes() -> Mapping[str, str]:
 BECOMES: Mapping[str, str] = _becomes()
 """{step id: the read, job, or approvals kind it waits for}, as "check NAME", "job NAME", "kind NAME", or "case NAME"."""
 
-WANTED: tuple[str, ...] = tuple(dict.fromkeys(BECOMES.values()))
-"""The reads, jobs, and approvals kinds these definitions wait for, once each, in the order the steps need them."""
+WANTED: tuple[str, ...] = tuple(dict.fromkeys(
+    v for v in BECOMES.values() if not (v.startswith("job ") and v.split()[1] in JOBS)))
+"""The reads, jobs, and approvals kinds these definitions wait for, once each, in the order the steps need them. A job whose
+descriptor is registered (``jason.workflows.jobs``, ``jobs.READY``) is no longer wanted; its step stays a person's, and the
+step's ``BECOMES`` entry still names it. What stays: the two jobs with no single command (``jobs.UNDESCRIBED``) and the kinds."""
 
 
 __all__ = ["BECOMES", "BUILDERS", "FAMILY", "WANTED", "form_campaign", "form_library_review", "mailroom_letter", "notice_delivery",

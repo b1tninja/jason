@@ -85,8 +85,8 @@ WANTED: tuple[str, ...] = (
     "check:improvement-findings-conflicts -- the four findings of the unit's manual the stores cannot answer yet: entry with no approval, records that show work with none, entry that differs, condition open (needs the request store and the change rules; improvement-request findings)",
     "check:program-standing-catalog -- a maintenance program's document and adoption (needs the program catalog, docs/programs.md; maintenance-program standing)",
     "check:deliverable-on-file -- whether each deliverable the contract names is on file (needs a link from a deliverable to a document; contract-notice-window owed)",
-    # jobs (readers.JOBS)
-    "job:gmail-sync -- jason gmail --sync, the arrival of a servicer's, supplier's, or counterparty's mail (every wait)",
+    # jobs (readers.JOBS): none wanted; the five property descriptors and the platform family's `gmail-sync` (the arrival of
+    # a servicer's, supplier's, or counterparty's mail, on every wait) are registered in jason.workflows.jobs
     # plan kinds (the approvals registry)
     "plan:gmail-drafts/insurer-notice -- a draft notice to the insurer or agent (deficiency tell-insurer)",
     "plan:gmail-drafts/vendor-question -- a draft question to a vendor (maintenance-program ask, backflow-annual ask-program)",

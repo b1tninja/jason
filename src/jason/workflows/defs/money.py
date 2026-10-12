@@ -98,23 +98,21 @@ WANTED: tuple[str, ...] = (
     "check reserve-two-signatures: the bank's record of two signatures (not read by jason)",
     "check tax-mailed-bill: tax_bill_checks, a mailed bill's amounts against the stored bill (not built: the reader opens "
     "TaxStore, whose constructor creates tables)",
-    # --- jobs (readers.JOBS): a command a worker runs, found in the queue by its arguments
-    "job bill-snapshot-fetch: jason invoices --fetch (a PayHOA read, no write)",
+    # --- jobs (readers.JOBS): a command a worker runs, found in the queue by its arguments. The five with a single command
+    # (bill-snapshot-fetch, bill-dry-run, invoice-review-read, packet-plan, tax-catalog-sync) are registered as descriptors
+    # (jason.workflows.jobs, jobs.READY) and are no longer wanted; their steps stay a person's. These four have no single one.
     "job bill-sources-read: jason fetch-bills; jason sync-tax; jason vendors --sync, per source",
-    "job bill-dry-run: jason sync-bills --dry-run (reads PayHOA, uploads nothing); then --source SRC after a bill is kept",
-    "job invoice-review-read: jason invoices after the plan",
     "job tax-documents-keep: jason county-tax --import-receipts / --import-bill (signed, append only)",
     "job books-sync: jason books --sync; jason budget; jason reconcile --fetch; jason ledger --fetch, per source",
-    "job packet-plan: jason packet annual-disclosures --year Y (plan and gaps), then --values",
     "job packet-build: --build --yes; jason segments; jason preflight; jason review annual-disclosures",
-    "job tax-catalog-sync: jason sync-tax, per parcel",
     # --- plans (the approvals registry)
     "plan annual-packet-docs: --make-templates --yes and --build --draft --yes (Docs and a draft PDF)",
 )
 """What the page's ``check``, ``job``, and ``plan`` rows would register to become engine steps, each with what it reads.
-Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here (a test keeps the two in step). The twenty-seven reads the
-stores on disk already answer are built (``jason.workflows.checks.money``) and are no longer wanted; the checks left are
-the ones no store answers safely (each entry says why). This family adds nothing to ``readers.JOBS``."""
+Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here unless it is a job whose descriptor is registered (a test
+keeps the two in step). The twenty-seven reads the stores on disk already answer are built (``jason.workflows.checks.money``) and
+are no longer wanted; the checks left are the ones no store answers safely (each entry says why). The jobs left are the four
+that are not one jason command (``jobs.UNDESCRIBED``). This module adds nothing to ``readers.JOBS``: the registry does."""
 
 
 # --- a table of rows, assembled into a definition ---------------------------------------------------------------------
