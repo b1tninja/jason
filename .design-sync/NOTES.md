@@ -264,3 +264,39 @@ Repo-specific gotchas for syncing `ui/src/components` to Claude Design. Read bef
   `handoff-mail-and-payment-attachments` were added to `guidelinesGlob`), then the sentinel and `_ds_sync.json` last. The working tree had no
   unfinished `ui/src` work (only a blank line in `styles.css`), so nothing was held back. Validate warnings were the two known ones
   (`HostPanel` GRID_OVERFLOW, `RemoteView` RENDER_ERRORS); `CitationChip` is no longer thin. The conventions header still verifies against the build.
+
+## The work, controls, and office components (sync of 2026-10-12)
+
+- **Combined stylesheet.** Components added after the console handoff import their own rules (`ui/src/styles/*.css`:
+  plan-progress, work*, controls, office-views, flagged, rule-change). The library build emits those into
+  `ui/dist-lib/index.css`, which the converter never ships, so cells rendered structurally but unstyled. `cfg.cssEntry`
+  is now `dist-lib/design-sync.css`, written by `.design-sync/css-entry.mjs` (global `src/styles.css` first, then
+  `dist-lib/index.css`); `cfg.buildCmd` runs it after `build:lib`. Run the build command before the driver. A new
+  `styles/*.css` file needs no config change. Check `grep -c <class> ds-bundle/_ds_bundle.css` before authoring.
+- **Authoring on Windows.** `export TEMP=D:/temp TMP=D:/temp`; use the Write tool for a preview (a Git Bash heredoc
+  mangles a multi-quote `.tsx`). Cells are captured in a tall fixed-height frame, so a short component shows blank space
+  below it (not an error). `Approval` and `PlanItem` import from `jason-ui`; `KindFacts`, `ApplyHold`, `LawWords` are
+  inline objects.
+- **Statute-like text in previews is plainly fake** (`EX 123.4`, "Sample text, not a statute"). `Recitation` appends its
+  own period to a `missing` string, so do not end it with one.
+- **Re-sync risks.** The build reads the working tree, including uncommitted CSS from other sessions; sync from a clean
+  checkout when a tidy upload matters. The generated README is over the app's 32,000-character inline window, so the end of
+  the component index is cut (the conventions header survives).
+- **Office previews pin the date.** `DueDate` takes `today`, but `OfficeRowItem` reads the real date; the Office previews
+  replace `globalThis.Date` with a subclass pinned to 2099-10-09 so "in 14d" is stable. `OfficeToday` reads its lens from
+  `window.location.hash` (shared by every cell on a card), so it has one cell and stubs `/api/office-view` at module scope.
+  `OfficeRow`/`OfficeViewData` types are not exported from `jason-ui`: previews use inline objects. `FlaggedItem`'s
+  disclosure is closed by default; a small wrapper opens it on mount. `OfficeBanner` renders nothing on the viewer's own
+  lens, so every cell reads another office. `ControlNoticeFor` needs a fetch stub for `/api/control-notices?subject=`;
+  `ui/src/lib/controls.fixtures.ts` and `ui/src/lib/work.fixtures.ts` hold made-up data covering most shapes.
+- **Known defects seen while authoring** (UI fixes queued, not preview issues): ChangedSince's "Go to the step" button
+  renders as plain text; PlanProgress `Applied` says "the result is below" with nothing below in a cell; ClockStrip shows
+  "7d overdue" and "overdue" side by side; FlaggedItem's disabled action buttons look live; OfficeBanner's Back button
+  wraps under the text at 820px.
+- **Column cards draw each cell at its viewport, then scale the sheet** (about 0.39 at 1000x1400), so anything taller than the
+  viewport is clipped: `ControlCard` (six bands, ~1900px) is 1000x2400, `StartRun` and `RunStepPanel` 1000x1400. A full
+  `RunStepPanel` guide is ~1700px, so its cells are split (GuidedYourMove / GuidedRuleAndCommands).
+- **Driving stateful cells.** A cell that needs typed input or an opened disclosure does it on mount (`StartRun`
+  Checked*, `SupplyItems` Checked*, `WorkflowRail` CompactOpen, `FlaggedItem`'s wrapper) with a module-scope fetch stub.
+  `package-capture` carries a fully graded component forward even when its stylesheet shipped later: recapture with
+  `--force --components Name`. `ControlProposeConfirm` cells sit in `className="control-propose-bar"` or the button stretches.

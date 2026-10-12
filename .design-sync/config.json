@@ -3,9 +3,9 @@
   "shape": "package",
   "pkg": "jason-ui",
   "globalName": "JasonUI",
-  "buildCmd": "npm run build:lib",
+  "buildCmd": "npm run build:lib && node ../.design-sync/css-entry.mjs",
   "srcDir": "src/components",
-  "cssEntry": "src/styles.css",
+  "cssEntry": "dist-lib/design-sync.css",
   "componentSrcMap": {
     "RemoteView": "src/components/Remote.tsx",
     "Loading": "src/components/States.tsx",
@@ -39,7 +39,8 @@
       "viewport": "1000x1400"
     },
     "HostPanel": {
-      "cardMode": "column",
+      "cardMode": "single",
+      "primaryStory": "Agenda",
       "viewport": "1000x1100"
     },
     "BoardFields": {
@@ -149,6 +150,38 @@
     "IngestCitations": {
       "cardMode": "column",
       "viewport": "1100x1400"
+    },
+    "OfficeBands": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "OfficeToday": {
+      "cardMode": "column",
+      "viewport": "1000x1500"
+    },
+    "RunStepPanel": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "WorkflowRail": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "ControlCard": {
+      "cardMode": "column",
+      "viewport": "1000x2400"
+    },
+    "StartRun": {
+      "cardMode": "column",
+      "viewport": "1000x1400"
+    },
+    "RunRow": {
+      "cardMode": "column",
+      "viewport": "1000x900"
+    },
+    "ApproveBar": {
+      "cardMode": "column",
+      "viewport": "1000x700"
     }
   },
   "readmeHeader": ".design-sync/conventions.md",
