@@ -34,7 +34,8 @@ from typing import Any, Callable, NamedTuple
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
+    Check, Choice, ClockBasis, ClockDef, Cmd, DateSlot, Elapsed, Guides, Phase, Reminds, Repeat, Role, SkipRule, StepDef, StepKind,
+    Support, Visibility, Workflow,
 )
 
 COMPUTED = "computed by jason from the statute's day-count, the earliest day"
@@ -194,7 +195,18 @@ def _bill_attach_rows() -> tuple[_Row, ...]:
         _row("dry", "Dry-run the attach", P, M, "srcs", command="jason sync-bills --dry-run", evidence=("file:bills/last-dry-run.json",),
              record="the dry run is current with the snapshot", clock=_policy("a plan expires after 6 hours: the kind's max_age_hours"),
              why="Reads PayHOA and uploads nothing; each row is matched, ambiguous, or no match, with which date matched. A same-amount "
-                 "match is a lead until a person attaches it." + _job("bill-dry-run")),
+                 "match is a lead until a person attaches it." + _job("bill-dry-run"),
+             support=Support(
+                 reminds=Reminds(after_hours=72),
+                 guides=Guides(
+                     instruction="Run the dry run of the attach and read what it would do, row by row. It uploads nothing.",
+                     checklist=(Check("The dry run is newer than the payment snapshot"),
+                                Check("Each row is matched, ambiguous, or no match, with the date that matched"),
+                                Check("A match on the amount alone is treated as a lead, not as the bill", required=True)),
+                     commands=(Cmd("jason sync-bills --dry-run"),),
+                     done_when="The dry run is current with the snapshot, and every row in it is explained.",
+                     blocked="If the dry run will not run or does not match the snapshot, add a note naming what it said and who can fix it.",
+                     ask=(Role.MANAGER, Role.TREASURER)))),
         _row("plan", "Plan the attaches", PL, TR, "dry", plan_kind=ATTACH, command="jason approvals plan payhoa-attach-bills --by NAME",
              clock=_policy("a plan's max age is 6 hours: the kind's max_age_hours"),
              why="One item a matched row; the applier re-reads each transaction and bill. A rejected or held item is recorded, not "

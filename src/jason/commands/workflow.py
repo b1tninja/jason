@@ -18,6 +18,14 @@ A workflow is a registered definition (``jason.workflows.definitions``); a run i
   never a name or an address (the engine refuses one in its own words). Without ``--yes`` it checks everything and prints what
   would be recorded; nothing is written. The person must be on the roster. ``--item-date`` gives one item the date a slot reads
   for its own clocks (needs ``--record``; a later supply of the same id corrects it).
+- ``--guide RUN[:STEP]`` (or ``DEFINITION.STEP`` for the definition's words alone) prints the step panel's sections as plain text
+  (docs/workflows/person-steps.md, section 7.4): the enable state (with ``--for NAME``), the due line, Do this, Look at, The rule (the
+  statute's words from the stored copy, then the reading, labeled), Check before you go on, The command, Done when, If you are blocked,
+  If it does not apply, Ask, Learn more. Reads only; it never opens a run.
+- ``--due --for NAME [--within DAYS] [--all]`` lists the person steps due, late, or open a while for a person (their offices from the
+  roster), most urgent first, and what is escalated to their office (visibility only). Reads only; nothing is sent to anyone.
+- ``--claim RUN STEP --by NAME [--release] --yes`` says you are on a step (or lets it go): a note, not an assignment. Without ``--yes`` it
+  checks everything and writes nothing.
 
 Whether a name holds the role a step needs is read from the community's officers (``jason.access.community_officers``,
 which adds the portfolio's managers) and jason's administrators. A profile that names none leaves every role-gated act
@@ -39,8 +47,8 @@ import sys
 from datetime import date
 from typing import Any, Callable, Iterable
 
-WRITES = ("start", "open", "attest", "arrived", "skip", "na", "set_date", "supply", "pause", "resume", "reopen", "note", "cancel")
-ACTS = ("list", "definitions", "show", "verify", "reindex", "from_sop") + WRITES
+WRITES = ("start", "open", "attest", "arrived", "skip", "na", "set_date", "supply", "claim", "pause", "resume", "reopen", "note", "cancel")
+ACTS = ("list", "definitions", "show", "verify", "reindex", "from_sop", "guide", "due") + WRITES
 
 
 def _refuse(reason: str) -> int:
@@ -319,6 +327,10 @@ def cmd_workflow(args: argparse.Namespace) -> int:
         out: dict[str, Any]
         if act == "list":
             return _list(args, api, definitions, root)
+        if act == "guide":
+            return _guide(args, root, today, readers)
+        if act == "due":
+            return _due(args, root, today, readers)
         if act == "show":
             out = api.show(root, args.show, today=today, readers=readers, events=args.events)
             print(_dump(out) if args.json else "\n".join(show_lines(out, events=args.events)))
@@ -372,6 +384,8 @@ def cmd_workflow(args: argparse.Namespace) -> int:
                                readers=readers, expect=expect, today=today)
         elif act == "supply":
             return _supply(args, api, root, roster, by, readers, today)
+        elif act == "claim":
+            return _claim(args, api, root, roster, by, readers, today)
         elif act == "reopen":
             run, step = args.reopen
             out = api.reopen(root, run, step, by, roles_of=roles_of, reason=args.reason or "", item=item, readers=readers, expect=expect, today=today)
@@ -466,6 +480,135 @@ def _supply(args: argparse.Namespace, api: Any, root: Any, roster: Roster | None
     event = out["event"]
     print(_dump(out) if args.json else "\n".join(
         [_summary_line(out, f"{(event.get('detail') or {}).get('text', 'items supplied')} by {by}"), _event_line(event)]))
+    return 0
+
+
+def _claim(args: argparse.Namespace, api: Any, root: Any, roster: Roster | None, by: str, readers: Any, today: date | None) -> int:
+    """``--claim RUN STEP --by NAME [--release] --yes``: a note that says you are on a step. Without ``--yes`` the same checks run and
+    nothing is written. The person must be on the roster."""
+    if not (roster and roster.roles_of(by)):
+        return _refuse(f"{by} is not on the roster (the community's officers and jason's administrators), so no claim is made in that name"
+                       + (f" ({roster.note()})" if roster is not None and not roster else ""))
+    run, step = args.claim
+    kw = dict(roles_of=roster.roles_of, release=bool(args.release), readers=readers, expect=args.expect, today=today)
+    if not args.yes:
+        out = api.claim(root, run, step, by, dry_run=True, **kw)
+        print(_dump(out) if args.json else f"{run}: would record that {out['text']} on {step}; nothing is written without --yes")
+        return 0
+    out = api.claim(root, run, step, by, **kw)
+    event = out["event"]
+    print(_dump(out) if args.json else "\n".join(
+        [_summary_line(out, f"{by} {event['detail'].get('text', 'claimed')} {step}"), _event_line(event)]))
+    return 0
+
+
+def _community_or_none() -> Any:
+    try:
+        from jason.community import community
+
+        return community()
+    except Exception:  # noqa: BLE001 - no community chosen: the general procedures only
+        return None
+
+
+def _holders() -> Any:
+    """The roster by office (the community's officers and jason's administrators); a roster that cannot be read is an unknown one."""
+    from jason.tasks.step_guide import Holders
+
+    try:
+        officers = _officers()
+    except Exception:  # noqa: BLE001
+        officers = ()
+    try:
+        admins = _admins()
+    except Exception:  # noqa: BLE001
+        admins = ()
+    return Holders.from_officers(officers, admins)
+
+
+def _first_by(events: list[Any], step_id: str) -> str:
+    from jason.workflows import api
+
+    return api.pending_first(events, step_id, "attest")
+
+
+def _guide(args: argparse.Namespace, root: Any, today: date | None, readers: Any) -> int:
+    """``--guide RUN[:STEP]`` or ``--guide DEFINITION.STEP``: the step panel's sections as plain text, in the panel's order."""
+    from jason.tasks import step_guide
+    from jason.workflows import definitions, nudge, store
+
+    day = today or date.today()
+    target = (args.guide or "").strip()
+    run_id, _, step_id = target.partition(":")
+    community = _community_or_none()
+    holders = _holders()
+    person = (getattr(args, "for_person", "") or getattr(args, "by", "") or "").strip()
+    who = step_guide.Person(person, holders.roles_of(person)) if person else None
+    view = sv = None
+    events: list[Any] = []
+    try:
+        definition = store.locate(root, run_id)
+    except store.NoSuchRun:
+        definition = ""
+    if definition:
+        wf = definitions.get(definition)
+        events, view = step_guide.folded(root, wf, run_id, day, readers)
+        people = [s for s in wf.steps if nudge.is_person_step(s)]
+        step_id = step_id or (view.current if wf.step(view.current) is not None and nudge.is_person_step(wf.step(view.current))
+                              else (people[0].id if people else ""))
+        if wf.step(step_id) is None:
+            return _refuse(f"no step {step_id!r} in {wf.key}: " + ", ".join(s.id for s in people))
+    else:
+        wf = next((w for w in definitions.all_definitions() if w.step(target)), None)
+        if wf is None:
+            return _refuse(f"{target!r} is neither a run (jason workflow --list) nor a step of a definition (jason workflow --definitions)")
+        step_id = target
+    sd = wf.step(step_id)
+    if not nudge.is_person_step(sd):
+        return _refuse(f"{sd.id} is a {sd.kind.value} step: jason's, not a person's, so it has no guide "
+                       "(a guide is for a person step, a decision, or a wait only a note ends)")
+    proc = None
+    if wf.procedure:
+        try:
+            from jason.community.procedures import find
+
+            proc = find(wf.procedure, community)
+        except Exception:  # noqa: BLE001 - no procedure is no derived text
+            proc = None
+    position = next(i for i, s in enumerate(wf.steps, 1) if s.id == sd.id)
+    backup = getattr(community, "backup_for", None)
+    enable = nud = None
+    if view is not None:
+        sv = view.step(sd.id)
+        offices = {r.value for r in sd.acting_roles if r.value not in ("anyone", "jason", "scheduler")}
+        n = nudge.step_nudge(wf, sd, view, day, vacant=holders.vacant(offices), claims=nudge.claims_of(events))
+        nud = step_guide.nudge_dict(n, who_account=person)
+        if who is not None:
+            enable = step_guide.enable_dict(wf, sd, sv, view, who, holders, procedure=proc, first_by=_first_by(events, sd.id),
+                                            backup_for=backup)
+    guide = step_guide.guide_dict(root, wf, sd, view, sv, day=day, readers=readers, roster=holders, who=who, name=person,
+                                  run_id=run_id if definition else "", community=community, procedure=proc, backup_for=backup)
+    if args.json:
+        print(_dump({"definition": wf.key, "run": run_id if definition else "", "step": sd.id, "n": position, "title": sd.title,
+                     "enable": enable, "nudge": nud, "guide": guide}))
+        return 0
+    lines = step_guide.text_lines(sd.title, position, len(wf.steps), guide, enable, nud)
+    if who is None and view is not None:
+        lines.insert(1, "  (name a person with --for NAME to see whether they can act on it now)")
+    print("\n".join(lines))
+    return 0
+
+
+def _due(args: argparse.Namespace, root: Any, today: date | None, readers: Any) -> int:
+    """``--due --for NAME``: the lines for a person (``jason.tasks.step_guide.due_report``). Reads only."""
+    from jason.tasks import step_guide
+
+    person = (getattr(args, "for_person", "") or getattr(args, "by", "") or "").strip()
+    if not person:
+        return _refuse("--due is for a person: give --for NAME (their offices come from the roster)")
+    report = step_guide.due_report(root, today or date.today(), person=person, holders=_holders(), readers=readers,
+                                   within=args.within, everything=bool(args.all_steps))
+    print(_dump(report) if args.json else "\n".join(step_guide.due_lines(report)))
     return 0
 
 
@@ -566,6 +709,20 @@ def register(sub: Any, add_common: Callable[[Any], None], agent_factory: Callabl
                    help="with --supply: the item set (omit for the run's own items)")
     p.add_argument("--item-date", dest="item_date", action="append", nargs=2, metavar=("ITEM", "SLOT=YYYY-MM-DD"),
                    help="with --supply: the day a date slot reads for this item's own clocks (needs --record; repeat)")
+    p.add_argument("--guide", metavar="RUN[:STEP]",
+                   help="print a person step's guide as plain text: do this, look at, the rule, the checklist, the command, done when, "
+                        "if blocked, if it does not apply, ask, learn more (RUN:STEP, a run alone for its current step, or "
+                        "DEFINITION.STEP for the definition's words; with --for NAME for whether they can act now). Reads only")
+    p.add_argument("--due", action="store_true",
+                   help="list the person steps due, late, or open a while for --for NAME, and what is escalated to their office. "
+                        "Reads only; nothing is sent")
+    p.add_argument("--for", dest="for_person", metavar="NAME", help="with --due or --guide: the person (their offices come from the roster)")
+    p.add_argument("--within", type=int, metavar="DAYS", help="with --due: keep a due-soon or open line only if its date is within this many days")
+    p.add_argument("--all", dest="all_steps", action="store_true", help="with --due: also the person's open steps that are quiet")
+    p.add_argument("--claim", nargs=2, metavar=("RUN", "STEP"),
+                   help="say you are on a step (with --by, --yes): a note on the step, not an assignment; without --yes it checks and "
+                        "writes nothing")
+    p.add_argument("--release", action="store_true", help="with --claim: let the step go (only the person who claimed it)")
     p.add_argument("--reopen", nargs=2, metavar=("RUN", "STEP"), help="open a done, skipped, or failed step again (with --reason, --by)")
     p.add_argument("--pause", metavar="RUN", help="pause a run (with --reason, --by)")
     p.add_argument("--resume", metavar="RUN", help="lift a pause (with --by)")

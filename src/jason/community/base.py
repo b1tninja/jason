@@ -1026,6 +1026,12 @@ class Community(ABC):
         A person who holds two offices is two rows (``offices_of``)."""
         return ()
 
+    def backup_for(self, office: str) -> str:
+        """The office that stands in for ``office`` when its holder is away or it is vacant (the words of an ``OfficerRole``: "president"),
+        as the board adopted it; "" when it names none. A cover reads a step and asks about it and gains no authority
+        (docs/workflows/person-steps.md, section 5.5); until the board adopts a table, the step panel shows a proposed one, labeled so."""
+        return ""
+
     def document_approvers(self) -> tuple[DocumentApprover, ...]:
         """Who approves each kind of draft jason writes for a person to post or send (``DocumentApprover``). Empty until
         the specification names them: such a draft is then written, and its approval is never requested."""

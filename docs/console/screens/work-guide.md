@@ -1,6 +1,6 @@
 # Work: the step guide (enable, remind, guide)
 
-The step panel of the run page, extended · `#/work/<definition>/<id>` · phase 2, after the Work screens · CLI: `jason workflow --guide`, `--due`, `--snooze`, `--claim`, `--away` · model: [../../workflows/person-steps.md](../../workflows/person-steps.md) · every person step: [../../workflows/person-steps-inventory.md](../../workflows/person-steps-inventory.md)
+The step panel of the run page, extended · `#/work/<definition>/<id>` · phase 2, after the Work screens; **the panel's guide, enable strip, and nudge line are built** (see "As built, phase 1" below), the away dialog and the list marks are not · CLI: `jason workflow --guide`, `--due`, `--snooze`, `--claim`, `--away` · model: [../../workflows/person-steps.md](../../workflows/person-steps.md) · every person step: [../../workflows/person-steps-inventory.md](../../workflows/person-steps-inventory.md)
 
 The design brief for the design agent is [../design-brief-person-steps.md](../design-brief-person-steps.md).
 
@@ -165,7 +165,7 @@ A step with no `Support` still shows: the enable strip (always derivable), the n
 
 ## Components
 
-Built: `RunStepPanel`, `WorkflowRail`, `RunRow`, `Command`, `Confirm`, `Doc`, `DueDate`, `Recitation`, `ReadingLabel`, `Pill`, `Glyph`, `StepStateWord`, `BasisPill`, `ControlStepNotice`, `OfficeLens`. Specified, not yet built: `TerminalStep`, `AgeStamp`. To add:
+Built: `RunStepPanel`, `WorkflowRail`, `RunRow`, `Command`, `Confirm`, `Doc`, `DueDate`, `Recitation`, `ReadingLabel`, `Pill`, `Glyph`, `StepStateWord`, `BasisPill`, `ControlStepNotice`, `OfficeLens`. Specified, not yet built: `TerminalStep`, `AgeStamp`. **Built in phase 1** (all in `ui/src/components/StepGuide.tsx`, styled in `ui/src/styles/work-guide.css`): `StepEnable` (as `StepEnableStrip`), `StepNudge` (as `StepNudgeLine`), `GuideSection`, `LookAtList`, `RuleBlock`, `GuideChecklist` (with `useChecklist`), `CommandList`, `AskOffices`, `NudgeWord`, and `ClaimButton`. **Not built:** `AwayDialog`, `AwayBanner`, `DueList`. The table lists the whole set:
 
 | Component | What it is | States |
 |---|---|---|
@@ -284,6 +284,16 @@ Use exactly. Placeholders in capitals are filled by the page.
 19. Every control is reachable by keyboard; every state is a word and a glyph; focus moves to the confirmation after an act; reduced motion stops the spinner.
 20. A step with no `Support` renders the derived minimum with no apology, and the definition page lists the gap for an administrator.
 21. The page and its loaders make no call to PayHOA, Google, Zoom, or a mail service; a test with those clients patched to raise passes.
+
+## As built, phase 1
+
+Built: the three objects on each person step of `GET /api/work-run` (`enable`, `nudge`, `guide`; person, decision, and note-ended wait steps only; a held run outside the private view carries none), the panel in the order of the layout above, the fixed words of "Copy: fixed words" for the strip's states and the nudge line, the claim (`POST /api/write/work/<definition>/<id>` with `{act: "claim", step, release?}`; "I'm on it" and "Release"), and the definition page's guidance coverage in words (`guidance` on each step of `GET /api/work-definitions?key=`). Acceptance criteria 1 to 3, 6 to 11, 16 (the panel and the loader; `--due` too), 17, 19 (in part), 20, and 21 hold in the code and are tested. Behaviour the build chose:
+
+- **A required checklist item** is ticked in the page each time the panel opens (it is a check made before Mark done, never kept); an unrequired tick is kept in this browser, wrapped in a try for storage that is not there. While a required item is open the Mark done control is disabled and the panel says how many are left. The attestation's `what` reads "STEP TITLE; checked: N of N required".
+- **A terminal-only step** says "A person does this at a terminal." and still shows Mark done with its required record, since the page cannot know the record exists.
+- **A step that is done, skipped, or superseded** opens with Do this only; the other sections are collapsed to their headings.
+- **A long recited section** scrolls inside its own bordered region (keyboard focusable), not clamped; the whole text is in the region.
+- **The lists** (Work, Today, the office bands), the digest section, snooze, the blocked note, the away dialog and cover, and the `work-due` loader are not built: they are phase 2. The CLI has `jason workflow --due --for NAME` meanwhile.
 
 ## Decisions for the user
 

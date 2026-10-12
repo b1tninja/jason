@@ -10,7 +10,11 @@ legal step (a law clock, or ``legal=True``) with a skip rule; a ``plan`` step wh
 does not resolve; a step whose ``roles`` are not distinct ``Role`` values (the primary ``role`` is not repeated among them);
 a ``na`` (not-applicable outcome) on a branch or with bad roles (a legal step may carry one though it has no skip rule); a
 ``waits_on_child`` with no ``spawns``; a date slot that repeats, or has a bad timing or roles; a held definition with no ``held_title`` (or one with a digit or ``@``
-in it, or on a definition that is not held); a ``public_title`` step on a definition that is not held. Round three adds: a
+in it, or on a definition that is not held); a ``public_title`` step on a definition that is not held. A step's ``Support`` (``jason.workflows.guide.problems``) is refused for a
+step that is not a person, a decision, or a wait only a note ends; for guidance that carries a section number, a link, an address, a
+phone number, or an amount; for a cite the shelf does not resolve, a lesson or a guide read that does not exist, a placeholder that is
+not NAME, KEY, RUN, or ID, an ``ask`` or ``escalate_to`` that is not an office, a ``Reminds`` below its floor, a snoozable or
+slow-to-escalate legal step, and more than eight checklist items or three look-at reads. Round three adds: a
 ``remedy_of`` that is not a check among the step's ``needs``; a step with an item set or per-item ``needs`` that does not repeat,
 ``item_needs`` that are not ``needs`` or do not repeat over the same set, a per-item branch whose path steps do not; a per-item
 clock on a step that does not repeat (or on the whole run); an ``ends_by_note`` that is not a wait, names a check, or lets a date
@@ -25,6 +29,7 @@ from __future__ import annotations
 import re
 from typing import Callable, Collection, Iterable
 
+from jason.workflows import guide
 from jason.workflows.types import (
     ClockBasis, DateTiming, Elapsed, InvalidWorkflow, Problem, Repeat, Role, StepKind, Visibility, Workflow, parse_sop,
 )
@@ -48,10 +53,13 @@ def default_plan_kinds() -> frozenset[str] | None:
 
 
 def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, jobs: Collection[str] | None = None,
-             workflows: Collection[str] | None = None, resolve_law: LawResolver | None = None) -> list[Problem]:
+             workflows: Collection[str] | None = None, resolve_law: LawResolver | None = None,
+             reads: Collection[str] | None = None, lessons: Collection[str] | None = None,
+             integrations: Collection[str] | None = None) -> list[Problem]:
     """The problems with a definition; none means it may register. ``plan_kinds`` defaults to the approvals registry,
     ``jobs`` and ``workflows`` are skipped when not given, and ``resolve_law`` (a function from a cite to true, false, or
-    ``None`` for "cannot tell") is skipped when not given."""
+    ``None`` for "cannot tell") is skipped when not given. ``reads`` (the registered guide reads), ``lessons`` (the lesson
+    keys), and ``integrations`` (the integration keys) check a step's ``Support`` and are skipped when not given."""
     out: list[Problem] = []
     key = workflow.key
 
@@ -112,6 +120,9 @@ def validate(workflow: Workflow, *, plan_kinds: Collection[str] | None = None, j
                     bad(s.id, "choice", f"path {choice.key} names {sid}, which is not a step")
         if s.kind is StepKind.BRANCH and not s.choices:
             bad(s.id, "choice", "a branch step defines its paths")
+        for code, message in guide.problems(s, workflow, resolve_law=resolve_law, reads=reads, lessons=lessons,
+                                            integrations=integrations):
+            bad(s.id, code, message)
     for i, c in enumerate(workflow.clocks):
         _clock(f"{key} clock {i}", c, slots, resolve_law, bad)
     for ph in workflow.phases:
@@ -295,11 +306,13 @@ _providers: list[tuple[Callable[[], Iterable[Workflow]], dict]] = []
 
 def register(workflow: Workflow, *, check: bool = True, plan_kinds: Collection[str] | None = None,
              jobs: Collection[str] | None = None, workflows: Collection[str] | None = None,
-             resolve_law: LawResolver | None = None) -> Workflow:
+             resolve_law: LawResolver | None = None, reads: Collection[str] | None = None,
+             lessons: Collection[str] | None = None, integrations: Collection[str] | None = None) -> Workflow:
     """Add a definition. A definition with problems raises ``InvalidWorkflow`` naming each row, and is not added. A key
     already taken is replaced (a community overrides a general row)."""
     if check:
-        problems = validate(workflow, plan_kinds=plan_kinds, jobs=jobs, workflows=workflows, resolve_law=resolve_law)
+        problems = validate(workflow, plan_kinds=plan_kinds, jobs=jobs, workflows=workflows, resolve_law=resolve_law,
+                            reads=reads, lessons=lessons, integrations=integrations)
         if problems:
             raise InvalidWorkflow(problems)
     _registered[workflow.key] = workflow

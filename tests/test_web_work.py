@@ -905,3 +905,180 @@ def test_a_run_with_no_item_rules_has_none_of_the_new_fields(app, world):
     got = page(app, MANAGER, rid)
     assert "groups" not in got and "itemSets" not in got["run"]
     assert all(not ({"itemAware", "itemSet", "itemCounts", "remedy", "remedyOf", "perItem"} & set(s)) for s in got["steps"])
+
+
+# --- the step guide: enable, nudge, and guide (docs/console/screens/work-guide.md) --------------------------------------------------
+
+def guided(key="example-guided"):
+    """example-cycle whose person step carries a Support: a read, a rule, a checklist, two commands, a lesson, an ask."""
+    from jason.workflows.types import Check, Cite, Cmd, Enables, Guides, LookAt, Reminds, Role, Support
+
+    support = Support(
+        enables=Enables(in_hand=("the sent notice",)), reminds=Reminds(after_hours=24),
+        guides=Guides(instruction="Send the notice, then write down its reference.",
+                      look_at=(LookAt("Answers that have arrived", "responses-new"),),
+                      checklist=(Check("It names the right unit", required=True), Check("A copy is kept")),
+                      commands=(Cmd("example notice --send --by NAME"), Cmd("example notice --check ID")),
+                      lessons=("form-link-needs-unit",), cites=(Cite("EX 123.4", reading="The answer is due by the day named."),),
+                      done_when="The reference is written down.", ask=(Role.MANAGER, Role.PRESIDENT)))
+    base = example_cycle()
+    return example_cycle(key=key, title="Guided cycle", steps=tuple(replace(s, support=support) if s.id == C2 else s for s in base.steps))
+
+
+@pytest.fixture
+def roster(monkeypatch):
+    from jason.community.base import Officer, OfficerRole
+
+    rows = (Officer(OfficerRole.MANAGER, MANAGER), Officer(OfficerRole.TREASURER, TREASURER), Officer(OfficerRole.SECRETARY, SECRETARY))
+    monkeypatch.setattr("jason.access.community_officers", lambda: rows)
+    monkeypatch.setattr("jason.access.admins", lambda: ())
+    return rows
+
+
+@pytest.fixture
+def guide_world(world, roster):
+    definitions.register(guided(), plan_kinds={"example-plan"}, jobs={"example-report"})
+    return world
+
+
+def test_person_steps_carry_enable_nudge_and_guide_and_jasons_own_steps_carry_none(app, world, roster):
+    rid = start(world)
+    steps = {s["id"]: s for s in page(app, MANAGER, rid)["steps"]}
+    for jasons in (C1, C3, C4, C5):                                              # a check, a plan, a job, a wait no note ends
+        assert not {"enable", "nudge", "guide"} & set(steps[jasons]), jasons
+    for person in (C2, C6):                                                      # a person step, and the board's decision the secretary records
+        assert {"enable", "nudge", "guide"} <= set(steps[person]), person
+    c2 = steps[C2]
+    assert c2["enable"]["state"] == "ready" and c2["enable"]["word"] == "Yours: you hold the manager office. Nothing is missing."
+    assert c2["enable"]["holders"][0]["office"] == "manager" and c2["enable"]["holders"][0]["names"] == [MANAGER]
+    assert c2["nudge"]["band"] == "quiet" and c2["nudge"]["numbers"]["note"] == "proposed, not the law's"
+    g = c2["guide"]
+    assert g["instruction"] == "Send the example notice to 123 Main St" and g["authored"] == []                   # derived: the title
+    assert g["commands"][0]["text"] == "example notice --send" and g["doneWhen"] == "Done when you can point to: the sent-notice reference."
+    assert g["lookAt"][0]["kind"] == "evidence" and g["lookAt"][0]["rows"] == ["store:notices"]
+    assert g["notApplicable"] == "This step has no not-applicable outcome; it may be skipped with a reason."
+    c6 = steps[C6]["enable"]
+    assert c6["state"] == "not yours" and c6["word"] == "Waiting on the secretary."
+
+
+def test_a_step_with_a_support_shows_its_guide_with_the_name_filled_and_the_unreadable_said(app, guide_world):
+    rid = start(guide_world, "example-guided")
+    g = page(app, MANAGER, rid, "example-guided")["steps"][1]["guide"]
+    assert g["authored"] == ["instruction", "rule", "checklist", "look-at", "commands", "done-when", "ask", "lessons"] or g["authored"][0] == "instruction"
+    assert g["instruction"] == "Send the notice, then write down its reference."
+    assert g["checklist"] == [{"text": "It names the right unit", "required": True}, {"text": "A copy is kept", "required": False}] and g["requiredChecks"] == 1
+    first, second = g["commands"]
+    assert first["text"] == 'example notice --send --by "A Manager"' and first["fillIn"] == []
+    assert second["text"] == "example notice --check ID" and second["fillIn"] == ["ID"]                  # an ID stays the person's to fill in
+    read = g["lookAt"][0]
+    assert read["kind"] == "read" and (read["unavailable"] or isinstance(read["count"], int))
+    if read["count"] is None:
+        assert read["unavailable"]                                                                           # never "nothing to look at"
+    assert g["lessons"] == [{"key": "form-link-needs-unit", "status": "fixed"}]
+    assert [a["office"] for a in g["ask"]] == ["manager", "president"] and g["ask"][0]["names"] == [MANAGER]
+    assert g["ask"][1]["vacant"] is True and g["ask"][1]["names"] == []                                      # nobody holds the president office here
+    treasurer = page(app, TREASURER, rid, "example-guided")["steps"][1]["guide"]
+    assert treasurer["commands"][0]["text"] == 'example notice --send --by "Pat Example"'
+    assert page(app, MANAGER, rid, "example-guided")["steps"][1]["enable"]["inHand"] == ["the sent notice"]
+
+
+def test_a_cite_is_recited_whole_then_the_reading_and_a_cite_the_shelf_lacks_is_said_not_paraphrased(app, guide_world, monkeypatch):
+    from jason.community import law_text
+
+    rid = start(guide_world, "example-guided")
+    rule = page(app, MANAGER, rid, "example-guided")["steps"][1]["guide"]["rule"][0]
+    assert rule["missing"] == "The words of EX 123.4 are not on the shelf here." and rule["words"] == "" and rule["command"] == "jason export-authorities"
+    assert rule["reading"] == "The answer is due by the day named." and rule["readingLabel"] == "jason's reading"
+    words = law_text.LawText("EX 123", "Whoever must answer shall answer by the day named.", "abc123def456", source="Example Legislature")
+    monkeypatch.setattr(law_text, "quoted", lambda cite, root, day=None: law_text.Quoted("EX 123.4", TODAY, (words,), words))
+    rule = page(app, MANAGER, rid, "example-guided")["steps"][1]["guide"]["rule"][0]
+    assert rule["words"] == "Whoever must answer shall answer by the day named." and rule["source"] == "Example Legislature" and rule["missing"] == ""
+    assert rule["version"] == "the words in force on 2099-09-20" and "not an official restatement" in rule["restatement"]
+    assert rule["reading"] == "The answer is due by the day named."
+
+
+def test_a_director_reads_the_same_panel_an_officer_reads_at_the_same_level(app, guide_world):
+    rid = start(guide_world, "example-guided")
+    seen = {who: page(app, who, rid, "example-guided")["steps"][1] for who in (TREASURER, SECRETARY, "Dana Director", "Lee President")}
+    base = seen[TREASURER]
+
+    def words(step):                       # a command is filled with the reader's own name; everything else is the same
+        return {**step["guide"], "commands": [{k: v for k, v in c.items() if k != "text"} for c in step["guide"]["commands"]]}
+
+    for who, step in seen.items():
+        assert words(step) == words(base) and step["nudge"] == base["nudge"], who
+        assert step["enable"]["state"] == "not yours" and step["enable"]["word"] == "Waiting on the manager."
+        assert step["acts"] == []                                                                            # what differs is the act row, not the words
+
+
+def test_a_claim_is_a_note_in_the_signers_name_that_the_page_then_shows_and_grants_nothing(app, guide_world):
+    rid = start(guide_world, "example-guided")
+    n = store.read(guide_world, "example-guided", rid).n
+    t = as_(app, TREASURER)
+    r = post(t, f"example-guided/{rid}", {"act": "claim", "step": C2})
+    assert r.status_code == 403 and "does not hold the manager role" in r.json["error"]                      # a claim is for a holder of the step
+    assert store.read(guide_world, "example-guided", rid).n == n
+    m = as_(app, MANAGER)
+    r = post(m, f"example-guided/{rid}", {"act": "claim", "step": C2, "by": "Someone Else"})
+    assert r.status_code == 403 and store.read(guide_world, "example-guided", rid).n == n                      # the signer's own name only
+    r = post(m, f"example-guided/{rid}", {"act": "claim", "step": C2})
+    assert r.status_code == 200, r.json
+    assert r.json["event"]["kind"] == "note" and r.json["event"]["detail"]["claim"] is True and r.json["event"]["text"] == f"{MANAGER} is on step 2, Send the example notice to 123 Main St"
+    c2 = r.json["run"]["steps"][1]
+    assert c2["nudge"]["claim"]["by"] == MANAGER and c2["nudge"]["claim"]["mine"] is True and "attest" in c2["acts"]            # nothing granted or removed
+    other = page(app, TREASURER, rid, "example-guided")["steps"][1]
+    assert other["nudge"]["claim"]["by"] == MANAGER and other["nudge"]["claim"]["mine"] is False
+    assert post(m, f"example-guided/{rid}", {"act": "claim", "step": C2}).status_code == 400                   # already on it
+    r = post(m, f"example-guided/{rid}", {"act": "claim", "step": C2, "release": True})
+    assert r.status_code == 200 and r.json["run"]["steps"][1]["nudge"]["claim"] is None
+    assert r.json["event"]["text"] == f"{MANAGER} let go of step 2, Send the example notice to 123 Main St"
+
+
+def test_the_enable_state_for_a_draft_a_paused_run_and_an_admin_viewing_as_someone_else(app, guide_world):
+    rid = start(guide_world, "example-guided", open_=False)
+    assert page(app, MANAGER, rid, "example-guided")["steps"][1]["enable"]["word"] == "The run has not been opened."
+    api.open_run(guide_world, rid, MANAGER, readers=StoreReaders(guide_world, today=TODAY), yes=True, today=TODAY)
+    api.pause(guide_world, rid, MANAGER, reason="a holiday", today=TODAY)
+    assert page(app, MANAGER, rid, "example-guided")["steps"][1]["enable"]["state"] == "paused"
+    api.resume_run(guide_world, rid, MANAGER, today=TODAY)
+    c = as_(app, ADMIN)
+    with c.session_transaction() as s:
+        s["acting"] = {"name": MANAGER, "role": "manager"}
+    seen = c.get(f"/api/work-run?definition=example-guided&id={rid}").json["steps"][1]["enable"]
+    assert seen["state"] == "viewing as" and seen["word"].startswith("Viewing as ") and seen["word"].endswith("(admin view): go back to yourself first.")
+
+
+def test_an_integration_that_is_not_signed_in_is_named_and_a_credential_is_never_shown(app, world, roster, monkeypatch):
+    from jason.workflows.types import Enables, Guides, Support
+
+    base = example_cycle()
+    need = Support(enables=Enables(integrations=("example",)), guides=Guides())
+    steps = tuple(replace(s, support=need) if s.id == C2 else s for s in base.steps)
+    definitions.register(example_cycle(key="example-needs", title="Needs an integration", steps=steps), plan_kinds={"example-plan"}, jobs={"example-report"})
+    monkeypatch.setattr("jason.web.extra.work_guide.integration_states", lambda keys: {k: "needs sign-in" for k in keys})
+    monkeypatch.setattr("jason.web.extra.work_guide.integration_names", lambda keys: {k: "The Example Service" for k in keys})
+    rid = start(world, "example-needs")
+    enable = page(app, MANAGER, rid, "example-needs")["steps"][1]["enable"]
+    assert enable["state"] == "needs an integration" and enable["word"] == "Needs The Example Service signed in."
+    assert enable["missing"] == [{"what": "The Example Service", "why": "The Example Service is needs sign-in",
+                                  "fix": "jason integrations check example --live"}]
+
+
+def test_the_run_page_calls_no_outside_system(app, guide_world, monkeypatch):
+    """The page and its loaders make no call to PayHOA, Google, Zoom, or a mail service: with the network cut, they still answer."""
+    import socket
+
+    def cut(*a, **k):
+        raise AssertionError("a network call was made")
+
+    rid = start(guide_world, "example-guided")
+    monkeypatch.setattr(socket.socket, "connect", cut)
+    monkeypatch.setattr(socket, "create_connection", cut)
+    assert page(app, MANAGER, rid, "example-guided")["steps"][1]["guide"]["instruction"]
+    assert post(as_(app, MANAGER), f"example-guided/{rid}", {"act": "claim", "step": C2}).status_code == 200
+
+
+def test_the_catalog_lists_each_steps_guidance_coverage_in_words(app, guide_world):
+    got = as_(app, MANAGER).get("/api/work-definitions?key=example-guided").json["definition"]["steps"]
+    by_id = {s["id"]: s["guidance"] for s in got}
+    assert by_id[C2].startswith("instruction, rule, checklist, look-at") and by_id[C1] == "" and by_id[C6] == "derived"

@@ -175,6 +175,61 @@ export interface RunStep {
   decision?: DecisionRead; plan?: PlanRead; job?: JobRead;
   /** The gates adopted controls add to this step: present only where a control bites, and only when controls are configured. */
   controls?: StepControl[];
+  /** A person step's enable state, nudge, and guide (a check, a job, and a plan have none; a held run outside the private view has none). */
+  enable?: StepEnable; nudge?: StepNudge; guide?: StepGuide;
+}
+
+// -- the step guide: enable, nudge, guide (docs/console/screens/work-guide.md; `jason.web.extra.work_guide`) ------------------
+
+/** The first of the ten enable states that applies (docs/workflows/person-steps.md, section 5.2); `closed` is a run that is done or
+ * cancelled, kept with the paused and draft ones. */
+export type EnableState =
+  | "ready" | "not yours" | "not ready" | "needs an integration" | "needs a second person" | "terminal only" | "viewing as"
+  | "draft" | "paused" | "closed" | "done" | "skipped" | "not applicable" | "superseded";
+
+export interface HolderBackup { office: string; names: string[]; basis: string }
+/** An office that may act on the step, who holds it on the roster, whether it is vacant, and a backup (the profile's, or the
+ * proposal labeled so). Names only: never a phone or an email. */
+export interface Holder { office: string; names: string[]; vacant: boolean; owner?: boolean; backup?: HolderBackup }
+export interface EnableMissing { what: string; why: string; fix: string }
+
+export interface StepEnable {
+  state: EnableState; word: string; detail?: string; holders: Holder[]; missing: EnableMissing[]; secondPerson: boolean; terminalOnly: boolean;
+  youHold: string[]; owner: string; inHand: string[]; accessNote: string; firstBy?: string; record?: string;
+  waitsOn?: { id: string; n: number; title: string };
+}
+
+export type NudgeBand = "legal" | "late" | "date" | "soon" | "stale" | "quiet";
+
+export interface StepNudge {
+  band: NudgeBand; word: string; due: string | null; days: number | null; basis: string; basisLabel: string; legal: boolean; proposed: boolean;
+  label: string; cite: string; openDays: number | null; escalatedTo: string | null; escalatedWhy: string; snoozable: boolean;
+  items: { total: number; notDone: number; earliest: string } | null;
+  numbers: { leadDays: number; afterHours: number; escalateAfterHours: number; adopted: boolean; note: string };
+  claim: { by: string; at: string; stale: boolean; mine: boolean } | null;
+}
+
+/** One look-at read: a count (null when it could not read, then `unavailable` says why), at most five handles, and the screen it lives on. */
+export interface GuideLook {
+  label: string; kind: "read" | "evidence"; read: string; count: number | null; of?: number; rows: string[]; refs: string[]; asOf: string;
+  unavailable: string; screen?: { key: string; name: string; href: string };
+}
+
+/** A cite recited from what is stored: the words whole, the version, jason's reading (labeled), or why the words are not here. */
+export interface GuideRule {
+  key: string; kind: "statute" | "document"; words: string; version: string; source: string; reading: string; readingLabel: string;
+  missing: string; caveats: string[]; restatement: string; command: string; versions: { digest: string; words: string; label: string }[];
+}
+
+export interface GuideCommand { text: string; raw: string; note: string; terminalOnly: boolean; fillIn: string[] }
+export interface GuideAsk { office: string; names: string[]; vacant: boolean }
+
+export interface StepGuide {
+  authored: string[]; instruction: string; why: string; lookAt: GuideLook[]; rule: GuideRule[];
+  checklist: { text: string; required: boolean }[]; requiredChecks: number; commands: GuideCommand[]; doneWhen: string; record: string;
+  blocked: string; notApplicable: string; naOffered: boolean; skippable: boolean; ask: GuideAsk[];
+  lessons: { key: string; status: string }[]; sop: { address: string; key: string; index: number; command: string } | null;
+  inHand: string[]; accessNote: string; integrations: string[]; secondPerson: boolean; terminalOnly: boolean;
 }
 
 /** The statute's words as the authorities shelf holds them (`_recite`), and jason's reading of the clock, labeled. */
@@ -256,6 +311,8 @@ export interface DefinitionStep {
   job: string; evidence: string[]; record: string; legal: boolean; repeat: string; spawns: string | null; sop: string;
   roles?: string[]; naOutcome?: { roles: string[]; reasonRequired: boolean; recordRequired: boolean } | null; waitsOnChild?: boolean;
   skip: { roles: string[]; reasonRequired: boolean } | null; clock: DefinitionClock | null; phase: string; group: string;
+  /** The guidance a person wrote for the step, in words ("instruction, rule, checklist, look-at"), "derived" when none, "" for jason's own steps. */
+  guidance?: string;
 }
 /** `definition` of `?key=`: the row, read whole. The page's `steps` replace the row's count (the loader merges the two). */
 export interface DefinitionPageData extends Omit<DefinitionRow, "steps"> { clocks: DefinitionClock[]; steps: DefinitionStep[] }
@@ -569,8 +626,10 @@ export function useRunDefinitions(ids: readonly string[]): Record<string, string
 /** The body of an act on a run. There is no `by`: the server records the signed-in person, and refuses a body that names
  * another. `expect` is the `n` the page last read, so a run that moved on is refused (409) and not overwritten. */
 export interface ActBody {
-  act: "attest" | "arrived" | "skip" | "reopen" | "pause" | "resume" | "note" | "cancel" | "open" | "supply-items";
+  act: "attest" | "arrived" | "skip" | "reopen" | "pause" | "resume" | "note" | "cancel" | "open" | "supply-items" | "claim";
   step?: string; record?: string; reason?: string; text?: string; choice?: string; what?: string; yes?: boolean; expect?: number;
+  /** `claim`: let the step go (only the person who claimed it). */
+  release?: boolean;
   /** `supply-items`: the item set ("" is the run's own) and the ids; `dryRun` checks them and writes nothing. */
   set?: string; items?: string[]; dryRun?: boolean;
 }

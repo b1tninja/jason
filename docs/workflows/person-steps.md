@@ -1,6 +1,6 @@
 # Person steps: how a workflow enables, reminds, and guides the person
 
-Status: **design** (2026-10-11). Nothing in section 4 or later is built. Sections 3 and 5 to 8 say, for each point, what the definitions and the Work screens already hold and what is new. The inventory of every person step is generated: [person-steps-inventory.md](person-steps-inventory.md) (`scripts/gen_person_steps.py`). The screen is [../console/screens/work-guide.md](../console/screens/work-guide.md); the brief for the design agent is [../console/design-brief-person-steps.md](../console/design-brief-person-steps.md). The model underneath is [../workflows-design.md](../workflows-design.md); the engine is [../workflows-engine.md](../workflows-engine.md).
+Status: **design, with phase 1 built** (2026-10-11): the `Support` record and its validators (section 4), the enable states and the claim note (section 5), the guide (section 7), and the read side of the reminders (section 6: the bands, and `jason workflow --due`). Section 9 says what is built and what is not; section 9.1 records how phase 1 was built and the calls it made. Sections 3 and 5 to 8 say, for each point, what the definitions and the Work screens already hold and what is new. The inventory of every person step is generated: [person-steps-inventory.md](person-steps-inventory.md) (`scripts/gen_person_steps.py`). The screen is [../console/screens/work-guide.md](../console/screens/work-guide.md); the brief for the design agent is [../console/design-brief-person-steps.md](../console/design-brief-person-steps.md). The model underneath is [../workflows-design.md](../workflows-design.md); the engine is [../workflows-engine.md](../workflows-engine.md).
 
 ## 1. The problem
 
@@ -340,13 +340,28 @@ Most person steps are one of eight shapes. A shape fixes the defaults an author 
 | `StepDef` fields in section 3, the Work loaders and writer, `RunStepPanel` with why, evidence chips, command with Copy, Mark done, skip, not applicable, note | built |
 | `DateSlot` late and timing, `date-set`, `dateSlots` and `openSlots` | built |
 | The digest and its urgency words, the dock deadlines and `mine` counts, `signedWaiting` | built |
-| `Support` (`Enables`, `Reminds`, `Guides`) on `StepDef`, and their validators | new |
-| Guide reads (`LookAt.read`) and their registry, one module per family beside the checks | new |
-| `jason.workflows.nudge` (pure), the `work-due` loader, `jason workflow --due`, `--guide`, `--snooze`, `--claim`, `--away`, `--remind-draft`, `--note --blocked` | new |
-| `Community.backup_for(office)` (empty default) | new |
-| The `workflows` section of `jason attention` and the Today band's escalation and cover lines | new |
-| The reminder-drafts control type and the `step-reminder` case of `gmail-drafts` | new |
-| The panel's enable strip, nudge line, guide sections, and the away dialog | new ([work-guide.md](../console/screens/work-guide.md)) |
+| `Support` (`Enables`, `Reminds`, `Guides`) on `StepDef`, and their validators | **built** (phase 1; 9.1) |
+| Guide reads (`LookAt.read`) and their registry | **built** (`jason.workflows.guide_reads`; two reads, `responses-new` and `responses-unconfirmed`; one module per family beside the checks is still how the rest will be added) |
+| `jason.workflows.nudge` (pure) and `jason workflow --due`, `--guide`, `--claim` | **built** (phase 1) |
+| The `work-due` loader | not built |
+| `jason workflow --snooze`, `--away`, `--remind-draft`, `--note --blocked` | not built (phase 2) |
+| `Community.backup_for(office)` (empty default) | **built** (a profile may name a backup; none is read for a cover yet) |
+| The `workflows` section of `jason attention` and the Today band's escalation and cover lines | not built |
+| The reminder-drafts control type and the `step-reminder` case of `gmail-drafts` | not built (and not to be, until the board asks) |
+| The panel's enable strip, nudge line, and guide sections | **built** ([work-guide.md](../console/screens/work-guide.md)) |
+| The away dialog and banner, and the nudge marks on the lists | not built |
+
+### 9.1 As built, phase 1 (2026-10-11)
+
+What the code is, where it lives, and the calls the build made.
+
+- **The record.** `Support(enables, reminds, guides)` and its parts (`LookAt`, `Check`, `Cmd`, `Cite`, `Guides`, `Enables`, `Reminds`) are frozen data in `jason.workflows.types`, and `StepDef.support` is `None` by default. A step with none behaves as it did: every field falls back as the third column of section 4.1 says (`jason.workflows.guide.spec`). `guide.from_mapping` turns JSON-like data into the symbols and refuses an unknown field by name.
+- **The validators** (`guide.problems`, called by `definitions.validate`, which gained the optional `reads`, `lessons`, and `integrations` registries, each skipped when not given): a `Support` on a step that is not a person, a decision, or a wait only a note ends; guidance that carries a section number, a link, an address, a phone number, or an amount; a held definition's words with an `@`, and a `public_title` step's with a digit; a cite that is not a shelf key or `key#section`, or that the shelf says does not resolve (a missing shelf is a skip); a lesson or a guide read that does not exist; a command placeholder other than `NAME`, `KEY`, `RUN`, `ID`; an `ask` or `escalate_to` that is not an office; a `Reminds` below its floor, a snoozable legal step, a legal clock whose escalation delay is not 0; more than eight checklist items or three look-at reads; a required item with no `record` and no `done_when`; an unknown integration.
+- **The nudge** (`jason.workflows.nudge`, pure, imports only the engine's types): the six bands, the proposed numbers as `Prefs` (14 days, 7 days, 72 hours, `adopted` false), the default escalation table, `claims_of`, and `run_nudges`. The days are read from the fold's clocks; "open a while" counts from the day the step's `needs` finished (or the run opened), so the same view and day give the same answer. A vacant office is escalated at once only when the roster names officers at all: an empty roster is *unknown*, never vacant.
+- **A claim** is a `note` event on the step with `claim: true` (release: `claim: false`), made with `api.claim` / `jason workflow --claim RUN STEP --by NAME [--release] --yes` (without `--yes` it checks and writes nothing) and the writer's act `claim`. Only a person who may act on the step claims it, only while it is open, and only the claimant releases it. No event kind or field changed (a test folds a run with and without the note to the same states). A claim ends when the step ends, on release, or reads "still open" once the open-a-while threshold passes.
+- **The composer** (`jason.tasks.step_guide`) builds the three objects for the Work page (`jason.web.extra.work_guide.attach`, called from `compose_run`) and the same words for the terminal (`jason workflow --guide RUN[:STEP]`, or `DEFINITION.STEP` for the definition's words alone, with `--for NAME` for the enable state; `--due --for NAME [--within DAYS] [--all]`). A cite is recited from the authorities shelf with the read-through held off (`statute_fetch.disabled()`); the words are whole as stored, the reading follows labeled "jason's reading", and a cite the shelf lacks says "The words of CITE are not on the shelf here." and gives the command that brings them down. Nothing else is read from outside the disk.
+- **Calls the build made.** (1) The test module the brief names for the engine, `tests/test_workflows_support.py`, is the engine tests' shared fakes, so the record's tests are in `tests/test_workflows_person_support.py`. (2) The two engine modules (`guide`, `nudge`) are core and the one reads module (`guide_reads`) is edge, as `tests/test_workflows_boundaries.py` now lists. (3) A derived checklist is the procedure step's `check` as one unticked line; it is not repeated under Look at. (4) `anyone` is the run's owner for the nudge, as section 5.1 says, and the panel says "any signed-in person may do this" for it. (5) The viewer's own name is added to the holders of an office they hold, so a roster that omits a signed-in officer still reads true for them; the *ask* line uses the roster alone, so every reader is told the same names. (6) A step that is terminal-only still offers Mark done, with the record field required: the page cannot know the record exists, and the engine refuses an attestation without it. (7) The integrations' state is the last *recorded* connection (`integrations.json`, disk only); nothing is probed, and an integration nobody recorded is unknown, which does not refuse. (8) A second-person step shows "Needs a second person" for every holder, with the first act recorded as a note only where an adopted control binds it. (9) The six worked examples (`owner-info-cycle.12` and `.17`, `mailroom-letter.3`, `board-meeting.12`, `bill-attach.5`, `backflow-annual.7`) are in three families' definition files and in `definitions_general.py` (where the owner-information cycle lives).
+- **Not built, by design of the phase.** Snooze, the away log and a cover, the blocked note's move of the nudge, `--remind-draft`, the `work-due` loader, the Today and Work list marks, the digest section, and reminder preferences as adopted rows. Nothing sends anything: the code imports no client (a test pins it).
 
 ## 10. The human edges of other step kinds
 
@@ -356,6 +371,8 @@ Most person steps are one of eight shapes. A shape fixes the defaults an author 
 - **A check or job:** jason's; no `Support`. The inventory's "Wanted" column lists the person steps they will replace; when a wanted read is registered the step becomes a `check` or `job` and its guidance moves to the neighbouring person step's `look_at`.
 
 ## 11. Build order
+
+Phase 1 built steps 1 and 3, the claim of step 4, and the read side of step 2 (the bands and `--due`; the Today and Work marks and the digest section are still to do). Steps 4 (snooze, blocked note, absence and cover) and 5 are phase 2.
 
 1. **Derive only.** The panel reads what the step already has: the SOP step's `do`, `check`, `refs`, and `lessons`; the evidence chips; `record` as "done when"; `skip`, `na`, and `ask` from the roles. No new field. This is the largest gain for the least code.
 2. **`jason.workflows.nudge`** and the bands from the fields that exist (clock, slots, state); `jason workflow --due`; the Today and Work marks; the digest section. Defaults only.

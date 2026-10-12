@@ -113,7 +113,7 @@ const clockWords = (c: DefinitionClock | null) => (c ? (
 
 const stepColumns = (): Column<DefinitionStep>[] => [
   { key: "n", header: "#", value: (s) => s.n },
-  { key: "title", header: "Step", render: (s) => <><strong>{s.title}</strong>{s.why && <div className="muted">{s.why}</div>}{s.command && <div><code className="chip">{s.command}</code></div>}</> , value: (s) => s.title },
+  { key: "title", header: "Step", render: (s) => <><strong>{s.title}</strong>{s.why && <div className="muted">{s.why}</div>}{s.command && <div><code className="chip">{s.command}</code></div>}{s.guidance && <div className="muted">Guidance: {s.guidance}</div>}</> , value: (s) => s.title },
   { key: "kind", header: "Kind", render: (s) => <>{KIND_WORDS[s.kind] ?? s.kind}{s.legal ? <span className="muted"> · required by the law</span> : null}</>, value: (s) => s.kind },
   { key: "role", header: "Role", value: (s) => s.role },
   { key: "clock", header: "Clock", render: (s) => clockWords(s.clock), value: (s) => s.clock?.label ?? "" },

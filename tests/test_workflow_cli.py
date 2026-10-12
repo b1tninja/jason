@@ -636,3 +636,174 @@ def test_the_module_names_no_sending_or_filing_client():
     source = inspect.getsource(cli)
     for word in ("payhoa", "smtplib", "googleapiclient", "requests", "mailroom", "lob"):
         assert word not in source.lower().replace("jason.access", ""), word
+
+
+# --- the person step's guide, what is due, and a claim (docs/workflows/person-steps.md, sections 5.4, 6.3, and 7.4) -------------
+
+HEADINGS = ("Do this", "Look at", "Check before you go on", "The command", "Done when", "If you are blocked", "If it does not apply", "Ask")
+
+
+def legal_example():
+    """example-cycle with a law clock on its person step, so a due date can be LEGAL, and a skip rule it cannot have removed."""
+    from dataclasses import replace
+
+    from jason.workflows.types import ClockBasis, ClockDef
+    from test_workflows_support import example_cycle
+
+    base = example_cycle()
+    c2 = replace(base.step(C2), clock=ClockDef(ClockBasis.LAW, "answers_by", 0, cite="EX 123.4"), legal=True, skip=None)
+    wf = example_cycle(steps=tuple(c2 if s.id == C2 else s for s in base.steps))
+    definitions.register(wf, plan_kinds={"example-plan"}, jobs={"example-report"})
+    return wf
+
+
+def test_help_lists_the_new_acts(capsys):
+    with pytest.raises(SystemExit):
+        parser().parse_args(["workflow", "--help"])
+    text = capsys.readouterr().out
+    for option in ("--guide", "--due", "--for", "--within", "--claim", "--release"):
+        assert option in text
+
+
+def test_guide_prints_the_panels_sections_in_order_with_the_commands_on_their_own_lines(run):
+    rid = opened(run)
+    code, out, err = run("--guide", f"{rid}:{C2}", "--for", OWNER, *ASOF)
+    assert code == 0, err
+    assert "Yours: you hold the manager office. Nothing is missing." in out
+    at = [out.index(h) for h in HEADINGS if h in out]
+    assert at == sorted(at) and out.index("Do this") < out.index("The command")
+    assert "\n  1. example notice --send" in out                               # the command as written, on its own line
+    assert "Done when you can point to: the sent-notice reference." in out
+    assert "Skip is not offered" not in out and "it may be skipped with a reason" in out
+
+
+def test_guide_of_a_run_alone_is_the_current_person_step_and_names_nobody_without_for(run):
+    rid = opened(run)
+    code, out, err = run("--guide", rid, *ASOF)
+    assert code == 0, err
+    assert out.startswith("2. Send the example notice") and "name a person with --for NAME" in out
+    assert "Yours:" not in out
+
+
+def test_guide_of_a_definition_step_needs_no_run(run):
+    code, out, err = run("--guide", C2)
+    assert code == 0, err
+    assert "Do this" in out and "Send the example notice" in out and "Yours:" not in out and "Due " not in out
+
+
+def test_guide_refuses_a_step_that_is_jasons_and_a_name_it_does_not_know(run):
+    rid = opened(run)
+    code, out, err = run("--guide", f"{rid}:{C1}", *ASOF)
+    assert code == 2 and "is a check step" in err and "has no guide" in err
+    code, out, err = run("--guide", f"{rid}:nope.9", *ASOF)
+    assert code == 2 and "no step 'nope.9'" in err
+    code, out, err = run("--guide", "run-nothere")
+    assert code == 2 and "neither a run" in err
+
+
+def test_guide_json_has_the_three_objects_and_opens_nothing(run):
+    rid = opened(run)
+    before = json.loads(run("--show", rid, "--json", *ASOF)[1])["n"]
+    code, out, err = run("--guide", f"{rid}:{C2}", "--for", OWNER, "--json", *ASOF)
+    assert code == 0, err
+    got = json.loads(out)
+    assert got["step"] == C2 and got["enable"]["state"] == "ready" and got["nudge"]["band"] in ("quiet", "stale") and got["guide"]["instruction"]
+    assert json.loads(run("--show", rid, "--json", *ASOF)[1])["n"] == before         # a read, never an open
+
+
+def test_guide_says_not_yours_to_a_person_who_holds_none_of_the_offices(run):
+    rid = opened(run)
+    code, out, err = run("--guide", f"{rid}:{C2}", "--for", TREASURER, *ASOF)
+    assert code == 0 and "Waiting on the manager." in out and "You are the treasurer." in out
+
+
+def test_due_needs_a_person_and_says_nothing_is_due_when_nothing_is(run):
+    opened(run)
+    code, out, err = run("--due", *ASOF)
+    assert code == 2 and "--for NAME" in err
+    code, out, err = run("--due", "--for", OWNER)                              # today: the run was opened a moment ago
+    assert code == 0 and "Nothing is due, late, or open a while." in out
+
+
+def test_due_lists_a_legal_date_for_its_holder_and_shows_it_to_the_whole_board_the_same_day(run):
+    legal_example()
+    rid = opened(run)
+    for day, word in (("2099-10-23", "LEGAL"), ("2099-10-29", "LEGAL")):
+        code, out, err = run("--due", "--for", OWNER, "--as-of", day)
+        assert code == 0, err
+        assert f"{word} " in out and "Example cycle 2099 · step 2" in out and f"jason workflow --show {rid}" in out
+        assert "[LEGAL]" in out and "(EX 123.4)" in out and "1 on a legal clock" in out
+        assert "Escalated to you" not in out                                  # the holder's own line is unchanged
+    code, out, err = run("--due", "--for", SECRETARY, "--as-of", "2099-10-23")
+    assert code == 0 and "Escalated to you (1)" in out and "(the manager)" in out and "nothing was sent to anyone" in out
+    code, out, err = run("--due", "--for", SECRETARY, "--as-of", "2099-10-01")                     # not yet: the whole board sees only the day it falls
+    assert "Escalated to you" not in out and "Nothing is due" in out
+    code, out, err = run("--due", "--for", OWNER, "--as-of", "2099-10-09", "--json")
+    rows = json.loads(out)["mine"]
+    assert [r["band"] for r in rows] == ["soon"] and rows[0]["basisLabel"] == "LEGAL" and rows[0]["days"] == 14 and rows[0]["numbers"]["note"]
+    code, out, err = run("--due", "--for", OWNER, "--as-of", "2099-10-09", "--within", "3")
+    assert "Nothing is due" in out
+
+
+def test_due_reads_and_writes_nothing(run):
+    legal_example()
+    rid = opened(run)
+    before = {p: p.read_bytes() for p in sorted(run.data.rglob("*")) if p.is_file() and "locks" not in p.parts}
+    run("--due", "--for", OWNER, "--as-of", "2099-10-23")
+    run("--guide", f"{rid}:{C2}", "--for", OWNER, "--as-of", "2099-10-23")
+    after = {p: p.read_bytes() for p in sorted(run.data.rglob("*")) if p.is_file() and "locks" not in p.parts}
+    assert before == after
+
+
+def test_claim_without_yes_checks_and_writes_nothing_then_records_a_note_and_the_guide_shows_it(run):
+    rid = opened(run)
+    n = json.loads(run("--show", rid, "--json", *ASOF)[1])["n"]
+    code, out, err = run("--claim", rid, C2, "--by", OWNER, *ASOF)
+    assert code == 0, err
+    assert f"would record that {OWNER} is on it on {C2}" in out and "nothing is written without --yes" in out
+    assert json.loads(run("--show", rid, "--json", *ASOF)[1])["n"] == n
+    code, out, err = run("--claim", rid, C2, "--by", OWNER, "--yes", *ASOF)
+    assert code == 0, err
+    assert "note" in out and C2 in out
+    assert json.loads(run("--show", rid, "--json", *ASOF)[1])["n"] == n + 1
+    code, out, err = run("--guide", f"{rid}:{C2}", "--for", SECRETARY, *ASOF)
+    assert f"{OWNER} is on it since" in out
+    code, out, err = run("--claim", rid, C2, "--by", OWNER, "--yes", *ASOF)
+    assert code == 2 and "already on" in err
+    code, out, err = run("--claim", rid, C2, "--by", OWNER, "--release", "--yes", *ASOF)
+    assert code == 0, err
+    assert "is on it since" not in run("--guide", f"{rid}:{C2}", "--for", SECRETARY, *ASOF)[1]
+
+
+def test_claim_is_for_the_roster_and_the_step_s_holders(run):
+    rid = opened(run)
+    code, out, err = run("--claim", rid, C2, "--by", VISITOR, "--yes", *ASOF)
+    assert code == 2 and "not on the roster" in err
+    code, out, err = run("--claim", rid, C2, "--by", TREASURER, "--yes", *ASOF)
+    assert code == 2 and "does not hold the manager role" in err
+    code, out, err = run("--claim", rid, C2, "--yes", *ASOF)
+    assert code == 2 and "needs --by" in err
+    code, out, err = run("--claim", rid, C1, "--by", OWNER, "--yes", *ASOF)
+    assert code == 2 and "a claim is for a step a person does" in err
+
+
+def test_due_shows_a_held_run_as_its_general_title_and_never_the_matter(run):
+    """A held run's line is the definition's general title, the state, the office, the date and its basis word, and nothing else."""
+    from dataclasses import replace
+
+    from jason.workflows import api
+    from jason.workflows.types import Visibility
+
+    base = legal_example()
+    held = replace(base, key="example-held", title="Example hearing", visibility=Visibility.HELD, held_title="A member's matter")
+    definitions.register(held, plan_kinds={"example-plan"}, jobs={"example-report"})
+    rid = api.start(run.data, "example-held", "unit:123 Main St", "Hearing for 123 Main St", DATES, OWNER, yes=True)["run"]["id"]
+    api.open_run(run.data, rid, OWNER, yes=True, roles_of=lambda by: ("manager",))
+    code, out, err = run("--due", "--for", OWNER, "--as-of", "2099-10-23")
+    assert code == 0, err
+    assert "A member's matter: a step is due" in out and "[LEGAL]" in out
+    for leak in ("123 Main St", "Send the example notice", "EX 123.4", "answers_by", "Hearing for"):
+        assert leak not in out, leak
+    code, out, err = run("--due", "--for", OWNER, "--as-of", "2099-10-23", "--json")
+    row = next(r for r in json.loads(out)["mine"] if r["held"])
+    assert row["title"] == "a step" and row["runLabel"] == "A member's matter" and row["cite"] == "" and row["label"] == "" and row["claim"] is None

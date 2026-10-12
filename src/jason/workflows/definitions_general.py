@@ -24,7 +24,8 @@ from typing import Any, Callable
 from jason.workflows import definitions
 from jason.workflows.readers import JOBS, named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Role, SkipRule, StepDef, StepKind, Workflow,
+    Check, Choice, Cite, ClockBasis, ClockDef, Cmd, DateSlot, Elapsed, Enables, Guides, LookAt, Phase, Reminds, Role, SkipRule, StepDef,
+    StepKind, Support, Workflow,
 )
 
 OI = "owner-info-cycle"
@@ -83,7 +84,21 @@ def owner_info_cycle() -> Workflow:
         _step("12", "Send the email batch", P, M, ("11", "7"), sop=f"{OI}#11",
               command="jason owner-info --email-batch --message NAME.md --yes --confirmed-by NAME",
               record="the batch key, and the second person who confirmed it",
-              why="No statutory day to send; mail that cannot be recalled needs a second person; this becomes a plan step when an approvals kind for the email batch is registered."),
+              why="No statutory day to send; mail that cannot be recalled needs a second person; this becomes a plan step when an approvals kind for the email batch is registered.",
+              support=Support(
+                  enables=Enables(in_hand=("the test email you sent yourself", "the send plan"), second_person=True),
+                  reminds=Reminds(snoozable=False),
+                  guides=Guides(
+                      instruction="Send the email batch to the owners on the send plan, once a second person has seen the preview and agrees.",
+                      checklist=(Check("You previewed one owner's email and sent yourself a test", required=True),
+                                 Check("The link in the test opens the right form for that owner's unit", required=True),
+                                 Check("A second person has seen the preview and agrees to the send", required=True)),
+                      commands=(Cmd("jason owner-info --email-batch --message KEY.md --yes --confirmed-by NAME",
+                                    note="A sent email cannot be recalled, so it is run only at a terminal.", terminal_only=True),),
+                      lessons=("form-link-needs-unit",),
+                      done_when="The batch key is written down and the second person is named in the record.",
+                      blocked="If the preview is wrong, or the second person is not available, do not send: add a note naming what is wrong and who can look.",
+                      ask=(Role.MANAGER, Role.PRESIDENT)))),
         _step("13", "Read the emails' delivery", J, M, ("12",), job="notices-sync", sop=f"{OI}#12",
               command="jason notices owner-info-YEAR --sync", clock=ClockDef(ClockBasis.PROPOSED_POLICY, label="the day after the send"),
               why="A bounced email is silent until synced (lesson bounces-are-silent); a child notice-delivery run follows when that definition exists."),
@@ -100,7 +115,25 @@ def owner_info_cycle() -> Workflow:
         _step("17", "Collect, read, and confirm the answers from every channel, and triage them by the response policy", P, M, ("12",),
               command="jason responses --check; jason responses --list --new; jason responses --read ID --by NAME; jason responses --confirm ID --by NAME",
               sop=f"{OI}#14", record="the arrivals read and confirmed (a count or ids)",
-              why="A reading is evidence for a person; nothing is an answer until a person confirms it (lesson returns-by-the-same-rules)."),
+              why="A reading is evidence for a person; nothing is an answer until a person confirms it (lesson returns-by-the-same-rules).",
+              support=Support(
+                  enables=Enables(in_hand=("the response inbox open", "the year's form, to compare")),
+                  reminds=Reminds(after_hours=48),
+                  guides=Guides(
+                      instruction="Read each answer that has arrived, say what it answers, and confirm the reading once it matches the form.",
+                      look_at=(LookAt("Answers that have arrived and not been read", "responses-new"),
+                               LookAt("Answers read and not yet confirmed", "responses-unconfirmed")),
+                      checklist=(Check("Each reading matches the form as the owner filled it", required=True),
+                                 Check("An answer for the wrong unit is set aside, not confirmed"),
+                                 Check("Nothing counts as an answer until you confirm it", required=True)),
+                      commands=(Cmd("jason responses --check"), Cmd("jason responses --list --new"),
+                                Cmd("jason responses --read ID --by NAME"), Cmd("jason responses --confirm ID --by NAME")),
+                      lessons=("returns-by-the-same-rules",),
+                      cites=(Cite("CIV 4041(b)(1)", reading="The answers are entered in the books before the annual reports are mailed, "
+                                                             "so reading and confirming them comes first."),),
+                      done_when="No answer is left unread, and none that was read is left unconfirmed.",
+                      blocked="If an answer cannot be read, add a note naming its id and what is wrong with it.",
+                      ask=(Role.MANAGER, Role.PRESIDENT)))),
         _step("17.6", "Decide what only the board decides: a co-owner's answer for the others, an occupancy answer the tag does not show, a blank required answer",
               D, S, ("17",), command="jason board", sop=f"{OI}#16", record="the board's decision record or the minutes",
               why="The law is silent and the answers need a policy (lesson answers-need-a-policy); each is held and never approved by a click."),
@@ -232,18 +265,23 @@ def shelf_resolver(data_dir: Path | str | None) -> Callable[[str], "bool | None"
 
 
 def register_general(data_dir: Path | str | None = None, *, plan_kinds: Any = None, jobs: Any = None,
-                     resolve_law: Any = None) -> tuple[Workflow, ...]:
+                     resolve_law: Any = None, reads: Any = None, lessons: Any = None, integrations: Any = None) -> tuple[Workflow, ...]:
     """Register the general definitions (replacing a row with the same key) and return them. Called by ``jason workflow``
     when it lists or starts a run, never at import. Each is checked: its plan kinds against the approvals registry (or
     ``plan_kinds``), its jobs against ``JOBS`` (or ``jobs``), its statutes against the shelf in ``data_dir`` (or
-    ``resolve_law``). A row that fails raises ``InvalidWorkflow`` naming the step."""
-    from jason.workflows import checks
+    ``resolve_law``), and a step's guidance against the registered guide reads and the general lessons (or ``reads``, ``lessons``;
+    ``integrations`` is checked only when given). A row that fails raises ``InvalidWorkflow`` naming the step."""
+    from jason.community import lessons as lessons_mod
+    from jason.workflows import checks, guide_reads
     from jason.workflows.defs import all_builders
 
     checks.load_all()                                  # the reads a step may name register themselves
     resolver = resolve_law if resolve_law is not None else shelf_resolver(data_dir)
+    known_reads = reads if reads is not None else guide_reads.names()
+    known_lessons = lessons if lessons is not None else {row.key for row in lessons_mod.LESSONS}
     return tuple(definitions.register(build(), plan_kinds=plan_kinds, jobs=jobs if jobs is not None else set(JOBS),
-                                      resolve_law=resolver) for build in (*GENERAL, *all_builders()))
+                                      resolve_law=resolver, reads=known_reads, lessons=known_lessons, integrations=integrations)
+                 for build in (*GENERAL, *all_builders()))
 
 
 __all__ = ["CA", "GENERAL", "OI", "cid", "control_adoption", "owner_info_cycle", "register_general", "shelf_resolver"]

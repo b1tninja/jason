@@ -32,7 +32,7 @@ from typing import Any, Callable, Mapping
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
+    Check, Choice, ClockBasis, ClockDef, DateSlot, Guides, Phase, Reminds, Repeat, Role, SkipRule, StepDef, StepKind, Support, Workflow,
 )
 
 FAMILY = "members"
@@ -150,7 +150,18 @@ def mailroom_letter() -> Workflow:
              why="Choose the mail class first: first class or better for an individual notice (CIV 4040(a)(2)). The preview saves a "
                  "record with no names or addresses; again if the PDF changes."),
         step("3", "Test every link and QR code as its reader would", P, M, ("2",), repeat=Repeat.PER_ITEM, sop=f"{key}#4",
-             record="each link opened, with the date", why="Lessons test-as-an-owner, form-link-needs-unit, letter-link-per-unit."),
+             record="each link opened, with the date", why="Lessons test-as-an-owner, form-link-needs-unit, letter-link-per-unit.",
+             support=Support(
+                 reminds=Reminds(after_hours=48, per_item=True),
+                 guides=Guides(
+                     instruction="Open every link and scan every QR code in the letter the way its reader would, and write down what each one opened.",
+                     checklist=(Check("Each link opens the right page for that reader, signed out and signed in", required=True),
+                                Check("Each QR code scans to the same place as its printed link", required=True),
+                                Check("The page it opens names the right unit")),
+                     lessons=("test-as-an-owner", "letter-link-per-unit"),
+                     done_when="Every link and code in the letter has been opened, with the day written beside each.",
+                     blocked="If a link does not open the right page, do not mail: add a note naming the link and what it opened.",
+                     ask=(Role.MANAGER,)))),
         step("4", "Mail it, only on a person's word", PL, M, ("2", "3"), plan_kind="payhoa-mailroom-send", sop=f"{key}#6",
              command="jason mailroom --pdf FILE --units UNITS --send --yes [--notice KEY --by NAME]",
              clock=ClockDef(ClockBasis.DOCUMENTS, "last_day_to_send", 0,

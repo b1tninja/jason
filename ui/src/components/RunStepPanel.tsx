@@ -9,6 +9,10 @@ import { Glyph } from "./Glyph";
 import { Pill } from "./Pill";
 import { ActStatus, TextConfirm, type Acts } from "./RunActs";
 import { StepStateWord } from "./StepStateWord";
+import {
+  AskOffices, ClaimButton, CommandList, GuideChecklist, GuideSection, LookAtList, RuleBlock, StepEnableStrip, StepNudgeLine, countWords,
+  useChecklist, type Checklist,
+} from "./StepGuide";
 import { addressScheme, driveDocRef, fileDocRef, type DocRef } from "../lib/docref";
 import {
   KIND_WORDS, WORDS, dayOf, refusalsFor, safeAddress, shortHash, waitingWords,
@@ -63,7 +67,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /** Mark a step done: only a person's step (or a branch a person answers), only by the role it names, and only with the record
  * it asks for. The first click states what will be recorded and under what name; the second records it. */
-function MarkDone({ step, run, viewer, acts }: { step: RunStep; run: Run; viewer: WorkViewer; acts: Acts }) {
+function MarkDone({ step, run, viewer, acts, checks }: { step: RunStep; run: Run; viewer: WorkViewer; acts: Acts; checks?: Checklist }) {
   const [choice, setChoice] = useState(step.choices[0] ?? "");
   const branch = step.kind === "branch" && step.choices.length > 0;
   const by = viewer.name || "the signed-in person";
@@ -73,8 +77,11 @@ function MarkDone({ step, run, viewer, acts }: { step: RunStep; run: Run; viewer
       {record ? <>, with the record: <q>{record}</q></> : null}. It goes on the run's history; a correction is a later entry, never an edit.
     </>
   );
+  const waiting = !!checks && checks.left > 0;
+  // the attestation says what was checked: "checked: 2 of 2 required"
+  const checked = checks && checks.required > 0 ? { what: `${step.title}; checked: ${checks.done} of ${checks.required} required` } : {};
   const body = (record: string) => ({
-    act: "attest" as const, step: step.id, ...(step.needsRecord ? { record } : {}), ...(branch ? { choice } : {}),
+    act: "attest" as const, step: step.id, ...(step.needsRecord ? { record } : {}), ...(branch ? { choice } : {}), ...checked,
   });
   return (
     <div className="work-do stack-sm">
@@ -86,11 +93,16 @@ function MarkDone({ step, run, viewer, acts }: { step: RunStep; run: Run; viewer
           ))}
         </fieldset>
       )}
+      {waiting && (
+        <p className="muted work-checks-wait" role="note">
+          Mark done waits: {checks!.left} of {checks!.required} required {checks!.required === 1 ? "item is" : "items are"} not ticked under "Check before you go on".
+        </p>
+      )}
       {step.needsRecord ? (
-        <TextConfirm single trigger={branch ? "Answer" : "Mark done"} field={`The record: ${step.needsRecord}`} required busy={acts.busy}
+        <TextConfirm single trigger={branch ? "Answer" : "Mark done"} field={`The record: ${step.needsRecord}`} required busy={acts.busy || waiting}
           summary={what} label={branch ? "Answer" : "Mark done"} onConfirm={(record) => void acts.send(body(record))} />
       ) : (
-        <Confirm busy={acts.busy} label={branch ? "Answer" : "Mark done"} summary={what("")} onConfirm={() => void acts.send(body(""))}>
+        <Confirm busy={acts.busy || waiting} label={branch ? "Answer" : "Mark done"} summary={what("")} onConfirm={() => void acts.send(body(""))}>
           {branch ? "Answer" : "Mark done"}
         </Confirm>
       )}
@@ -180,6 +192,8 @@ function KindBlock({ step, run, viewer, acts, onReread }: { step: RunStep; run: 
   }
 }
 
+const NO_CHECKS: readonly { text: string; required: boolean }[] = [];
+
 /** The step: its title, its state and whose move it is; why; what to look at; the command; and, by kind, what the page shows
  * and which one control it offers. The act is only what the server says `acts` allows. A step that is not the viewer's says
  * "Waiting on the treasurer" and has no act. An act the step does not offer shows the server's sentence in its place. The
@@ -198,6 +212,26 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
   const setName = step.itemSet ?? "";
   const mayFill = !!(supply?.offered && step.perItem && supply.sets?.some((s) => s.name === setName));
   const notFilled = step.itemAware && step.items.length === 0 && !mayFill && supply && !supply.offered ? supply.why : "";
+  const g = step.guide;
+  const enable = step.enable;
+  const nudge = step.nudge;
+  const guided = !!(g && enable && nudge);
+  const checks = useChecklist(run.id, step.id, g?.checklist ?? NO_CHECKS);
+  const settled = ["done", "skipped", "superseded"].includes(step.state);
+  const canClaim = guided && step.yours && !viewer.actingAs && ["ready", "needs a second person", "terminal only", "needs an integration"].includes(enable!.state)
+    && (!nudge!.claim || nudge!.claim.mine);
+  const claimControl = canClaim ? (
+    <ClaimButton stepN={step.n} stepTitle={step.title} mine={!!nudge!.claim?.mine} name={viewer.name} busy={acts.busy}
+      onClaim={(release) => void acts.send({ act: "claim", step: step.id, ...(release ? { release: true } : {}) })} />
+  ) : null;
+  const noteControl = run.acts.note.offered ? (
+    <details className="work-step-note">
+      <summary>Add a note to this step</summary>
+      <TextConfirm trigger="Add the note" field="The note" busy={acts.busy} label="Note" rows={2}
+        summary={(text) => <>Add a note to step {step.n} under the name {viewer.name || "the signed-in person"}: <q>{text}</q></>}
+        onConfirm={(text) => void acts.send({ act: "note", step: step.id, text })} />
+    </details>
+  ) : null;
   return (
     <section className="work-step" aria-labelledby="work-step-h">
       <h2 id="work-step-h" ref={ref} tabIndex={-1}>{step.n}. {step.title}</h2>
@@ -215,6 +249,8 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
       {step.state === "blocked" && (
         <p className="notice notice-warn" role="note">Blocked: it waits on {step.blockedBy.length ? step.blockedBy.join(", ") : "another step or a fact"}.</p>
       )}
+      {guided && <StepEnableStrip enable={enable!} />}
+      {guided && <StepNudgeLine nudge={nudge!} claim={claimControl} />}
       <RemedyNote step={step} steps={steps} onGo={onGo} />
       {step.reason && step.state !== "failed" && <p className="muted">{step.reason}</p>}
       {step.changed.length > 0 && (
@@ -223,28 +259,97 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
         </p>
       )}
       <ControlStepNotice controls={step.controls} />
-      {step.why && (
-        <Section title="Why"><p>{step.why}</p>{step.sop && <p className="muted">Procedure: {step.sop}</p>}</Section>
-      )}
-      {step.evidence.length > 0 && (
-        <Section title="Look at"><ul className="work-evidence-list">{step.evidence.map((e) => <EvidenceRow key={e.address} e={e} />)}</ul></Section>
+      {guided && g ? (
+        <>
+          <GuideSection title="Do this" fixed>
+            <p className="guide-instruction">{g.instruction}</p>
+            {g.why && <p className="guide-why muted">Why: {g.why}</p>}
+            {g.inHand.length > 0 && <p className="muted guide-in-hand">Have open: {g.inHand.join("; ")}.</p>}
+          </GuideSection>
+          {(g.lookAt.length > 0 || step.evidence.length > 0) && (
+            <GuideSection title="Look at" startClosed={settled}
+              count={countWords(g.lookAt.filter((l) => l.kind === "read").length + (step.evidence.length ? 1 : 0), "read")}>
+              {g.lookAt.map((l) => <LookAtList key={`${l.kind}-${l.label}`} look={l} />)}
+              {step.evidence.length > 0 && <ul className="work-evidence-list">{step.evidence.map((e) => <EvidenceRow key={e.address} e={e} />)}</ul>}
+            </GuideSection>
+          )}
+          {g.rule.length > 0 && (
+            <GuideSection title="The rule" startClosed={settled} count={countWords(g.rule.length, "cite")}>
+              {g.rule.map((r) => <RuleBlock key={r.key} rule={r} />)}
+            </GuideSection>
+          )}
+          {g.checklist.length > 0 && (
+            <GuideSection title="Check before you go on" startClosed={settled} count={countWords(g.checklist.length, "item")}>
+              <GuideChecklist items={g.checklist} state={checks} />
+            </GuideSection>
+          )}
+          {g.commands.length > 0 && (
+            <GuideSection title="The command" startClosed={settled} count={countWords(g.commands.length, "command")}>
+              <CommandList commands={g.commands} />
+            </GuideSection>
+          )}
+          {g.doneWhen && (
+            <GuideSection title="Done when" startClosed={settled}>
+              <div className="guide-done-when">
+                <p>{g.doneWhen}</p>
+                {g.record && !g.doneWhen.includes(g.record) && <p className="muted">The record to point to: {g.record}.</p>}
+              </div>
+            </GuideSection>
+          )}
+        </>
+      ) : (
+        <>
+          {step.why && (
+            <Section title="Why"><p>{step.why}</p>{step.sop && <p className="muted">Procedure: {step.sop}</p>}</Section>
+          )}
+          {step.evidence.length > 0 && (
+            <Section title="Look at"><ul className="work-evidence-list">{step.evidence.map((e) => <EvidenceRow key={e.address} e={e} />)}</ul></Section>
+          )}
+        </>
       )}
       {step.links.length > 0 && (
         <Section title="What this step made"><ul className="work-links">{step.links.map((l) => <LinkRow key={`${l.kind}-${l.id}`} l={l} href={childHref(l)} />)}</ul></Section>
       )}
-      {step.command && <Section title="Command"><Command cmd={step.command} /></Section>}
+      {!guided && step.command && <Section title="Command"><Command cmd={step.command} /></Section>}
       <KindBlock step={step} run={run} viewer={viewer} acts={acts} onReread={onReread} />
       <ItemTable step={step} clocks={clocks} empty={notFilled ? `No items have been supplied yet. ${notFilled}` : undefined} />
       {mayFill && <SupplyItems step={step} run={run} viewer={viewer} acts={acts} setName={setName} />}
-      {step.clock && (
+      {guided && g && (
+        <>
+          <div className="guide-pair">
+            <GuideSection title="If you are blocked" startClosed={settled}>
+              <p>{g.blocked}</p>
+              {noteControl}
+            </GuideSection>
+            <GuideSection title="If it does not apply" startClosed={settled}>
+              <p>{g.notApplicable}</p>
+              {step.skip === null && step.legal && <p className="muted">Skip is not offered: this step is required by the law.</p>}
+            </GuideSection>
+          </div>
+          <GuideSection title="Ask" startClosed={settled}><AskOffices ask={g.ask} /></GuideSection>
+          {(g.sop || g.lessons.length > 0) && (
+            <GuideSection title="Learn more" startClosed>
+              {g.sop && <Command cmd={g.sop.command} note={`The procedure this step was built from, step ${g.sop.index}.`} />}
+              {g.lessons.length > 0 && (
+                <ul className="guide-lessons">{g.lessons.map((l) => <li key={l.key}>Lesson: <code>{l.key}</code> <span className="muted">({l.status})</span></li>)}</ul>
+              )}
+            </GuideSection>
+          )}
+        </>
+      )}
+      {!guided && step.clock && (
         <p className="work-step-clock">
           Clock: <strong>{step.clock.label || step.clock.slot}</strong> <BasisPill basis={step.clock.basis} label={step.clock.basisLabel} />
           {step.clock.cite && <> <span className="muted">Law: {step.clock.cite}, recited under Clocks.</span></>}
         </p>
       )}
       {(mine || step.acts.length > 0 || refusals.length > 0) && (
+        <div className={guided ? "guide-act-row" : undefined}>
         <Section title="What you can do">
-          {mine && <MarkDone step={step} run={run} viewer={viewer} acts={acts} />}
+          {guided && enable!.terminalOnly && mine && (
+            <p className="muted guide-terminal-note">A person does this at a terminal. Run the command first, then record the reference it gives here.</p>
+          )}
+          {mine && <MarkDone step={step} run={run} viewer={viewer} acts={acts} checks={guided ? checks : undefined} />}
           {step.acts.includes("skip") && (
             <TextConfirm trigger="Skip this step" field="Why it is skipped" required={step.skip?.reasonRequired ?? true} busy={acts.busy} label="Skip"
               summary={(reason) => <>Skip step {step.n}, {step.title}, under the name {viewer.name || "the signed-in person"}{reason ? <>, because: <q>{reason}</q></> : null}. A skip is a decision with a reason; it is on the history.</>}
@@ -257,15 +362,9 @@ export const RunStepPanel = forwardRef<HTMLHeadingElement, {
           )}
           {refusals.map((r) => <p key={r.act} className="muted work-not-offered" data-act={r.act}>{r.why}</p>)}
         </Section>
+        </div>
       )}
-      {run.acts.note.offered && (
-        <details className="work-step-note">
-          <summary>Add a note to this step</summary>
-          <TextConfirm trigger="Add the note" field="The note" busy={acts.busy} label="Note" rows={2}
-            summary={(text) => <>Add a note to step {step.n} under the name {viewer.name || "the signed-in person"}: <q>{text}</q></>}
-            onConfirm={(text) => void acts.send({ act: "note", step: step.id, text })} />
-        </details>
-      )}
+      {!guided && noteControl}
       <ActStatus said={acts.said} onReload={onReread} />
     </section>
   );

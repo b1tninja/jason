@@ -51,7 +51,8 @@ from typing import Any, Callable
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, NotApplicable, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Workflow,
+    Check, Choice, ClockBasis, ClockDef, DateSlot, Guides, NotApplicable, Phase, Reminds, Repeat, Role, SkipRule, StepDef, StepKind,
+    Support, Workflow,
 )
 
 FAMILY = "property"
@@ -363,7 +364,18 @@ def backflow_annual() -> Workflow:
         s("test", "Wait for the test and the filed report", W, M, ("hire",),
           clock=_counterparty("the supplier's stated day for the test, from the notice; each date it could run from is shown, none picked", "test_due"),
           why="Ended by a person's note that each assembly's report has arrived (tag number, final result, portal receipt)."),
-        s("receipt", "Check each report", P, M, ("test",), repeat=ITEM, record="per assembly: the tag, the result, and the portal receipt"),
+        s("receipt", "Check each report", P, M, ("test",), repeat=ITEM, record="per assembly: the tag, the result, and the portal receipt",
+          support=Support(
+              reminds=Reminds(after_hours=72, per_item=True),
+              guides=Guides(
+                  instruction="Open each assembly's filed report and write down its tag, its result, and the portal's receipt.",
+                  checklist=(Check("The tag on the report matches the assembly", required=True),
+                             Check("The result is the one the tester filed, passed or failed", required=True),
+                             Check("The portal's receipt is saved with the report")),
+                  done_when="Every assembly has its tag, its result, and its receipt written down.",
+                  blocked="If a report is missing or does not match, add a note naming the assembly and what is missing.",
+                  not_applicable="",
+                  ask=(Role.MANAGER,)))),
         s("failed", "Did any assembly fail?", B, M, ("receipt",), choices=(i.choice("failed", "repair-retest"), i.choice("passed")),
           why="Answered by the reading of the reports; a failed assembly makes the repair and retest required."),
         s("repair-retest", "Repair or replace, retest, and file again", W, M, ("failed",),

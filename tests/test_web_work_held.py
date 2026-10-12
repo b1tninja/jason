@@ -460,3 +460,61 @@ def test_inside_the_private_view_the_items_show_and_may_be_supplied_and_each_ope
     lines = served(world)
     assert [x["address"] for x in lines] == [f"api/work-run/{rid}", f"api/write/work/{rid}"]
     assert "req:7" not in json.dumps(lines)                                              # the log names the run, never an item
+
+
+# --- the step guide on a held run: general titles only outside the private view -----------------------------------------------------
+
+GUIDE_WORDS = ("Seal the envelope before dawn", "Check the seal", "Ask the keeper of the seal", "guided-held")
+
+
+def held_guided(key="example-held-guided"):
+    """A held definition whose person step carries a Support with words that name the matter, so a leak is easy to see."""
+    from jason.workflows.types import Check, Cmd, Guides, Reminds, Role, Support
+
+    support = Support(reminds=Reminds(after_hours=24),
+                      guides=Guides(instruction=GUIDE_WORDS[0], checklist=(Check(GUIDE_WORDS[1], required=True),),
+                                    commands=(Cmd("example notice --send --by NAME"),), done_when="The seal is intact.",
+                                    blocked=GUIDE_WORDS[2], ask=(Role.MANAGER,)))
+    base = held_def(key)
+    return replace(base, steps=tuple(replace(s, support=support) if s.id == C2 else s for s in base.steps))
+
+
+def test_a_held_run_outside_the_private_view_carries_no_enable_nudge_or_guide(app, world):
+    definitions.register(held_guided(), plan_kinds={"example-plan"}, jobs={"example-report"})
+    rid = start(world, "example-held-guided")
+    for who in (TREASURER, MANAGER):
+        r = as_(app, who).get(f"/api/work-run?definition=example-held-guided&id={rid}")
+        assert r.status_code == 200 and r.json["held"] is True
+        text = r.get_data(as_text=True)
+        for word in GUIDE_WORDS:
+            assert word not in text, (who, word)
+        for key in ("guide", "enable", "nudge", "lookAt", "checklist", "doneWhen"):
+            assert f'"{key}"' not in text, (who, key)
+    listing = as_(app, TREASURER).get("/api/work").get_data(as_text=True)
+    assert not any(word in listing for word in GUIDE_WORDS) and '"guide"' not in listing
+    catalog = as_(app, TREASURER).get("/api/work-definitions?key=example-held-guided").get_data(as_text=True)
+    assert not any(word in catalog for word in GUIDE_WORDS)                       # the catalog says what is covered in words, not the words
+    c = as_(app, MANAGER)
+    assert c.post(f"/api/write/work/example-held-guided/{rid}", json={"act": "claim", "step": C2}).status_code == 404       # the 404 a missing run gets
+    assert not served(world)
+
+
+def test_inside_the_private_view_the_whole_panel_shows(app, world):
+    definitions.register(held_guided(), plan_kinds={"example-plan"}, jobs={"example-report"})
+    rid = start(world, "example-held-guided")
+    r = as_(app, MANAGER, private=True).get(f"/api/work-run?definition=example-held-guided&id={rid}")
+    assert r.status_code == 200 and r.json.get("held") is None
+    step = r.json["steps"][1]
+    assert step["guide"]["instruction"] == GUIDE_WORDS[0] and step["guide"]["blocked"] == GUIDE_WORDS[2]
+    assert step["enable"]["state"] == "ready" and step["nudge"]["band"] in ("quiet", "stale")
+    assert [x["address"] for x in served(world)] == [f"api/work-run/{rid}"]       # the opening is logged, as it is for the whole run
+
+
+def test_held_guidance_with_an_address_is_refused_when_the_definition_registers():
+    from jason.workflows.types import Guides, Support
+
+    bad = Support(guides=Guides(instruction="Write to a.owner@example.org."))
+    base = held_def("example-held-bad")
+    wf = replace(base, steps=tuple(replace(s, support=bad) if s.id == C2 else s for s in base.steps))
+    found = definitions.validate(wf, plan_kinds={"example-plan"}, jobs={"example-report"})
+    assert any("an address or handle" in p.message for p in found)

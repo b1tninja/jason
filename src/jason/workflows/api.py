@@ -381,6 +381,31 @@ def _supply_preview(data_dir: Path | str, run_id: str, item_set: str, items: Ite
             "record": act.detail.get("record", ""), "n": run.n}
 
 
+def claim(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
+          release: bool = False, readers: Readers | None = None, expect: int | None = None, at: str | None = None,
+          today: date | None = None, dry_run: bool = False) -> dict[str, Any]:
+    """Say you are on a step, or let it go (docs/workflows/person-steps.md, section 5.4): a ``note`` on the step whose detail has
+    ``claim``. It is not an assignment: it grants nothing, blocks nobody, and changes what the others see. ``dry_run`` makes every check
+    a real call makes and appends nothing: ``{"ok": True, "dryRun": True, "run", "step", "release", "text", "by", "n"}``."""
+    from jason.workflows import nudge
+
+    def make(wf: Workflow, view: RunView, run: store.Run) -> steps.Act:
+        held = nudge.claims_of(run.events).get(step_id)
+        return steps.claim_act(wf, view, step_id, by=by, roles_of=roles_of, release=release, held=held.by if held else "")
+
+    if dry_run:
+        day = _today(today)
+        definition = store.locate(data_dir, run_id)
+        wf = _workflow(definition)
+        run = store.read(data_dir, definition, run_id)
+        if expect is not None and expect != run.n:
+            raise RunChanged(f"run {run_id} changed: you saw n={expect}, it is now n={run.n}; read it again", expected=expect, actual=run.n)
+        act = make(wf, _view(run, wf, day, readers), run)
+        return {"ok": True, "dryRun": True, "run": run_id, "step": step_id, "release": release, "by": by,
+                "text": f"{by} {act.detail['text']}", "n": run.n}
+    return _do(data_dir, run_id, by, make, expect=expect, today=today, at=at, readers=readers, needs_run=True)
+
+
 def skip(data_dir: Path | str, run_id: str, step_id: str, by: str, *, roles_of: Callable[[str], Iterable[Any]] | None = None,
          reason: str = "", item: str = "", readers: Readers | None = None, expect: int | None = None, at: str | None = None,
          today: date | None = None, gates: Gates | None = None) -> dict[str, Any]:
@@ -496,5 +521,5 @@ def reindex(data_dir: Path | str, *, today: date | None = None) -> dict[str, Any
     return {"ok": True, "runs": len(rows), "rows": rows}
 
 
-__all__ = ["arrived", "attest", "cancel", "not_applicable", "note", "open_run", "pause", "pending_first", "reindex", "reopen",
+__all__ = ["arrived", "attest", "cancel", "claim", "not_applicable", "note", "open_run", "pause", "pending_first", "reindex", "reopen",
            "resume_run", "runs", "set_date", "show", "skip", "spawned", "start", "supply_items", "verify", "view_dict"]

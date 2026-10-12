@@ -425,6 +425,34 @@ def note_act(view: RunView, *, by: str, text: str, step: str = "") -> Act:
     return Act(EventKind.NOTE, step, {"text": text.strip()})
 
 
+def claim_act(workflow: Workflow, view: RunView, step_id: str, *, by: str, roles_of: RolesOf | None, release: bool = False,
+              held: str = "") -> Act:
+    """A person says they are on a step, or lets it go. It is a ``note`` on the step whose detail has ``claim`` (true to claim, false to
+    release): no new event kind, and no assignment. It grants no standing, blocks nobody, and any holder may still act; it changes what
+    the others see. Only a person who may act on the step claims it, only while it is open, and only the one who claimed it releases it
+    (``held`` is who claims it now, "" for nobody)."""
+    _acting(view)
+    sd, sv = _step(workflow, view, step_id)
+    by = _person(by)
+    from jason.workflows.nudge import open_for_person
+
+    if not (sd.kind in (StepKind.PERSON, StepKind.DECISION) or sd.ends_by_note):
+        raise StepRefused(f"{sd.id} is a {sd.kind.value} step: a claim is for a step a person does")
+    if not may_act(sd, by, roles_of):
+        raise _no_standing(by, sd)
+    if release:
+        if not held:
+            raise StepRefused(f"nobody is on {sd.id}, so there is nothing to release")
+        if held.casefold() != by.casefold():
+            raise StepRefused(f"{held} is on {sd.id}; only {held} lets it go")
+        return Act(EventKind.NOTE, sd.id, {"claim": False, "text": "is no longer on it"})
+    if not open_for_person(sd, sv):
+        raise StepRefused(f"{sd.id} is {sv.state.value}, not waiting on a person: a claim is for a step that is open")
+    if held.casefold() == by.casefold() and held:
+        raise StepRefused(f"{by} is already on {sd.id}")
+    return Act(EventKind.NOTE, sd.id, {"claim": True, "text": "is on it"})
+
+
 def cancel_act(workflow: Workflow, view: RunView, *, by: str, roles_of: RolesOf | None, reason: str, yes: bool = False,
                roles: tuple[Role, ...] = CANCEL_ROLES) -> Act:
     """Cancel a run, with a reason. A run with a legal clock still to come is cancelled only with ``yes`` and only by
@@ -445,6 +473,6 @@ def cancel_act(workflow: Workflow, view: RunView, *, by: str, roles_of: RolesOf 
     return Act(EventKind.CANCELLED, "", {"reason": reason.strip(), "legal_clock": legal})
 
 
-__all__ = ["ACTING", "Act", "CANCEL_ROLES", "RolesOf", "activate_act", "arrived_act", "attest_act", "cancel_act", "date_set_act",
+__all__ = ["ACTING", "Act", "CANCEL_ROLES", "RolesOf", "activate_act", "arrived_act", "attest_act", "cancel_act", "claim_act", "date_set_act",
            "may", "may_act", "na_act", "note_act", "pause_act", "reopen_act", "resume_act", "role_phrase", "roles_held", "skip_act",
            "supply_items_act"]

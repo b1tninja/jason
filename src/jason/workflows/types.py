@@ -272,6 +272,97 @@ class Phase:
     steps: tuple[str, ...] = ()
 
 
+# --- the guidance record a person step may carry (docs/workflows/person-steps.md, section 4) -----------------------------
+
+@dataclass(frozen=True)
+class LookAt:
+    """One thing to look at before acting: a label and the name of a registered guide read (``jason.workflows.guide_reads``)
+    that counts it. ``args`` are opaque words the read may take."""
+
+    label: str
+    read: str
+    args: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Check:
+    """One line of the checklist: one thing to look at or do. A ``required`` item is ticked before the step is marked done."""
+
+    text: str
+    required: bool = False
+
+
+@dataclass(frozen=True)
+class Cmd:
+    """One command, shown and copied and never run by a page. ``NAME``, ``KEY``, ``RUN`` and ``ID`` stand for what the page or
+    the person fills in; ``terminal_only`` says the command is applied only at a terminal (``note`` says why)."""
+
+    text: str
+    note: str = ""
+    terminal_only: bool = False
+
+
+@dataclass(frozen=True)
+class Cite:
+    """A provision the step rests on: a shelf key (``CIV 9999(a)``) or a document key with a section (``key#section``). The panel
+    recites its words, then the ``reading`` (jason's, labeled). No reading is allowed: the words alone are then shown."""
+
+    key: str
+    reading: str = ""
+
+
+@dataclass(frozen=True)
+class Guides:
+    """The words and the evidence (section 4.1). Every field has a derivation from what the step already holds (see
+    ``jason.workflows.guide``), so a step with none is never empty."""
+
+    instruction: str = ""
+    why: str = ""
+    look_at: tuple[LookAt, ...] = ()
+    checklist: tuple[Check, ...] = ()
+    commands: tuple[Cmd, ...] = ()
+    lessons: tuple[str, ...] = ()
+    cites: tuple[Cite, ...] = ()
+    done_when: str = ""
+    blocked: str = ""
+    not_applicable: str = ""
+    ask: tuple["Role", ...] = ()
+
+
+@dataclass(frozen=True)
+class Enables:
+    """Can this person do it now (section 4.2). ``second_person`` and ``terminal`` are ``None`` to derive them."""
+
+    in_hand: tuple[str, ...] = ()
+    integrations: tuple[str, ...] = ()
+    access_note: str = ""
+    second_person: bool | None = None
+    terminal: bool | None = None
+
+
+@dataclass(frozen=True)
+class Reminds:
+    """When, to whom, how loud (section 4.3). Each ``None`` is the proposed default (``jason.workflows.nudge.Prefs``); a number
+    here is the definition's own and the board may adopt another. A step's due date is its ``clock``, never a field here."""
+
+    lead_days: int | None = None
+    after_hours: int | None = None
+    escalate_to: "Role | None" = None
+    escalate_after_hours: int | None = None
+    snoozable: bool | None = None
+    per_item: bool = False
+
+
+@dataclass(frozen=True)
+class Support:
+    """The guidance record on a person step: ``enables``, ``reminds``, ``guides``. Frozen data in the definition, like a rule
+    row; it names no association."""
+
+    enables: Enables = Enables()
+    reminds: Reminds = Reminds()
+    guides: Guides = Guides()
+
+
 @dataclass(frozen=True)
 class StepDef:
     id: str                                # "example-cycle.2": stable; a step is never renumbered, only added to
@@ -304,6 +395,7 @@ class StepDef:
     item_set: str = ""                     # a named set of items this step repeats over, supplied while the run goes ("": the run's own)
     item_needs: tuple[str, ...] = ()       # steps in ``needs`` read item by item: an item waits only for its own item of them
     ends_by_note: bool = False             # a wait that only a person's recorded note ends (no reader, no date ends it)
+    support: Support | None = None         # the guidance record of a person step (enable, remind, guide); None: derived from the fields above
 
     @property
     def item_aware(self) -> bool:

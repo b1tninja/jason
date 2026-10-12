@@ -15,12 +15,12 @@ import jason.workflows as pkg
 from jason.workflows.types import ClockBasis, Role, followup_basis
 
 PACKAGE = Path(pkg.__file__).parent
-EDGE = {"readers", "definitions_general"}
+EDGE = {"readers", "definitions_general", "guide_reads"}
 """The two modules at the engine's edge: the readers that look at jason's stores, and the general definitions built over
 the procedures. They are held to the rules in ``test_the_edge_*`` below; the core is everything else."""
 ALL_MODULES = sorted(PACKAGE.glob("*.py"))
 MODULES = [m for m in ALL_MODULES if m.stem not in EDGE]
-EXPECTED = {"__init__", "types", "store", "fold", "resume", "steps", "definitions", "api"}
+EXPECTED = {"__init__", "types", "store", "fold", "resume", "steps", "definitions", "api", "guide", "nudge"}
 
 # The only jason modules the package may import, and why: the locks it appends under, the follow-ups' clock basis (mapped
 # lazily), the approvals registry (its kinds, read lazily when a definition is checked), and the procedures (read lazily

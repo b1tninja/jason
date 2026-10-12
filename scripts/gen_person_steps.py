@@ -154,6 +154,8 @@ def _cites(step) -> str:
     found = []
     if step.clock is not None and step.clock.cite:
         found.append(step.clock.cite)
+    if step.support is not None:
+        found += [c.key for c in step.support.guides.cites]
     found += [" ".join(m.split()) for m in _CITE.findall(step.why)]
     return ", ".join(dict.fromkeys(found)) or "-"
 
@@ -163,6 +165,7 @@ def collect() -> list[dict]:
     from jason.community.procedures import find
     from jason.workflows.definitions_general import GENERAL
     from jason.workflows.defs import FAMILIES, all_builders
+    from jason.workflows.guide import coverage_words
     from jason.workflows.types import StepKind, Visibility
 
     built = [b() for b in (*GENERAL, *all_builders())]
@@ -181,6 +184,7 @@ def collect() -> list[dict]:
                 "clock": _clock(s), "exit": _exit(s), "sop": address, "carries": carries, "cites": _cites(s),
                 "missing": _missing(s, address), "wanted": _wanted(s.why), "item": s.repeat.value == "per item",
                 "slot": s.clock.slot if s.clock is not None else "", "legal": s.is_legal, "basis": s.clock.basis.value if s.clock else "",
+                "guidance": coverage_words(s) if s.support is not None else "-",
             })
         human_edges = sum(1 for s in w.steps if (s.kind is StepKind.WAIT and s.ends_by_note) or
                           (s.kind is StepKind.BRANCH and s.role.value not in ("jason", "scheduler")))
@@ -217,6 +221,7 @@ def render() -> str:
         f"- With a command: {sum(r['cmd'] for r in rows)}. With a why sentence: {sum(r['why'] for r in rows)}. "
         f"With a clock: {sum(r['clock'] != '-' for r in rows)} (a legal one: {sum(r['legal'] for r in rows)}). "
         f"Built from a procedure step: {sum(r['sop'] != '-' for r in rows)}. Repeating per item: {sum(r['item'] for r in rows)}.",
+        f"- With a guidance record written by a person (`Support`): {sum(r['guidance'] != '-' for r in rows)}; the others show what the panel derives.",
         f"- Guidance each step could already carry, and does not (the codes in the last-but-one column): {_count(missing) or 'none'}.",
         f"- Waiting to be replaced by a check, a job, a plan, or a template (read from the step's why): {_count(wanted) or 'none'}; "
         f"{sum(bool(r['wanted']) for r in rows)} steps name at least one.",
@@ -236,7 +241,8 @@ def render() -> str:
         "| Exit | `legal` (a law clock: no skip), `skip` (a skip rule), `na` (a not-applicable outcome); `-` is none |",
         "| SOP | the procedure step it was built from; the letters after it say what that step carries: `c` a check, "
         "`l` lessons, `r` readings; `gone` is a drifted address |",
-        "| Cites | the sections its clock or why names (today only in prose, except a law clock's `cite`) |",
+        "| Cites | the sections its clock or why names (in prose, except a law clock's `cite` and a `Support` cite) |",
+        "| Guidance | the parts of its `Support` record a person wrote, in the panel's order; `-` when it has none and the panel derives them |",
         "| Missing | codes, from the list below, for guidance the step could already carry |",
         "| Wanted | what the step is waiting to become (`check`, `job`, `plan`, `case`, `template`, `run`, `role`) |",
         "",
@@ -258,14 +264,14 @@ def render() -> str:
             if not d["rows"]:
                 lines += ["No person step.", ""]
                 continue
-            lines += ["| Step | Title | Kind | Roles | Cmd | Why | Clock | Exit | SOP | Cites | Missing | Wanted |",
-                      "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+            lines += ["| Step | Title | Kind | Roles | Cmd | Why | Clock | Exit | SOP | Cites | Guidance | Missing | Wanted |",
+                      "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
             for r in d["rows"]:
                 sop = r["sop"] if r["sop"] == "-" else f"{r['sop']} ({r['carries']})"
                 lines.append("| " + " | ".join((
                     f"`{r['id']}`" + ("*" if r["item"] else ""), _cell(_short(r["title"])), r["kind"], _cell(r["roles"]),
                     "Y" if r["cmd"] else "-", "Y" if r["why"] else "-", _cell(r["clock"]), r["exit"], _cell(sop), _cell(r["cites"]),
-                    ", ".join(r["missing"]) or "-", _cell("; ".join(r["wanted"])) or "-")) + " |")
+                    _cell(r["guidance"]), ", ".join(r["missing"]) or "-", _cell("; ".join(r["wanted"])) or "-")) + " |")
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

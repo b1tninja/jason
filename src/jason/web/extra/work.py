@@ -9,7 +9,8 @@ the small acts, over ``jason.workflows``.
 - ``GET /api/work-definitions[?family=&key=&role=&mine=1]``: the workflows jason has, with drift from their procedures; with
   ``key`` one definition read whole (its steps, clocks, and the statute words a law clock cites).
 - ``POST /api/write/work/<definition>/<run id>`` with ``{act, step?, record?, reason?, text?, ...}``: ``attest``, ``arrived``,
-  ``skip``, ``na`` (a step recorded as not applicable, with a reason and a record), ``set-date`` (a late or optional date slot
+  ``skip``, ``na`` (a step recorded as not applicable, with a reason and a record), ``claim`` (a person says they are on a step, or
+  lets it go with ``release``: a note, not an assignment), ``set-date`` (a late or optional date slot
   given a day, with a record), ``supply-items`` (more items for an item set while the run goes: ``{set?, items, record?, dryRun?}``;
   each item an opaque id, or ``{id, dates}``), ``reopen``, ``pause``, ``resume``, ``note``, ``cancel``, ``open``, each one
   ``jason.workflows.api`` function with the signed-in person's own name as ``by`` and the roles their offices hold. ``POST /api/write/work/start`` (or
@@ -45,10 +46,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from jason.web.extra.work_scope import STEP_WORDS
+from jason.workflows import guide, nudge
 
 Args = dict[str, str]
 
-ACTS = ("attest", "arrived", "skip", "na", "set-date", "supply-items", "reopen", "pause", "resume", "note", "cancel", "open")
+ACTS = ("attest", "arrived", "skip", "na", "set-date", "supply-items", "claim", "reopen", "pause", "resume", "note", "cancel", "open")
 GROUPS = (("yours", "Yours"), ("others", "Waiting on others"), ("clock", "Waiting on a clock"), ("board", "The board"))
 DUE_FILTERS = ("soon", "week", "overdue", "legal", "past")
 WEEK = 7
@@ -65,7 +67,7 @@ ROLE_REFUSALS = (" role that ", "may not skip", "may not record", "may not set d
                  "made the first, so a different person")
 KEPT = ("what", "reason", "record", "outcome", "motion", "choice", "item", "ok", "message", "text", "status", "job", "approval",
         "child", "definition", "until", "found", "activated", "legal_clock", "draft", "subject", "label", "dates", "slot", "day",
-        "was")
+        "was", "claim")
 TEXTS = frozenset({"what", "reason", "record", "outcome", "motion", "message", "text", "label", "subject"})
 CAVEATS = (
     "Read from the stores on disk. jason decides nothing: a date is the law's, the documents', a counterparty's, jason's "
@@ -782,6 +784,10 @@ def _sentence(e: Any, titles: dict[str, str], order: dict[str, int]) -> str:
         return f"{who} paused the run" + (f": {note('reason')}" if note("reason") else "")
     if k == "cancelled":
         return f"{who} cancelled the run" + (f": {note('reason')}" if note("reason") else "")
+    if k == "note" and d.get("claim") is True:
+        return f"{who} is on {step}"
+    if k == "note" and d.get("claim") is False:
+        return f"{who} let go of {step}"
     if k == "note":
         return f"{who} noted on {step}: {note('text')}"
     if k == "attested":
@@ -917,6 +923,19 @@ def _step_controls(root: Path, wf: Any, steps: list[dict[str, Any]], events: lis
     return []
 
 
+def _step_support(root: Path, wf: Any, view: Any, events: list[Any], steps: list[dict[str, Any]], who: Who, day: date, readers: Any,
+                  acting_as: str) -> list[dict[str, str]]:
+    """Put ``enable``, ``nudge`` and ``guide`` on each person step (docs/console/screens/work-guide.md, "Data"). A guide that cannot be
+    composed is a problem on the page, not a reason to hide the run."""
+    try:
+        from jason.web.extra import work_guide
+
+        work_guide.attach(root, wf, view, events, steps, who, day, readers, acting_as=acting_as, community=_community())
+    except Exception as exc:  # noqa: BLE001 - the page says what it could not compose
+        return [{"what": "The step guide", "why": f"could not be composed ({type(exc).__name__}: {exc}); the steps are shown without it"}]
+    return []
+
+
 def _item_fields(sd: Any, sv: Any) -> dict[str, Any]:
     """What round three adds to a step row, only where it applies (a step with none of it is as it was): that the step repeats
     over items and which set, how many items are in each state, the check this step is the remedy for, and the step that
@@ -1011,6 +1030,7 @@ def compose_run(root: Path, definition: str, rid: str, who: Who, day: date, *, a
             step["job"] = {"job": made["id"] if made else None, "state": made["state"] if made else "", "name": sd.job}
         steps.append(step)
     control_problems = _step_controls(root, wf, steps, events, day)
+    control_problems += _step_support(root, wf, view, events, steps, who, day, readers, acting_as)
     cache: dict[str, dict[str, Any]] = {}
     clocks = []
     for c in view.clocks:
@@ -1216,7 +1236,8 @@ def _definition_page(wf: Any, root: Path, day: date) -> dict[str, Any]:
                    "skip": ({"roles": [r.value for r in (s.skip.roles or s.acting_roles)], "reasonRequired": s.skip.reason_required}
                             if s.skip is not None and not s.is_legal else None),
                    "clock": clock(s.clock) if s.clock is not None else None, "phase": phases.get(s.id, ("", ""))[0],
-                   "group": _step_group(wf, s.id)} for i, s in enumerate(wf.steps, 1)],
+                   "group": _step_group(wf, s.id),
+                   "guidance": guide.coverage_words(s) if nudge.is_person_step(s) else ""} for i, s in enumerate(wf.steps, 1)],
     }
 
 
@@ -1420,6 +1441,8 @@ def write(key: str, body: dict[str, Any]) -> dict[str, Any]:
             if dry:               # the same checks as the real act, and nothing written
                 return {"ok": True, "act": act, "by": by, "dryRun": True, **{k: out[k] for k in (
                     "set", "wouldAdd", "alreadyThere", "withDates", "text", "record", "n")}}
+        elif act == "claim":
+            out = api.claim(root, rid, _need(body, "step"), by, roles_of=who.roles_of, release=bool(body.get("release")), **common)
         elif act == "reopen":
             out = api.reopen(root, rid, _need(body, "step"), by, roles_of=who.roles_of, reason=text("reason"), item=text("item"), **common)
         elif act == "pause":

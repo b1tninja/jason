@@ -38,7 +38,8 @@ from typing import Any, Callable
 
 from jason.workflows.readers import named_check
 from jason.workflows.types import (
-    Choice, ClockBasis, ClockDef, DateSlot, Elapsed, Phase, Repeat, Role, SkipRule, StepDef, StepKind, Visibility, Workflow,
+    Check, Choice, Cite, ClockBasis, ClockDef, DateSlot, Elapsed, Enables, Guides, Phase, Repeat, Role, SkipRule, StepDef, StepKind,
+    Support, Visibility, Workflow,
 )
 
 P, PL, D, W, B, C = StepKind.PERSON, StepKind.PLAN, StepKind.DECISION, StepKind.WAIT, StepKind.BRANCH, StepKind.CHECK
@@ -160,7 +161,19 @@ def board_meeting() -> Workflow:
              command="jason notices board-meeting-DATE --mark-general --posted \"WHERE, DATE\" --by NAME",
              record="where and when it was posted and sent",
              why="Delivery is 'by general delivery pursuant to Section 4045' (CIV 4920(c)); none on record is not none given, so the "
-                 "posting is recorded. Read and link: the posting is recorded on `#/meetings` and the step reads done when it appears."),
+                 "posting is recorded. Read and link: the posting is recorded on `#/meetings` and the step reads done when it appears.",
+             support=Support(
+                 enables=Enables(in_hand=("the notice as it was drawn", "the place it is posted")),
+                 guides=Guides(
+                     instruction="Post and send the meeting notice, then write down where and when it was posted and sent.",
+                     checklist=(Check("The notice carries the agenda", required=True),
+                                Check("It went by general delivery, and by any other way the governing documents require"),
+                                Check("The posting is written down with the place and the day", required=True)),
+                     cites=(Cite("CIV 4920(a)", reading="A notice given in time is one that is on record as given, so a posting or "
+                                                         "sending that is not written down is not shown to have happened."),),
+                     done_when="The posting and the sending are on record, each with where and when.",
+                     blocked="If the notice cannot go out in time, add a note now and ask the president to bring it to the board: the date is the law's and does not move.",
+                     ask=(Role.SECRETARY, Role.PRESIDENT)))),
         step("13", "Read delivery until nothing is owed", W, JASON, ("12",), clock=notice_by,
              command="jason notices board-meeting-DATE --sync", check=named_check("notice-delivery-read"),
              why="A file never meets the notice clock; only a delivery, or a send with follow-ups listed, does. Past the notice-by "
