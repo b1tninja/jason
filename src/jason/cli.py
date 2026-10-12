@@ -15,7 +15,8 @@ def _bill_sources() -> tuple[str, ...]:
     from jason.community.profile import ProfileNotFound
 
     try:
-        return ("smud", "idoxs", *(p.key for p in active().vendor_portals()), "county-tax")
+        portals = getattr(active(), "vendor_portals", None)     # a profile without portals is a miss, not a crash
+        return ("smud", "idoxs", *(p.key for p in (portals() if portals else ())), "county-tax")
     except ProfileNotFound:      # no community chosen (or a wrong name): `jason use KEY`, `jason cite`, --help still run
         return ("smud", "idoxs", "county-tax")
 
