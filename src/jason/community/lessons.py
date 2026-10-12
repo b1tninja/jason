@@ -2493,6 +2493,60 @@ LESSONS: tuple[Lesson, ...] = (
            docs=("docs/record-intake.md",),
            notes=("Open: whether the umbrella 5200 slots and the document-kind slots should be merged, since a person can "
                   "pin the same file twice.",)),
+    Lesson("a-scratch-copy-on-the-system-drive-filled-it", date(2026, 10, 11), (Area.REPOSITORY,),
+           "Four scratch copies of the tree, each with a full copy of the data folder (21.5 GB in all), filled the system "
+           "drive to 98% and risked a crash.",
+           "A session built them under /tmp, which on Windows is the system Temp, and ln -s silently copies there.",
+           "Scratch work goes to JASON_TEMP_DIR or another data drive, links are junctions, and the size of what a task "
+           "wrote is checked afterwards; jason storage --check reports where jason writes.",
+           Status.FIXED, guards=("jason storage --check", "docs/setup.md (scratch and temp)"), docs=("docs/setup.md",),
+           notes=("Open: Windows' own TEMP and TMP still point at the system drive; moving them is the machine owner's "
+                  "setting.",)),
+    Lesson("a-confidential-text-must-be-masked-at-every-reader", date(2026, 10, 11), (Area.ONBOARDING, Area.REPOSITORY),
+           "Only a confidential file's pictures needed the private view; its titles, headers, dates and suggestion reasons "
+           "went to the board level through the session loader, the review, the CLI and the MCP tool.",
+           "Masking was applied to the thumbnail alone, and each reader chose what to strip.",
+           "One module (tasks.split_mask) decides what each reader gets, applied at every output, with a test that walks "
+           "all of them for planted text; a new field in a session payload needs a mask decision.",
+           Status.FIXED, guards=("tests/test_split_confidential.py",), docs=("docs/pdf-splitter.md",)),
+    Lesson("a-silent-database-error-is-a-safety-switch-off", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A busy library database made the confidential flag fall back to its open-time value and made duplicate "
+           "detection switch itself off, with no sign to the person.",
+           "A read that returned None on an error looked like a read that found nothing.",
+           "A typed LibraryBusy is raised; a flag read fails closed, an apply refuses with 'Nothing was written', and a "
+           "review shows a visible skipped note.",
+           Status.FIXED, guards=("tests/test_split_confidential.py",), docs=("docs/pdf-splitter.md",)),
+    Lesson("an-apply-must-be-a-journal-not-a-sequence", date(2026, 10, 11), (Area.ONBOARDING,),
+           "A kill between writing a pin and recording it left an orphan pin that the re-run reported as a collision with "
+           "itself, and a plan built before the lock could be cut under a stale draft.",
+           "Apply was a sequence of writes with no record of intent and no check that the plan was still the plan.",
+           "Apply takes the lock, builds the plan inside it, binds it to a fingerprint, writes an intent first and a "
+           "commit last, pre-allocates pin ids, and a journal with no commit is finished or rolled back only on a "
+           "person's confirmation; jason split --doctor lists the rest.",
+           Status.FIXED, guards=("tests/test_split_journal.py (12 injected kill points)", "jason.durable"),
+           docs=("docs/pdf-splitter.md",),
+           notes=("Open: undo of a committed apply, a staging folder, and a trash for swept drafts.",)),
+    Lesson("a-rename-is-atomic-but-not-durable", date(2026, 10, 11), (Area.REPOSITORY,),
+           "Session, slot and history writes replaced files atomically but never flushed them, so a power loss could "
+           "leave an empty or old file.",
+           "os.replace was treated as a durable write.",
+           "jason.durable writes a temp file, fsyncs it, replaces the target (retrying a Windows sharing error) and "
+           "fsyncs the folder; a session keeps a .bak at each save.",
+           Status.FIXED, guards=("tests/test_split_journal.py",), docs=("docs/pdf-splitter.md",)),
+    Lesson("a-focus-restore-must-not-look-like-a-choice", date(2026, 10, 11), (Area.REPOSITORY,),
+           "Moving a start with [ then ] worked once and then stopped: the grid restored focus to the old page and the "
+           "editor read that as a person moving to it.",
+           "Calling focus() fires onFocus, and the restore used a remembered page, not the current one.",
+           "The restore is marked programmatic and goes to the screen's current page; a mounted row is held for the "
+           "focused cell, guarded by an empty-window check so it cannot mount an extra row.",
+           Status.FIXED, guards=("e2e/tests/a11y.spec.ts (repeated ]) and the GET ceiling test",),
+           docs=("docs/pdf-splitter-accessibility.md",)),
+    Lesson("a-build-that-fails-its-type-check-leaves-dist-stale", date(2026, 10, 11), (Area.REPOSITORY,),
+           "A type error in a test file made npm run build stop at tsc and leave the old dist in place, so a run tested "
+           "code that was not the code just written.",
+           "The build script runs tsc first and the failure is easy to miss in the tail of the output.",
+           "Check that the build line says 'built' before running browser tests.",
+           Status.FIXED, guards=("ui/package.json build script",), docs=("docs/web-ui.md",)),
     Lesson("a-static-route-must-set-module-and-wasm-types", date(2026, 10, 11), (Area.REPOSITORY,),
            "On Windows the static route served .mjs files as text/plain, which broke pdf.js's module worker.",
            "The type came from the operating system's registry.",
