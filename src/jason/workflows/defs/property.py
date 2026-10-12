@@ -493,7 +493,9 @@ def contract_notice_window() -> Workflow:
           clock=_law("CIV 5375", "the statement is given 'in no event more than 90 days' before entering into the agreement; the earliest day it may be dated",
                      "agreement_on", -90),
           record="the statement's library address, or why none is needed (a renewal, or an agreement that is not a management agreement)",
-          why="Passes when the document reading found the statement in the agreement's own text (it counts the five items). A separate "
+          why="Passes when the document reading found the statement in the agreement's own text (it counts the five items). The run's "
+              "subject must be the contract's terms-reading key (library-ID) or the bare library id, optionally after a kind and a "
+              "colon (contract:library-ID); any other subject reads 'subject not recognized', and nothing is guessed from it. A separate "
               "statement is not read, so a failure is not a finding that none exists. No skip: a run for a renewal, or an agreement "
               "that is not a management agreement, is recorded as not applicable by the manager, with a reason and the record."),
         s("review", "Renew, renegotiate, re-bid, or end", D, S, ("window",), command="jason board",

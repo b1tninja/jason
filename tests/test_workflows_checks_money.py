@@ -1,4 +1,4 @@
-"""The money family's reads (src/jason/workflows/checks/money.py): twenty-six ``check`` names over made-up stores in a temporary
+"""The money family's reads (src/jason/workflows/checks/money.py): twenty-seven ``check`` names over made-up stores in a temporary
 data folder. Nothing here reads a real store, reaches the network, or loads a profile. Every read is pinned read-only by
 comparing the folder byte for byte before and after; a store that is missing or cannot be read gives ``ok=False`` with the
 reason, never an exception and never ``ok`` by default. Plainly fake: "A. Manager", "123-456-789-0000", dates in 2026 or 2099.
@@ -30,7 +30,9 @@ NAMES = ("bill-snapshot-fresh", "bill-queue-read", "bill-handed", "payee-class-r
          "review-reconciliations", "review-budget", "reserve-study-due", "insurance-due", "tax-standing", "tax-bill-files",
          "review-statements", "review-income-expense", "review-registers", "fiscal-window", "reserve-plan-match",
          "disclosure-reserve-summary", "disclosure-insurance-summary", "insurance-limits", "insurance-changed", "insurance-summary",
-         "disclosure-delivery-read", "reserve-notice", "reserve-restored", "tax-years-closed")
+         "disclosure-delivery-read", "reserve-notice", "reserve-restored", "tax-years-closed", "insurance-answer")
+SUGGESTS = ("insurance-changed",)
+"""Reads that only suggest: they pass whenever they were made, and say there is no suggestion when a store gives none."""
 TAX = PayeeRule(PayeeClass.COUNTY_TAX, description_contains=("EXAMPLE COUNTY TAX",), note="the county tax collector's ACH line")
 
 
@@ -87,10 +89,10 @@ def tax_db(root, rows):
 
 # --- the registry ---------------------------------------------------------------------------------------------------------
 
-def test_the_twenty_six_reads_are_registered_by_name_and_only_once():
+def test_the_twenty_seven_reads_are_registered_by_name_and_only_once():
     checks.load_all()
     assert set(NAMES) <= set(CHECKS)
-    assert len(set(NAMES)) == 26
+    assert len(set(NAMES)) == 27
     before = dict(CHECKS)
     checks.load_all()
     assert CHECKS == before
@@ -102,7 +104,8 @@ def test_every_read_on_an_empty_data_folder_is_not_ok_says_why_and_writes_nothin
     root = tmp_path / "data"                         # the folder does not even exist
     for name in NAMES:
         res = result(name, root, "month:2026-09" if name != "payee-class-read" else "transaction:1", comm=community())
-        assert res.ok is False and res.message, name
+        assert res.message, name
+        assert res.ok is (name in SUGGESTS) and res.choice == "", name           # a suggestion with nothing to go on makes none
     assert not root.exists() or not tree(root)
 
 
@@ -781,10 +784,11 @@ def decisions(root, number="EX-1000", notice=False, decision="renew as quoted"):
     path.write_text(json.dumps({"renewals": {number: {"number": number, "decision": decision, "memberNoticeNeeded": notice}}}), encoding="utf-8")
 
 
-def test_the_branch_chooses_changed_when_the_board_recorded_a_notice_or_the_declarations_show_a_cut(tmp_path):
+def test_the_read_suggests_changed_when_the_board_recorded_a_notice_or_the_declarations_show_a_cut(tmp_path):
     root = tmp_path / "data"
     decisions(root)
-    assert result("insurance-changed", root, "policy:EX-1000").choice == "unchanged"
+    res = result("insurance-changed", root, "policy:EX-1000")
+    assert res.ok and res.choice == "unchanged" and res.message.startswith("suggested unchanged:") and "A suggestion only" in res.message
     decisions(root, notice=True, decision="let lapse")
     res = result("insurance-changed", root, "policy:EX-1000")
     assert res.ok and res.choice == "changed" and "memberNoticeNeeded is yes" in res.message and "let lapse" in res.message
@@ -797,13 +801,51 @@ def test_the_branch_chooses_changed_when_the_board_recorded_a_notice_or_the_decl
     assert result("insurance-changed", root, "policy:EX-1000", dates={"term_end": "2099-05-01"}).choice == "changed"
 
 
-def test_the_branch_does_not_choose_without_the_boards_decision_on_record(tmp_path):
+def test_the_read_makes_no_suggestion_without_the_boards_decision_on_record_and_the_manager_answers_by_hand(tmp_path):
     root = tmp_path / "data"
     res = result("insurance-changed", root, "policy:EX-1000")
-    assert res.ok is False and res.choice == "" and "board's decision comes first" in res.message
+    assert res.ok and res.choice == "" and "no suggestion" in res.message and "board's decision comes first" in res.message
+    assert "the manager answers by hand" in res.message
     decisions(root, "EX-9999")
-    assert result("insurance-changed", root, "policy:EX-1000").ok is False
-    assert result("insurance-changed", root, "policy:ending-2099").ok is False
+    other = result("insurance-changed", root, "policy:EX-1000")
+    assert other.ok and other.choice == "" and "no suggestion" in other.message
+    assert result("insurance-changed", root, "policy:ending-2099").choice == ""
+
+
+def test_a_decision_store_that_cannot_be_read_leaves_no_suggestion_rather_than_a_failed_step(tmp_path):
+    root = tmp_path / "data"
+    path = root / "insurance" / "renewals.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("[", encoding="utf-8")
+    res = result("insurance-changed", root, "policy:EX-1000")
+    assert res.ok and res.choice == "" and "no suggestion" in res.message
+
+
+def answer_view(answer="", suggested="", message="", record=""):
+    """A run's view with the two steps the answer check looks at, by their ids in the definition."""
+    ids = {defs.step_id(defs.IR, "chg"): SimpleNamespace(choice=answer, record=record, detail={}),
+           defs.step_id(defs.IR, "read"): SimpleNamespace(choice=suggested, record="", detail={"message": message})}
+    return SimpleNamespace(id="run-test", subject="policy:EX-1000", dates={}, label="", step=lambda sid: ids.get(sid))
+
+
+def answered(tmp_path, **kw):
+    readers = readers_of(tmp_path / "data")
+    return CHECKS["insurance-answer"](readers, answer_view(**kw), "")
+
+
+def test_the_answer_check_records_that_the_person_overrode_the_read_and_judges_nothing(tmp_path):
+    same = answered(tmp_path, answer="changed", suggested="changed")
+    assert same.ok and same.message == "the answer changed agrees with the read's suggestion"
+    over = answered(tmp_path, answer="unchanged", suggested="changed", record="the declarations were corrected")
+    assert over.ok and over.message.startswith("the person overrode the read: answered unchanged where the read suggested changed")
+    assert "a record came with it" in over.message and "the answer stands as the person's" in over.message
+    bare = answered(tmp_path, answer="unchanged", suggested="changed")
+    assert bare.ok and "no record or reason came with it" in bare.message
+    hand = answered(tmp_path, answer="changed", message="no suggestion: no renewal decision is recorded")
+    assert hand.ok and "given by hand" in hand.message and "no suggestion to compare" in hand.message
+    assert answered(tmp_path).ok is False and "no answer" in answered(tmp_path).message
+    stranger = CHECKS["insurance-answer"](readers_of(tmp_path / "data"), run_view("policy:EX-1000"), "")
+    assert stranger.ok is False and "not an insurance renewal" in stranger.message
 
 
 # --- disclosure-delivery-read ----------------------------------------------------------------------------------------------------
@@ -942,9 +984,9 @@ def test_the_steps_that_name_these_reads_run_them_through_the_engine_readers(tmp
     assert readers.arrival(wait, run_view("fiscal-year:2099")) is None
     deliveries(root, ("annual-budget-report-2099", "email", "delivered"))
     assert "1 attempt(s)" in (readers.arrival(wait, run_view("fiscal-year:2099")) or "")
-    branch = StepDef("x.3", "Changed", StepKind.BRANCH, role=Role.JASON, check=named_check("insurance-changed"))
+    suggest = StepDef("x.3", "Read whether coverage changed", StepKind.CHECK, role=Role.JASON, check=named_check("insurance-changed"))
     decisions(root)
-    assert readers.check(branch, run_view("policy:EX-1000")).choice == "unchanged"
+    assert readers.check(suggest, run_view("policy:EX-1000")).choice == "unchanged"
 
 
 # --- the module's new reads touch no network, library writer, or constructor that creates a table -----------------------------

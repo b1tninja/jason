@@ -584,6 +584,11 @@ def test_the_statement_is_read_from_the_agreements_own_text_and_a_miss_is_not_a_
     assert other.ok is False and "does not take the document for a management agreement" in other.message
     assert "no document reading is stored" in run("contract-statement", readers, "library-99").message
     assert "no contract key" in run("contract-statement", readers, "").message
+    for odd in ("the Example Management agreement", "library-77/78", "a:b:c", "contract:", "../77", "contract: library-77"):
+        said = run("contract-statement", readers, odd)
+        assert said.ok is False and said.message.startswith("subject not recognized"), odd          # no other shape is guessed at
+        assert said.evidence == () and "Example Management" not in said.message
+    assert run("contract-statement", readers, "contract:77").ok                                       # a kind, then the bare library id
     assert "Example Management" not in ok.message + absent.message + other.message
     assert tree(data) == before
     (data / "documents" / "readings.json").write_text("[", encoding="utf-8")
@@ -621,6 +626,25 @@ def test_the_findings_pass_when_a_shared_entry_links_to_the_request_and_count_wh
     hidden = run("improvement-findings", readers, "imp-1", item="u-1")
     assert hidden.ok is False and "0 entr(ies) shared" in hidden.message and "1 private, counted and not read" in hidden.message
     assert run("improvement-findings", readers, "imp-1", item="../").ok is False
+
+
+def test_the_unit_entries_summary_is_counts_only_and_the_check_reads_through_it(data):
+    from jason.tasks.unit_records_view import entries_summary
+
+    assert entries_summary(data, "u-1", request="imp-1") == {"onFile": False, "shared": 0, "private": 0, "linked": 0, "noApproval": 0}
+    seed_entries(data, "u-1", {"approval": "improvement:imp-1"}, {"approval": "imp-1"}, {"approval": ""}, {"approval": "improvement:imp-2"},
+                 {"approval": "improvement:imp-1", "visibility": "private"})
+    assert entries_summary(data, "u-1", request="imp-1") == {"onFile": True, "shared": 4, "private": 1, "linked": 2, "noApproval": 1}
+    assert entries_summary(data, "u-1")["linked"] == 0                                             # no request: nothing is linked to it
+    assert all(isinstance(v, (bool, int)) for v in entries_summary(data, "u-1", request="imp-1").values())      # no entry text
+    with pytest.raises(ValueError):
+        entries_summary(data, "../")
+    import inspect
+
+    from jason.workflows.checks import property as checks_property
+
+    source = inspect.getsource(checks_property)
+    assert "unit_records_view._" not in source and "._unit_dir" not in source and "._entries" not in source
 
 
 # --- a maintenance program's standing ------------------------------------------------------------------------------------

@@ -259,6 +259,8 @@ def test_a_contract_notice_window_has_both_edges_on_the_documents_and_the_notice
     statement = by[number("contract-notice-window", "statement")].clock
     assert (statement.basis, statement.cite, statement.days) == (ClockBasis.LAW, "CIV 5375", -90)
     assert "earliest" in statement.label
+    why = by[number("contract-notice-window", "statement")].why                     # the subject the read looks a reading up by
+    assert "library-ID" in why and "subject not recognized" in why
 
 
 def test_a_relocation_notice_has_the_laws_two_edges_labeled_earliest_and_latest():

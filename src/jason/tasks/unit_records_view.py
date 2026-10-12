@@ -113,6 +113,21 @@ def _entries(root: Path, unit: str, *, owner: bool) -> tuple[list[ImprovementEnt
     return out, held
 
 
+def entries_summary(root: Path, unit: str, *, request: str = "") -> dict[str, Any]:
+    """Counts of a unit's stored entries, for a read that must not see their words: ``onFile`` (the unit has an entries file),
+    ``shared`` (entries shared with the association), ``private`` (counted, never read: they are the owner's alone),
+    ``linked`` (shared entries whose approval is ``improvement:<request>`` or the bare ``request``; none when no request is
+    given), and ``noApproval`` (shared entries with no approval reference). A unit id that is no id raises ``ValueError``."""
+    folder = _unit_dir(Path(root), unit)
+    if not (folder / "entries.json").is_file():
+        return {"onFile": False, "shared": 0, "private": 0, "linked": 0, "noApproval": 0}
+    entries, held = _entries(Path(root), unit, owner=False)
+    wanted = {f"improvement:{request}", request} if request.strip() else set()
+    return {"onFile": True, "shared": len(entries), "private": held,
+            "linked": sum(1 for e in entries if e.approval.strip() in wanted),
+            "noApproval": sum(1 for e in entries if not e.approval.strip())}
+
+
 def unit_record_view(root: Path, community: Any, unit: str, *, plan: str = "", owner: bool = False) -> dict[str, Any]:
     """A unit's effective components against the declaration's and the policy's lists. Without a plan every component is
     unknown (``effective``'s rule); a private entry is the owner's alone and is counted, never listed."""

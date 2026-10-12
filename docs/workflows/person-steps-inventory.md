@@ -6,12 +6,12 @@ A **person step** is a step a human does: kind `person` or `decision`. A wait th
 
 ## Totals
 
-- 52 definitions, 672 steps, **438 person steps** (person 385, decision 53).
+- 52 definitions, 674 steps, **438 person steps** (person 385, decision 53).
 - Acting roles across them (a step with two roles counts once for each): manager 252, secretary 85, anyone 43, administrator 36, treasurer 18, president 3, director 1.
 - With a command: 329. With a why sentence: 420. With a clock: 150 (a legal one: 69). Built from a procedure step: 173. Repeating per item: 88.
 - Guidance each step could already carry, and does not (the codes in the last-but-one column): exit 315, time 288, sop 265, cmd 89, why 18, done 1.
 - Waiting to be replaced by a check, a job, a plan, or a template (read from the step's why): job 79, plan 33, check 20, template 5, case 2, role 1, run 1; 138 steps name at least one.
-- Human edges of other kinds (a wait a note ends, a branch a person answers): 44 steps in all.
+- Human edges of other kinds (a wait a note ends, a branch a person answers): 45 steps in all.
 
 ## How to read a row
 
@@ -422,7 +422,7 @@ A repeating step is marked `*` after its id (one clock and one nudge for each it
 
 ### `insurance-renewal`: Renew an insurance policy
 
-4 person steps of 8. Dates: `term_end`. Human edges of other kinds: 0.
+4 person steps of 10. Dates: `term_end`. Human edges of other kinds: 1.
 
 | Step | Title | Kind | Roles | Cmd | Why | Clock | Exit | SOP | Cites | Missing | Wanted |
 |---|---|---|---|---|---|---|---|---|---|---|---|

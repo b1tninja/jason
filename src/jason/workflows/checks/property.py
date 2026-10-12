@@ -517,6 +517,10 @@ STATEMENT_ITEMS = 5
 
 READINGS = "documents/readings.json"
 
+STATEMENT_SUBJECT = re.compile(r"(?:[A-Za-z][A-Za-z0-9-]*:)?[A-Za-z0-9][A-Za-z0-9._-]*")
+"""The shapes of a run's subject that ``contract-statement`` looks a reading up by: ``library-ID`` or the bare library id, with an
+optional ``kind:`` before it. A subject with a space, a slash, a second colon, or an empty id is none of them."""
+
 
 @check("contract-statement")
 @_guard("the document readings")
@@ -524,15 +528,20 @@ def contract_statement(readers: Any, view: RunView, item: str = "") -> CheckResu
     """Whether the document reading of the run's contract found the managing agent's written statement (CIV 5375) in the
     agreement's own text, and how many of its five items it gives. The statement may be a separate paper: a reading that finds
     none in the agreement is not a finding that none exists, so it fails with that said. The statement's day against the
-    90-day window is a person's to read (``agreement_on``). The run's subject is the terms reading's key (``library-ID``)."""
+    90-day window is a person's to read (``agreement_on``). The run's subject must be the terms reading's key (``library-ID``) or
+    the bare library id, each with an optional ``kind:`` before it (``contract:library-ID``); any other shape is said plainly to
+    be not recognized, and nothing is guessed from it."""
     path = readers.data_dir / READINGS
     if not path.is_file():
         return _no("no document readings are on disk (jason models)")
     subject = str(view.subject or "").strip()
+    if not subject:
+        return _no("the run has no contract key as its subject")
+    if not STATEMENT_SUBJECT.fullmatch(subject):
+        return _no("subject not recognized: the run's subject is not a terms reading's key (library-ID) or a bare library id, "
+                   "so no document reading can be looked up for it")
     key = (subject.partition(":")[2].strip() or subject)
     wanted = {key, key.removeprefix("library-")} - {""}
-    if not wanted:
-        return _no("the run has no contract key as its subject")
     rows = json.loads(path.read_text(encoding="utf-8")).get("readings") or []
     row = next((r for r in rows if str(r.get("id")) in wanted), None)
     evidence = _evidence(readers, f"file:{READINGS}")
@@ -573,13 +582,13 @@ def improvement_findings(readers: Any, view: RunView, item: str = "") -> CheckRe
         return _no("the run has no request id as its subject")
     from jason.tasks import unit_records_view
 
-    if not (unit_records_view._unit_dir(readers.data_dir, unit) / "entries.json").is_file():
+    counts = unit_records_view.entries_summary(readers.data_dir, unit, request=request)
+    if not counts["onFile"]:
         return _no("no entries are on file for the unit")
-    entries, held = unit_records_view._entries(readers.data_dir, unit, owner=False)
-    linked = sum(1 for e in entries if e.approval.strip() in {f"improvement:{request}", request})
-    unlinked = sum(1 for e in entries if not e.approval.strip())
+    linked, held = counts["linked"], counts["private"]
     rest = "the other four findings need the request store and the change rules (not built)"
-    count = f"{len(entries)} entr(ies) shared with the association, {linked} linking to this request, {unlinked} with no approval reference"
+    count = (f"{counts['shared']} entr(ies) shared with the association, {linked} linking to this request, "
+             f"{counts['noApproval']} with no approval reference")
     if not linked:
         return _no(f"no entry shared with the association links to this request ({count}; {held} private, counted and not read); {rest}")
     return CheckResult(True, (), f"{count}; {held} private, counted and not read; {rest}")

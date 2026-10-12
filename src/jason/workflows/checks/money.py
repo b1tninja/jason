@@ -3,9 +3,11 @@
 Twelve came first (the bill-attach, payment-investigation, monthly-review, reserve, insurance-due, and tax reads); round two
 added fourteen: ``review-statements``, ``review-income-expense``, ``review-registers`` (the library and the stored
 ledger), ``fiscal-window`` (the notice catalog), ``reserve-plan-match`` and ``disclosure-reserve-summary`` (the reserve
-study, the budget), ``disclosure-insurance-summary``, ``insurance-limits``, ``insurance-changed`` and ``insurance-summary``
-(the policy report and the renewals store), ``disclosure-delivery-read`` (the notice ledger), ``reserve-notice`` and
-``reserve-restored`` (the reserve transfers), and ``tax-years-closed`` (the tax catalog).
+study, the budget), ``disclosure-insurance-summary``, ``insurance-limits``, ``insurance-changed`` (a suggestion for a
+person's answer, never the answer) and ``insurance-summary`` (the policy report and the renewals store),
+``disclosure-delivery-read`` (the notice ledger), ``reserve-notice`` and ``reserve-restored`` (the reserve transfers), and
+``tax-years-closed`` (the tax catalog). ``insurance-answer`` came after: it says in the run whether the person's answer to the
+suggestion agrees with it.
 
 Each read is read-only. It looks at stores already on disk (the PayHOA snapshot, the dry run, the reconciliations, the
 finance snapshot, the stored ledger, the library, the reserve studies, the insurance sheet and policy report, the notice
@@ -810,36 +812,80 @@ def insurance_limits(readers: StoreReaders, view: RunView, item: str = "") -> Ch
     return CheckResult(not undeclared, evidence, said)
 
 
-@_guarded("insurance-changed")
-def insurance_changed(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
-    """A branch: ``changed`` when the board's recorded decision says a member notice is needed (a lapse, or a change in limits)
-    or the declarations show a change the statute names (CIV 5810: a lapse not replaced, a reduced limit, a higher deductible);
-    ``unchanged`` otherwise. It cannot choose without the board's decision on record."""
+def _insurance_read(readers: StoreReaders, view: RunView, item: str) -> tuple[str, str, tuple[str, ...]]:
+    """(the suggested path, what was found, the evidence): ``changed`` when the board's recorded decision says a member notice
+    is needed (a lapse, or a change in limits) or the declarations show a change the statute names (CIV 5810: a lapse not
+    replaced, a reduced limit, a higher deductible); ``unchanged`` otherwise. The path is "" (no suggestion) when no decision
+    is on record for the policy or the stores cannot be read: the read never raises and never guesses."""
     from jason.tasks import insurance_notice, insurance_renewals
     from jason.tasks.insurance import fold_number
 
-    fold = _policy_key(view, item)
-    stored = next((d for n, d in insurance_renewals.load(readers.data_dir).items() if fold and fold_number(str(n)) == fold), None)
-    evidence = readers.evidence_entries((_address(insurance_renewals.STORE),))
-    if stored is None:
-        return CheckResult(False, evidence, "no renewal decision is recorded for the policy: the board's decision comes first")
-    significant, seen = 0, "the declarations were not read"
     try:
-        report, more = _policy_report(readers)
-        evidence += more
-        mine = [p for p in report.get("policies") or [] if fold in _numbers(p)]
-        if mine:
-            changes, gaps = insurance_notice.policy_changes(mine, _day(_dates(view).get("term_end")) or readers.today)
-            significant = sum(1 for c in changes if c.kind.significant)
-            seen = (f"the declarations show {len(changes)} change(s), {significant} the statute names"
-                    + (f", {len(gaps)} gap(s)" if gaps else ""))
-    except _Unreadable:
-        pass
-    notice = bool(stored.get("memberNoticeNeeded"))
-    changed = notice or significant > 0
-    said = (f"the board's decision is recorded ({stored.get('decision', '')}); memberNoticeNeeded is {'yes' if notice else 'no'}; "
-            f"{seen} (CIV 5810): coverage {'changed' if changed else 'is unchanged'}")
-    return CheckResult(True, evidence, said, choice="changed" if changed else "unchanged")
+        fold = _policy_key(view, item)
+        stored = next((d for n, d in insurance_renewals.load(readers.data_dir).items() if fold and fold_number(str(n)) == fold), None)
+        evidence = readers.evidence_entries((_address(insurance_renewals.STORE),))
+        if stored is None:
+            return "", "no renewal decision is recorded for the policy: the board's decision comes first", evidence
+        significant, seen = 0, "the declarations were not read"
+        try:
+            report, more = _policy_report(readers)
+            evidence += more
+            mine = [p for p in report.get("policies") or [] if fold in _numbers(p)]
+            if mine:
+                changes, gaps = insurance_notice.policy_changes(mine, _day(_dates(view).get("term_end")) or readers.today)
+                significant = sum(1 for c in changes if c.kind.significant)
+                seen = (f"the declarations show {len(changes)} change(s), {significant} the statute names"
+                        + (f", {len(gaps)} gap(s)" if gaps else ""))
+        except _Unreadable:
+            pass
+        notice = bool(stored.get("memberNoticeNeeded"))
+        changed = notice or significant > 0
+        said = (f"the board's decision is recorded ({stored.get('decision', '')}); memberNoticeNeeded is {'yes' if notice else 'no'}; "
+                f"{seen} (CIV 5810): coverage {'changed' if changed else 'is unchanged'}")
+        return ("changed" if changed else "unchanged"), said, evidence
+    except Exception as exc:  # noqa: BLE001 - a store that cannot be read leaves the person without a suggestion, never with a guess
+        return "", f"the renewal decision cannot be read ({type(exc).__name__})", ()
+
+
+@_guarded("insurance-changed")
+def insurance_changed(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """A suggestion for the person who answers 'did coverage change or lapse' (CIV 5810). It does not decide the branch: the
+    answer is the manager's (the board's matter), and the read's ``choice`` is the default shown beside the question. It passes
+    when the read was made; with no decision on record, or no store it can read, it passes with no ``choice`` and says why, so
+    the manager answers by hand. A person who answers differently is recorded as having answered over this read
+    (``insurance-answer``)."""
+    path, said, evidence = _insurance_read(readers, view, item)
+    if not path:
+        return CheckResult(True, evidence, f"no suggestion: {said}; the manager answers by hand")
+    return CheckResult(True, evidence, f"suggested {path}: {said}. A suggestion only: the manager answers, and may answer differently.",
+                       choice=path)
+
+
+@_guarded("insurance-answer")
+def insurance_answer(readers: StoreReaders, view: RunView, item: str = "") -> CheckResult:
+    """Whether the manager's answer to 'did coverage change or lapse' agrees with the read's suggestion, said plainly in the
+    run's record: it agrees; it was given with no suggestion to compare; or the person answered over the read, with the
+    suggestion and whether a record or reason came with the answer. It passes once an answer is on record and never judges
+    it: the answer is the person's."""
+    from jason.workflows.defs import money
+
+    step = getattr(view, "step", None)
+    asked = step(money.step_id(money.IR, "chg")) if callable(step) else None
+    read = step(money.step_id(money.IR, "read")) if callable(step) else None
+    if asked is None or read is None:
+        return CheckResult(False, (), "this run is not an insurance renewal: it has no step for the answer and the read")
+    answer = asked.choice
+    if not answer:
+        return CheckResult(False, (), "no answer to 'did coverage change or lapse' is recorded yet")
+    suggested = read.choice
+    if not suggested:
+        why = str(read.detail.get("message") or "the read made no suggestion")
+        return CheckResult(True, (), f"the answer {answer} was given by hand; the read made no suggestion to compare ({why})")
+    if suggested == answer:
+        return CheckResult(True, (), f"the answer {answer} agrees with the read's suggestion")
+    reason = ("a record came with it" if str(asked.record or "").strip() else "no record or reason came with it")
+    return CheckResult(True, (), f"the person overrode the read: answered {answer} where the read suggested {suggested} ({reason}); "
+                       "the answer stands as the person's")
 
 
 # --- the disclosures' delivery -----------------------------------------------------------------------------------------------

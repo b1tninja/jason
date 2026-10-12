@@ -10,9 +10,9 @@ start, a statute is cited by key (``CIV 5500(a)``) and is checked against the au
 word, and ``table_ids(key)`` is the whole map, for a test or a doc.
 
 **What is a person's step now.** The engine registers a ``check`` only by a name in ``jason.workflows.readers.CHECKS`` and a
-``job`` only by a name in ``readers.JOBS``. Twenty-six money reads exist (``jason.workflows.checks.money``), and the rows that
+``job`` only by a name in ``readers.JOBS``. Twenty-seven money reads exist (``jason.workflows.checks.money``), and the rows that
 name them are ``check`` steps (role jason; a wait step names one as the check that ends it; ``insurance-renewal.chg`` is a
-branch a read chooses). No money job is registered, so a
+branch the manager answers, with ``insurance-changed`` as a read before it that only suggests). No money job is registered, so a
 page's ``check`` or ``job`` row with no read yet is a ``person`` step whose ``why`` says what it becomes and names it
 ``(wanted: check NAME)`` or ``(wanted: job NAME)``; ``WANTED`` lists each, with what it would read. The same is true of a
 ``plan`` the approvals registry has no kind for. Plans used: ``payhoa-attach-bills`` (the bill, once matched, is attached
@@ -111,7 +111,7 @@ WANTED: tuple[str, ...] = (
     "plan annual-packet-docs: --make-templates --yes and --build --draft --yes (Docs and a draft PDF)",
 )
 """What the page's ``check``, ``job``, and ``plan`` rows would register to become engine steps, each with what it reads.
-Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here (a test keeps the two in step). The twenty-six reads the
+Every ``(wanted: KIND NAME)`` in a step's ``why`` is an entry here (a test keeps the two in step). The twenty-seven reads the
 stores on disk already answer are built (``jason.workflows.checks.money``) and are no longer wanted; the checks left are
 the ones no store answers safely (each entry says why). This family adds nothing to ``readers.JOBS``."""
 
@@ -671,11 +671,14 @@ def _insurance_renewal_rows() -> tuple[_Row, ...]:
              why="Once per term; skip never. The board decides; jason buys nothing."),
         _row("bind", "Confirm the new term is bound", P, M, "dec", command="jason policies --fetch; jason insurance",
              record="the declarations, the premium paid or financed, and the policy sheet updated", why="standing: next term paid."),
-        _row("chg", "Did coverage change or lapse", B, JA, "dec bind", choices=(("changed", "mem"), ("unchanged", "")),
-             record="memberNoticeNeeded, and the term against the term before", check=named_check("insurance-changed"),
-             why="A fact jason reads: the board's recorded decision (memberNoticeNeeded) and the declarations' term against the term "
-                 "before (a lapse not replaced, a reduced limit, or a higher deductible, as CIV 5810 names them). It chooses "
-                 "changed or unchanged only with the decision on record."),
+        _row("chg", "Did coverage change or lapse", B, M, "dec bind read", choices=(("changed", "mem"), ("unchanged", "")),
+             record="memberNoticeNeeded, and the term against the term before; when the answer differs from the read at "
+                    "'Read whether coverage changed', say why",
+             why="The manager's answer, not a read's: whether the member notice is needed is the board's matter. The read before it "
+                 "(the board's recorded decision, memberNoticeNeeded, and the declarations' term against the term before: a lapse "
+                 "not replaced, a reduced limit, or a higher deductible, as CIV 5810 names them) is a suggestion shown with the "
+                 "question, and the manager may answer the other way or answer when the read has none. An answer that differs "
+                 "from the read is recorded as such at the step after it."),
         _row("mem", "Notice to members", P, M, "chg", command="jason notices", record="the ledger row insurance-change",
              clock=_law("CIV 5810", label="individual notice as soon as reasonably practicable (no number: a held question); for a nonrenewal where replacement will not be in effect, immediately"),
              why="Only when coverage changed or lapsed."),
@@ -684,6 +687,17 @@ def _insurance_renewal_rows() -> tuple[_Row, ...]:
              clock=_law("CIV 5300(b)(9)", label="the insurance summary in the annual budget report"),
              why="Links into the fiscal-year run (D4). The read fails and lists the gaps when the policy has no term in force on the "
                  "first day of the fiscal year."),
+        _row("read", "Read whether coverage changed", C, JA, "dec bind", record="memberNoticeNeeded, and the term against the term before",
+             check=named_check("insurance-changed"),
+             why="A suggestion for the manager's answer at 'Did coverage change or lapse', never the answer: its choice is "
+                 "changed or unchanged from the board's recorded decision and the declarations. With no decision on record, or "
+                 "a store it cannot read, it passes with no suggestion and says why, so the manager can answer by hand. Added "
+                 "after the other steps so no step id moved."),
+        _row("ovr", "The answer against the read", C, JA, "chg", check=named_check("insurance-answer"),
+             record="whether the manager's answer agrees with the read, or was given over it",
+             why="Written into the run's record once the manager has answered: it agrees with the read, was given with none to "
+                 "compare, or the person overrode the read (with the suggestion and whether a record came with the answer). It "
+                 "judges nothing. Added after the other steps so no step id moved."),
     )
 
 
@@ -693,7 +707,7 @@ def insurance_renewal() -> Workflow:
         IR, "Renew an insurance policy", "policy", _insurance_renewal_rows(),
         dates=(DateSlot("term_end", "The policy's term ends"),),
         phases=(("prepare", "Prepare", "due quote min"), ("decide", "Decide and bind", "dec bind"),
-                ("tell", "Tell the members and the summary", "chg mem sum")))
+                ("tell", "Tell the members and the summary", "read chg ovr mem sum")))
 
 
 # --- 2.8 county-tax-cycle -------------------------------------------------------------------------------------------

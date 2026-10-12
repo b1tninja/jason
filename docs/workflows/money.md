@@ -92,7 +92,7 @@ Subject: a month. The board's duty is CIV 5500, recited in section 4. Two paths,
 | sync | Refresh the books | job | worker | none | snapshots | each source's stamp against its stale-after: ledger 9 days, budget 9 days, reconciliations 9 days, reports 9 days (the integration defaults, proposed policy) | `jason books --sync`; `jason budget`; `jason reconcile --fetch`; `jason ledger --fetch` | monthly (law: "on a monthly basis", CIV 5500) | per source; skipped when current |
 | attach | Bills attached for the month | wait | nobody | none | link to `bill-attach` | `bill-attach` run state `done` or handed | none | none | once; skip with a reason when the board reviews without it |
 | recon | Reconciliations current: operating, reserve | check | jason | sync | none | `reconciliations` per account: covered through the month, open items | `jason reconcile` | law, CIV 5500(a), (b) | per account; skip never |
-| stmt | Latest bank statements on file | check | jason | none | none | the library holds a statement for each account for the month (not verified: no check pairs a statement to a month) | `jason library` | law, CIV 5500(d) | per account; skip never |
+| stmt | Latest bank statements on file | check | jason | none | none | the library holds a statement for each account for the month (built: the check `review-statements` pairs a statement of the month to each bank account the profile names, by the last four digits its files carry; counts only) | `jason library` | law, CIV 5500(d) | per account; skip never |
 | bva | Actual against budget | check | jason | sync | none | `budget` (variance by category) | `jason budget` | law, CIV 5500(c) | once; skip never |
 | ie | Income and expense statement, operating and reserve | check | jason | sync | none | `books pl` for the month; saved reports | `jason books pl`; `jason report treasurers-report period=previous-month --doc --yes` | law, CIV 5500(e) | once; skip never |
 | regs | Check register, general ledger, delinquent receivable report | check | jason | sync | none | ledger report runs; `delinquency` counts | `jason books check`; `jason who-owes` | law, CIV 5500(f) | once; skip never |
@@ -199,9 +199,11 @@ Subject: one policy's next term. The reading is `insurance_review`; the board's 
 | min | Required limits and coverages | check | jason | quote | findings | `insurance_policies.findings`: the CIV 5800, 5805, 5806 limits | `jason policies` | law, CIV 5800(a)(4), 5805(b)(2), 5806 | per policy |
 | dec | Decide the renewal | decision | board | quote, min | a recorded decision | `POST /api/write/insurance-renewals/<number>`: decision, decidedOn, by, premium, limitsChanged | none | none | once per term; skip never |
 | bind | Confirm the new term is bound | person | manager | dec | declarations, premium paid or financed, policy sheet updated | `standing`: `next term paid`; new declarations in Drive | `jason policies --fetch`; `jason insurance` | none | once |
-| chg | Did coverage change or lapse | branch | jason, by fact | dec, bind | path | `memberNoticeNeeded`; the term against the term before (`ChangeKind`) | none | none | once |
+| chg | Did coverage change or lapse | branch | manager (the answer is a person's, the board's matter) | dec, bind, read | path | `memberNoticeNeeded`; the term against the term before (`ChangeKind`); the manager records the answer, and a record when it differs from the read | none | none | once |
 | mem | Notice to members | person | manager | chg yes | notice record | ledger row `insurance-change` | `jason notices` | law, CIV 5810: "as soon as reasonably practicable" (no number: a held question); for a nonrenewal where replacement will not be in effect, "immediately notify" | once; skipped when no change |
 | sum | Feed the summary | check | jason | bind | link into `fiscal-year` D4 | `insurance_rows` for the fiscal year | `jason packet annual-disclosures --year Y` | law, CIV 5300(b)(9) | once per fiscal year |
+| read | Read whether coverage changed | check | jason | dec, bind | a suggestion for `chg`, never its answer | built: the check `insurance-changed` reads the board's recorded decision and the declarations' term against the term before; with no decision on record it passes with no suggestion and says why, so the manager answers by hand (added after `sum`; no id moved) | none | none | once |
+| ovr | The answer against the read | check | jason | chg | the run's record of whether the answer agrees with the read or was given over it | built: the check `insurance-answer`; judges nothing (added after `sum`; no id moved) | none | none | once |
 
 ### 2.8 `county-tax-cycle` (task 6)
 
@@ -364,7 +366,7 @@ Verified against the repo on 2026-10-11 unless marked "not verified".
 | Follow-ups | `FollowUpKind` has no money kind (remind, return-by, enter-by, reports-mailed, resend, acknowledge, review, decide, answer-due, close, manual); `Basis` has law, documents, proposed policy, person (reusable as the clock basis) |
 | Work screens | none: no `#/work`, no `work` loader |
 | Journeys | none for money in `journeys.md`; the treasurer's jobs are in `personas-and-jobs.md` |
-| Not verified | whether `jason mailroom --send` can set certified mail (the pricing and the letters list know it; no flag found); a check that pairs a bank statement to a month; whether a per-month statement is classified; the resolve stage's ambiguity after the 2026-10-10 handoff (`sources/attach.py` carries an ambiguity set, but its dry-run and live agreement was not re-run) |
+| Not verified | whether `jason mailroom --send` can set certified mail (the pricing and the letters list know it; no flag found); whether a per-month statement is classified; the resolve stage's ambiguity after the 2026-10-10 handoff (`sources/attach.py` carries an ambiguity set, but its dry-run and live agreement was not re-run) |
 
 ## 8. Gaps and the build order
 

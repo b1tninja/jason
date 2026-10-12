@@ -17,7 +17,7 @@ import pytest
 import shelf_support
 
 from jason.approvals import registry
-from jason.workflows import api, definitions
+from jason.workflows import api, definitions, store
 from jason.workflows import definitions_general as general
 from jason.workflows.defs import all_builders, money
 from jason.workflows.readers import CHECKS, JOBS, StoreReaders
@@ -62,18 +62,18 @@ EXPECTED = {
         ("late", D, SE), ("sa", D, SE), ("lit", P, M),
     ),
     "insurance-renewal": (
-        ("due", C, JA), ("quote", P, M), ("min", C, JA), ("dec", D, SE), ("bind", P, M), ("chg", B, JA), ("mem", P, M),
-        ("sum", C, JA),
+        ("due", C, JA), ("quote", P, M), ("min", C, JA), ("dec", D, SE), ("bind", P, M), ("chg", B, M), ("mem", P, M),
+        ("sum", C, JA), ("read", C, JA), ("ovr", C, JA),
     ),
     "county-tax-cycle": (
         ("sync", P, M), ("stand", C, JA), ("bill", C, JA), ("pdf", P, TR), ("mail", P, TR), ("due", W, TR),
         ("pay", P, TR), ("rcpt", P, TR), ("att", PL, TR), ("cls", C, JA),
     ),
 }
-"""Step counts (the page's tables): 9, 11, 13, 22, 33, 9, 8, 10."""
+"""Step counts (the page's tables): 9, 11, 13, 22, 33, 9, 10, 10."""
 
 COUNTS = {"bill-attach": 9, "payment-investigation": 11, "monthly-review": 13, "delinquency-account": 22, "fiscal-year": 33,
-          "reserve-borrowing": 9, "insurance-renewal": 8, "county-tax-cycle": 10}
+          "reserve-borrowing": 9, "insurance-renewal": 10, "county-tax-cycle": 10}
 
 
 def build(key: str):
@@ -166,11 +166,12 @@ BUILT = {
     "fiscal-year": {"win": "fiscal-window", "R1": "reserve-study-due", "B2": "reserve-plan-match", "D4": "disclosure-insurance-summary",
                     "D5": "disclosure-reserve-summary", "D13": "disclosure-delivery-read"},
     "reserve-borrowing": {"note": "reserve-notice", "rst": "reserve-restored"},
-    "insurance-renewal": {"due": "insurance-due", "min": "insurance-limits", "chg": "insurance-changed", "sum": "insurance-summary"},
+    "insurance-renewal": {"due": "insurance-due", "min": "insurance-limits", "sum": "insurance-summary", "read": "insurance-changed",
+                          "ovr": "insurance-answer"},
     "county-tax-cycle": {"stand": "tax-standing", "bill": "tax-bill-files", "cls": "tax-years-closed"},
 }
-"""The twenty-six reads (jason.workflows.checks.money) and the step each one is the check of: a check step, a branch the read
-chooses, or a wait step the read ends."""
+"""The twenty-seven reads (jason.workflows.checks.money) and the step each one is the check of: a check step, or a wait step the
+read ends. No branch names a read: ``insurance-renewal.chg`` is the manager's answer, with ``read`` a suggestion before it."""
 
 
 @pytest.mark.parametrize("key", ALL)
@@ -195,7 +196,7 @@ def test_it_adds_no_job_and_what_it_still_wants_is_not_there_yet_while_what_it_b
     checks.load_all()
     names = {w.split(":")[0].split(" ", 1)[1] for w in money.WANTED}
     built = {name for words in BUILT.values() for name in words.values()}
-    assert len(built) == 26
+    assert len(built) == 27
     assert not names & set(CHECKS) and not names & set(JOBS)
     assert built <= set(CHECKS) and not built & names
 
@@ -466,38 +467,93 @@ def passing(monkeypatch, *names):
         monkeypatch.setitem(CHECKS, name, lambda r, v, i="", n=name: CheckResult(True, (), f"{n} read"))
 
 
-def test_an_insurance_renewal_runs_from_the_term_end_to_done(data, monkeypatch):
+def _insurance_run(data, monkeypatch, suggestion):
+    """An insurance-renewal run driven to the question 'did coverage change or lapse', the read having said ``suggestion``."""
     key = "insurance-renewal"
     passing(monkeypatch, "insurance-due", "insurance-limits", "insurance-summary")
-    monkeypatch.setitem(CHECKS, "insurance-changed", lambda r, v, i="": CheckResult(True, (), "no change", choice="unchanged"))
+    monkeypatch.setitem(CHECKS, "insurance-changed", lambda r, v, i="": (
+        CheckResult(True, (), f"suggested {suggestion}", choice=suggestion) if suggestion else CheckResult(True, (), "no suggestion: no decision")))
     general.register_general()
     out = api.start(data, key, "policy:ending-2099", "Example policy", {"term_end": "2099-06-30"}, MANAGER, yes=True, today=DAY)
     RID[0] = out["run"]["id"]
-    api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)
+
+    def reopen():
+        api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)
 
     def states():
         return {s["id"]: s["state"] for s in api.show(data, RID[0], today=DAY)["steps"]}
 
+    reopen()
     assert states()[sid(key, "due")] == "done" and states()[sid(key, "quote")] == "needs a person"      # the read answered at open
     with pytest.raises(StepRefused):
         drive(data, key, "due", MANAGER, record="by a person's word")                                    # a read is done by its result
     with pytest.raises(StepRefused):
         drive(data, key, "dec", SECRETARY_, outcome="approved", record="the minutes")                    # not yet: it needs the proposals
     drive(data, key, "quote", MANAGER, record="the agent's proposal, in the library")
-    api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)       # the reads run again
+    reopen()                                                                                             # the reads run again
     assert states()[sid(key, "min")] == "done"                                                           # the limits read passed on its own
     with pytest.raises(StepRefused):
         drive(data, key, "dec", MANAGER, outcome="approved", record="the minutes")                        # only the secretary records the decision
     drive(data, key, "dec", SECRETARY_, outcome="approved", record="the minutes of 2099-03-10", motion="renew as quoted")
     drive(data, key, "bind", MANAGER, record="the declarations are in Drive; the premium is paid")
-    api.open_run(data, RID[0], MANAGER, readers=StoreReaders(data), roles_of=roles_of, yes=True, today=DAY)       # the reads run again
-    assert states()[sid(key, "chg")] == "done" and states()[sid(key, "sum")] == "done"
+    reopen()                                                                                             # the reads run again
+    return key, reopen, states
+
+
+def _ovr_message(data, key):
+    events = store.read(data, key, RID[0]).events
+    return [e.detail.get("message", "") for e in events if e.kind.value == "check-ran" and e.step == sid(key, "ovr")][-1]
+
+
+def test_an_insurance_renewal_the_manager_answers_agreeing_with_the_read_runs_to_done(data, monkeypatch):
+    key, reopen, states = _insurance_run(data, monkeypatch, "unchanged")
+    assert states()[sid(key, "read")] == "done" and states()[sid(key, "chg")] == "needs a person"       # the read only suggests
+    assert states()[sid(key, "sum")] == "done" and states()[sid(key, "ovr")] in ("blocked", "not started")
     with pytest.raises(StepRefused):
-        drive(data, key, "chg", MANAGER, choice="changed", record="a person's word")                      # a branch a read chooses is not a person's
-    assert states()[sid(key, "mem")] == "skipped"                                                          # the member notice is on the changed path
+        drive(data, key, "chg", TREASURER_, choice="unchanged", record="not the manager's step")        # a person holding the role
+    with pytest.raises(StepRefused):
+        drive(data, key, "chg", MANAGER, choice="maybe", record="not a path")
+    drive(data, key, "chg", MANAGER, choice="unchanged", record="memberNoticeNeeded is no; the term matches the term before")
+    reopen()
+    assert states()[sid(key, "chg")] == "done" and states()[sid(key, "ovr")] == "done"
+    assert states()[sid(key, "mem")] == "skipped"                                                        # the member notice is on the changed path
+    assert _ovr_message(data, key) == "the answer unchanged agrees with the read's suggestion"
     final = api.show(data, RID[0], today=DAY)
     assert final["state"] == "done"
     assert {s["id"] for s in final["steps"] if s["state"] == "skipped"} == {sid(key, "mem")}
+
+
+def test_an_insurance_renewal_the_manager_may_answer_over_the_read_and_the_run_records_it(data, monkeypatch):
+    key, reopen, states = _insurance_run(data, monkeypatch, "unchanged")
+    drive(data, key, "chg", MANAGER, choice="changed", record="the carrier's letter says the deductible rose")
+    reopen()
+    assert states()[sid(key, "ovr")] == "done" and states()[sid(key, "mem")] == "needs a person"        # the changed path opens the notice
+    message = _ovr_message(data, key)
+    assert message.startswith("the person overrode the read: answered changed where the read suggested unchanged")
+    assert "a record came with it" in message
+    drive(data, key, "mem", MANAGER, record="the ledger row insurance-change")
+    final = api.show(data, RID[0], today=DAY)
+    assert final["state"] == "done" and not [s for s in final["steps"] if s["state"] == "skipped"]
+
+
+def test_an_insurance_renewal_the_manager_answers_by_hand_when_the_read_has_no_suggestion(data, monkeypatch):
+    key, reopen, states = _insurance_run(data, monkeypatch, "")
+    assert states()[sid(key, "read")] == "done" and states()[sid(key, "chg")] == "needs a person"        # a read with nothing to say never blocks
+    drive(data, key, "chg", MANAGER, choice="changed", record="the board's decision was to let the policy lapse")
+    reopen()
+    assert "given by hand" in _ovr_message(data, key) and "no suggestion to compare" in _ovr_message(data, key)
+    assert states()[sid(key, "mem")] == "needs a person"
+
+
+def test_the_insurance_answer_is_a_person_step_with_a_read_before_it_and_a_record_after_it():
+    wf = build("insurance-renewal")
+    chg, read, ovr = (wf.step(sid("insurance-renewal", w)) for w in ("chg", "read", "ovr"))
+    assert chg.kind is B and chg.check is None and chg.role is M and not chg.is_legal      # a branch with no read to decide it
+    assert read.id in chg.needs and ovr.needs == (chg.id,)
+    assert read.kind is C and getattr(read.check, "name", "") == "insurance-changed"
+    assert ovr.kind is C and getattr(ovr.check, "name", "") == "insurance-answer"
+    assert [c.key for c in chg.choices] == ["changed", "unchanged"]
+    assert [s.id for s in wf.steps][:8] == [f"insurance-renewal.{i}" for i in range(1, 9)]              # nothing renumbered: new steps came last
 
 
 @pytest.mark.parametrize("path, ratified", [("meeting", False), ("every-director", True), ("subcommittee", True)])
