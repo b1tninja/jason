@@ -108,6 +108,7 @@ PayHOA's Mailroom (USPS letters through Lob): mailings and their cost; preview a
 | `--preview` | ID | A saved preview (its id, or the start of its fingerprint): show it and whether it is stale; with --send --yes, send exactly that preview |
 | `--expect` | FINGERPRINT | With --pdf: refuse (exit 2, nothing mailed) unless the letter as it would go has this fingerprint (the preview prints it; 8 or more hex characters) |
 | `--approval` | ID | A payhoa-mailroom-send approval: check it; with --send --yes, mail it (only a plan signed by two distinct people whose fingerprint still matches) |
+| `--count` | N | With --approval --send --yes: the number of changes (letters) the plan makes, typed, where the board asked for it above some number of changes (jason controls) |
 | `--yes` |  | Confirm --send or --cancel |
 | `--json` |  | Print JSON |
 
@@ -224,6 +225,7 @@ Plans of writes outside jason, approved item by item by a named person
 | `--reject` |  | with decide: leave the items out (needs --reason) |
 | `--reason` | REASON | why: a hold, a rejection, a decline, or a withdrawal |
 | `--yes` |  | with apply: apply the approved items (without it: re-plan and compare, writing nothing) |
+| `--count` | N | with apply --yes: the number of changes the plan makes, typed, where the board asked for it above some number of changes (jason controls) |
 | `--json` |  | with show or exceptions: the approval, or the log, as JSON |
 | `--scope` | JSON | with plan: the kind's scope as a JSON object (a kind that needs one, such as gmail-drafts, says what it takes) |
 | `--status` | STATUS | with list: only this status (planned, in_review, approved, ...) |
@@ -975,7 +977,7 @@ What needs attention across the governance systems: clocks passed or near, quest
 
 | Option | Value | Help |
 |---|---|---|
-| `--section` | {meetings,requests,schedule,people,notices,living,conflicts,duties,intake} | one section (repeatable) |
+| `--section` | {meetings,requests,schedule,people,notices,living,conflicts,duties,intake,approvals} | one section (repeatable) |
 | `--limit` | LIMIT | lines per section (default 8) |
 | `--past` | PAST | how far back the schedule looks for what is overdue (default 30 days) |
 | `--on` | ON | the day to read as today (YYYY-MM-DD; default today) |
@@ -984,12 +986,12 @@ What needs attention across the governance systems: clocks passed or near, quest
 
 ### `jason controls`
 
-The safeguards the board opts into, and the ones jason suggests from the governing documents: list, show, suggest (and record), and put one before the board. jason suggests; the board adopts. This never adopts, declines, defers, or retires a control: those are the board's decisions, recorded by the secretary
+The safeguards the board opts into, and the ones jason suggests from the governing documents: list, show, suggest (and record), put one before the board, and record what the board decided (--adopt, --decline, --defer, by the secretary, with the meeting and the decision). jason suggests; the board adopts. This only records a decision a person states; it decides nothing, lowers no floor, and retires nothing
 
 | Option | Value | Help |
 |---|---|---|
 | `--list` |  | list the controls (the default) |
-| `--family` | {money,contracts,reviews,notices,meetings,onboarding} | with --list: one family |
+| `--family` | {money,contracts,reviews,notices,meetings,onboarding,applying} | with --list: one family |
 | `--state` | {suggested,proposed,adopted,declined,deferred,retired} | with --list: one state |
 | `--json` |  | print JSON |
 | `--show` | KEY | one control, from its provision to its history |
@@ -999,7 +1001,19 @@ The safeguards the board opts into, and the ones jason suggests from the governi
 | `--duties-read` |  | with --suggest: a person confirms the documents' duties were read and are right |
 | `--record` |  | with --suggest and --by: append the suggestions to the act log as suggested acts by jason |
 | `--propose` | KEY | put a suggested control before the board as a board item (with --by); it adopts nothing |
-| `--by` | NAME | who asks for the write (kept with when) |
+| `--adopt` | KEY | record that the board adopted a proposed control (with --by the secretary, --meeting, --decision, --effective); adds only, refuses one below a floor; without --yes it writes nothing |
+| `--decline` | KEY | record that the board declined a proposed control (with --by, --meeting, --decision, --reason) |
+| `--defer` | KEY | record that the board deferred a proposed control (with --by, --meeting, --reason) |
+| `--offer` | {where-apply,who-may-apply,pause-before-apply,typed-count-over,reminder-hours} | record an apply preference as a suggestion (with --by, and --scope); it adopts nothing |
+| `--scope` | SCOPE | with --offer: all (default), kind:KEY, or family:SYSTEM |
+| `--meeting` | DATE | with --adopt, --decline, --defer: the meeting's date (YYYY-MM-DD) |
+| `--decision` | ID | with --adopt, --decline, --defer: the id of the decision in Decisions |
+| `--effective` | DATE | with --adopt: the date the control takes effect (YYYY-MM-DD) |
+| `--reason` | TEXT | with --adopt, --decline, --defer: the board's reason as stated |
+| `--again-on` | DATE | with --decline or --defer: the date it may be asked again (YYYY-MM-DD) |
+| `--param` | NAME=VALUE | with --adopt: a value as the board adopted it (repeatable; a list of offices is comma separated); none below a floor |
+| `--yes` |  | with --adopt, --decline, --defer: write the act (default: print it only) |
+| `--by` | NAME | who asks for the write (kept with when); the secretary for a decision |
 | `--as-of` | DATE | read as of this day (YYYY-MM-DD); default today |
 
 ### `jason workflow`
